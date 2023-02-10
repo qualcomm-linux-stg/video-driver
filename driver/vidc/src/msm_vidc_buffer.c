@@ -173,11 +173,16 @@ u32 msm_vidc_internal_buffer_count(struct msm_vidc_inst *inst,
 		return 1;
 
 	if (is_decode_session(inst)) {
-		if (buffer_type == MSM_VIDC_BUF_BIN ||
-			buffer_type == MSM_VIDC_BUF_LINE ||
-			buffer_type == MSM_VIDC_BUF_PERSIST ||
-			buffer_type == MSM_VIDC_BUF_PARTIAL_DATA) {
+		/* mpeg2 decode only needs line and persist internal buffers */
+		if (buffer_type == MSM_VIDC_BUF_LINE ||
+			buffer_type == MSM_VIDC_BUF_PERSIST) {
+				count = 1;
+		} else if (buffer_type == MSM_VIDC_BUF_BIN ||
+					buffer_type == MSM_VIDC_BUF_PARTIAL_DATA) {
 			count = 1;
+			/* mpeg2 does not need bin and partial data buffers */
+			if (inst->codec == MSM_VIDC_MPEG2)
+				count = 0;
 		} else if (buffer_type == MSM_VIDC_BUF_COMV ||
 			buffer_type == MSM_VIDC_BUF_NON_COMV) {
 			if (inst->codec == MSM_VIDC_H264 ||

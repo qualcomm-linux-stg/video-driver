@@ -926,6 +926,9 @@ static int msm_vdec_subscribe_input_port_settings_change(struct msm_vidc_inst *i
 	} else if (inst->codec == MSM_VIDC_AV1) {
 		subscribe_psc_size = core->platform->data.psc_av1_tbl_size;
 		psc = core->platform->data.psc_av1_tbl;
+	} else if (inst->codec == MSM_VIDC_MPEG2) {
+		subscribe_psc_size = core->platform->data.psc_mpeg2_tbl_size;
+		psc = core->platform->data.psc_mpeg2_tbl;
 	} else {
 		i_vpr_e(inst, "%s: unsupported codec: %d\n", __func__, inst->codec);
 		psc = NULL;
@@ -1653,6 +1656,9 @@ static int msm_vdec_subscribe_output_port_settings_change(struct msm_vidc_inst *
 	} else if (inst->codec == MSM_VIDC_AV1) {
 		subscribe_psc_size = core->platform->data.psc_av1_tbl_size;
 		psc = core->platform->data.psc_av1_tbl;
+	} else if (inst->codec == MSM_VIDC_MPEG2) {
+		subscribe_psc_size = core->platform->data.psc_mpeg2_tbl_size;
+		psc = core->platform->data.psc_mpeg2_tbl;
 	} else {
 		i_vpr_e(inst, "%s: unsupported codec: %d\n", __func__, inst->codec);
 		psc = NULL;
