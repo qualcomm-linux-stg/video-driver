@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
+ifneq ($(ENABLE_HYP), true)
 TARGET_VIDC_ENABLE := false
 ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
 	ifeq ($(TARGET_KERNEL_DLKM_VIDEO_OVERRIDE), true)
@@ -42,4 +43,5 @@ LOCAL_REQUIRED_MODULES    := mmrm-module-symvers
 LOCAL_ADDITIONAL_DEPENDENCIES := $(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
+endif
 endif
