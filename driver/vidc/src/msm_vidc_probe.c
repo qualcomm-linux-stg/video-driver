@@ -641,6 +641,8 @@ static int msm_vidc_component_master_bind(struct device *dev)
 		goto queues_deinit;
 	}
 
+	pr_info("boot_kpi: video driver ready\n");
+
 	d_vpr_h("%s(): succssful\n", __func__);
 
 	return 0;
