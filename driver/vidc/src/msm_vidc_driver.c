@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/delay.h>
@@ -2218,6 +2218,12 @@ int msm_vidc_set_auto_framerate(struct msm_vidc_inst *inst, u64 timestamp)
 
 	if (counter < ENC_FPS_WINDOW)
 		goto exit;
+
+	if (curr_fr > inst->capabilities[FRAME_RATE].value) {
+		i_vpr_l(inst, "%s: fps: %u limited to client fps %lld.\n",
+			__func__, curr_fr >> 16, inst->capabilities[FRAME_RATE].value >> 16);
+		curr_fr = inst->capabilities[FRAME_RATE].value;
+	}
 
 	/* if framerate changed and stable for 2 frames, set to firmware */
 	if (curr_fr == prev_fr && curr_fr != inst->auto_framerate) {
