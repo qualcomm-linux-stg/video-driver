@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define CREATE_TRACE_POINTS
@@ -65,7 +65,7 @@ static int debug_level_set_drv(const char *val,
 	}
 
 	d_vpr_h(
-		"timeout updated for driver: hw_response %u, sw_pc %u, fw_unload %u, debug_level %#x\n",
+		"timeout updated for driver: hw_response %llu, sw_pc %llu, fw_unload %llu, debug_level %#x\n",
 		core->capabilities[HW_RESPONSE_TIMEOUT].value,
 		core->capabilities[SW_PC_DELAY].value,
 		core->capabilities[FW_UNLOAD_DELAY].value,
@@ -112,7 +112,7 @@ static int debug_level_set_fw(const char *val,
 	}
 
 	d_vpr_h(
-		"timeout updated for firmware: hw_response %u, sw_pc %u, fw_unload %u, debug_level %#x\n",
+		"timeout updated for firmware: hw_response %llu, sw_pc %llu, fw_unload %llu, debug_level %#x\n",
 		core->capabilities[HW_RESPONSE_TIMEOUT].value,
 		core->capabilities[SW_PC_DELAY].value,
 		core->capabilities[FW_UNLOAD_DELAY].value,
@@ -378,7 +378,7 @@ static ssize_t stats_delay_read_ms(struct file *file, char __user *buf,
 		return 0;
 	}
 
-	len = scnprintf(kbuf, sizeof(kbuf), "%u\n", core->capabilities[STATS_TIMEOUT_MS].value);
+	len = scnprintf(kbuf, sizeof(kbuf), "%llu\n", core->capabilities[STATS_TIMEOUT_MS].value);
 	return simple_read_from_buffer(buf, count, ppos, kbuf, len);
 }
 
@@ -584,7 +584,7 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 	core = idata->core;
 	inst = idata->inst;
 
-	inst = get_inst(core, inst->session_id);
+	inst = get_inst_ref(core, inst);
 	if (!inst) {
 		d_vpr_h("%s: instance has become obsolete", __func__);
 		return 0;
@@ -608,7 +608,7 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 	cur += write_str(cur, end - cur, "core: %pK\n", inst->core);
 	cur += write_str(cur, end - cur, "height: %d\n", f->fmt.pix_mp.height);
 	cur += write_str(cur, end - cur, "width: %d\n", f->fmt.pix_mp.width);
-	cur += write_str(cur, end - cur, "fps: %d\n",
+	cur += write_str(cur, end - cur, "fps: %lld\n",
 			inst->capabilities[FRAME_RATE].value >> 16);
 	cur += write_str(cur, end - cur, "state: %d\n", inst->state);
 	cur += write_str(cur, end - cur, "secure: %d\n",
