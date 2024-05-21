@@ -2285,13 +2285,13 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		msm_vidc_set_blur_resolution},
 
 	{CSC, ENC, CODECS_ALL,
-		{0},
+		{CSC_CUSTOM_MATRIX},
 		msm_vidc_adjust_csc,
 		msm_vidc_set_u32},
 
 	{CSC_CUSTOM_MATRIX, ENC, CODECS_ALL,
 		{0},
-		NULL,
+		msm_vidc_adjust_csc_custom_matrix,
 		msm_vidc_set_csc_custom_matrix},
 
 	{LOWLATENCY_MODE, ENC, H264 | HEVC,
@@ -2801,7 +2801,7 @@ static struct freq_table sun_freq_table_v2[] = {
 
 /* register, value, mask */
 static const struct reg_preset_table sun_reg_preset_table[] = {
-	{ 0xB0088, 0x0,        0x11      },
+	{ 0xB0088, 0x0,        0xFFFFFFFF},
 	{ 0x13030, 0x33332211, 0xFFFFFFFF},
 	{ 0x13034, 0x44444444, 0xFFFFFFFF},
 	{ 0x13038, 0x1011,     0xFFFFFFFF},
