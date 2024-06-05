@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/workqueue.h>
@@ -28,6 +28,7 @@
 #include "msm_vidc_platform.h"
 #include "msm_vidc_core.h"
 #include "msm_vidc_memory.h"
+#include "msm_vidc_fence.h"
 #include "venus_hfi.h"
 
 #define BASE_DEVICE_NUMBER 32
@@ -42,9 +43,12 @@ static inline bool is_video_device(struct device *dev)
 	return !!(of_device_is_compatible(dev->of_node, "qcom,sm8450-vidc") ||
 		of_device_is_compatible(dev->of_node, "qcom,sm8550-vidc") ||
 		of_device_is_compatible(dev->of_node, "qcom,sm8550-vidc-v2") ||
-		of_device_is_compatible(dev->of_node, "qcom,sm8650-vidc")) ||
+		of_device_is_compatible(dev->of_node, "qcom,sm8650-vidc") ||
 		of_device_is_compatible(dev->of_node, "qcom,sm8650-vidc-v2") ||
-		of_device_is_compatible(dev->of_node, "qcom,sm8750-vidc");
+		of_device_is_compatible(dev->of_node, "qcom,cliffs-vidc") ||
+		of_device_is_compatible(dev->of_node, "qcom,volcano-vidc") ||
+		of_device_is_compatible(dev->of_node, "qcom,sm8750-vidc") ||
+		of_device_is_compatible(dev->of_node, "qcom,sm8750-vidc-v2"));
 }
 
 static inline bool is_video_context_bank_device_node(struct device_node *of_node)
@@ -122,6 +126,9 @@ static const struct of_device_id msm_vidc_dt_match[] = {
 	{.compatible = "qcom,sm8650-vidc"},
 	{.compatible = "qcom,sm8650-vidc-v2"},
 	{.compatible = "qcom,sm8750-vidc"},
+	{.compatible = "qcom,sm8750-vidc-v2"},
+	{.compatible = "qcom,cliffs-vidc"},
+	{.compatible = "qcom,volcano-vidc"},
 	{.compatible = "qcom,vidc,cb-ns-pxl"},
 	{.compatible = "qcom,vidc,cb-ns"},
 	{.compatible = "qcom,vidc,cb-sec-non-pxl"},
@@ -593,6 +600,27 @@ static int msm_vidc_component_master_bind(struct device *dev)
 		return rc;
 	}
 
+	if (core->capabilities[SUPPORTS_SYNX_FENCE].value) {
+		if (msm_vidc_synx_fence_enable) {
+			/* register for synx fence */
+			rc = call_fence_op(core, fence_register, core);
+			if (rc) {
+				d_vpr_e("%s: failed to register synx fence\n",
+					__func__);
+				core->capabilities[SUPPORTS_SYNX_FENCE].value = 0;
+				return rc;
+			}
+		} else {
+			/* override synx fence ops with dma fence ops */
+			core->fence_ops = get_dma_fence_ops();
+			if (!core->fence_ops) {
+				d_vpr_e("%s: invalid dma fence ops\n", __func__);
+				return -EINVAL;
+			}
+			core->capabilities[SUPPORTS_SYNX_FENCE].value = 0;
+		}
+	}
+
 	rc = msm_vidc_initialize_media(core);
 	if (rc) {
 		d_vpr_e("%s: media initialization failed\n", __func__);
@@ -633,6 +661,9 @@ static void msm_vidc_component_master_unbind(struct device *dev)
 	msm_vidc_core_deinit(core, true);
 	venus_hfi_queue_deinit(core);
 	msm_vidc_deinitialize_media(core);
+	if (core->capabilities[SUPPORTS_SYNX_FENCE].value &&
+	    msm_vidc_synx_fence_enable)
+		call_fence_op(core, fence_deregister, core);
 	component_unbind_all(dev, core);
 
 	d_vpr_h("%s(): succssful\n", __func__);
