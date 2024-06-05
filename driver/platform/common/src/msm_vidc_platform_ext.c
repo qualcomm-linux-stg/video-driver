@@ -16,21 +16,21 @@
 
 int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl)
 {
-	s32 adjusted_value, all_intra = 0, roi_enable = 0,
-		pix_fmts = MSM_VIDC_FMT_NONE;
+	s32 adjusted_value;
+	s64 all_intra = 0, roi_enable = 0,  pix_fmts = MSM_VIDC_FMT_NONE;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[IR_PERIOD].value;
 
 	if (msm_vidc_get_parent_value(inst, IR_PERIOD, ALL_INTRA,
-		&all_intra, __func__) ||
+				      &all_intra, __func__) ||
 		msm_vidc_get_parent_value(inst, IR_PERIOD, META_ROI_INFO,
-		&roi_enable, __func__))
+					  &roi_enable, __func__))
 		return -EINVAL;
 
 	if (all_intra) {
 		adjusted_value = 0;
-		i_vpr_h(inst, "%s: intra refresh unsupported, all intra: %d\n",
+		i_vpr_h(inst, "%s: intra refresh unsupported, all intra: %lld\n",
 			__func__, all_intra);
 		goto exit;
 	}
@@ -45,7 +45,7 @@ int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl)
 
 	if (inst->codec == MSM_VIDC_HEVC) {
 		if (msm_vidc_get_parent_value(inst, IR_PERIOD,
-			PIX_FMTS, &pix_fmts, __func__))
+					      PIX_FMTS, &pix_fmts, __func__))
 			return -EINVAL;
 
 		if (is_10bit_colorformat(pix_fmts)) {
@@ -62,13 +62,12 @@ int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl)
 	 * Hence, do not return error if not specified as one of the parent.
 	 */
 	if (is_parent_available(inst, IR_PERIOD, BITRATE_MODE, __func__) &&
-		inst->hfi_rc_type != HFI_RC_CBR_CFR &&
-		inst->hfi_rc_type != HFI_RC_CBR_VFR)
+	    inst->hfi_rc_type != HFI_RC_CBR_CFR &&
+	    inst->hfi_rc_type != HFI_RC_CBR_VFR)
 		adjusted_value = 0;
 
 exit:
-	msm_vidc_update_cap_value(inst, IR_PERIOD,
-		adjusted_value, __func__);
+	msm_vidc_update_cap_value(inst, IR_PERIOD, adjusted_value, __func__);
 
 	return 0;
 }
@@ -108,31 +107,29 @@ int msm_vidc_adjust_dec_operating_rate(void *instance, struct v4l2_ctrl *ctrl)
 int msm_vidc_adjust_delivery_mode(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
-	s32 slice_mode = -1;
+	s64 slice_mode = -1;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
 	if (is_decode_session(inst))
 		return 0;
 
-
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[DELIVERY_MODE].value;
 
 	if (msm_vidc_get_parent_value(inst, DELIVERY_MODE, SLICE_MODE,
-		&slice_mode, __func__))
+				      &slice_mode, __func__))
 		return -EINVAL;
 
 	/* Slice encode delivery mode is only supported for Max MB slice mode */
 	if (slice_mode != V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB)
 		adjusted_value = 0;
 
-	msm_vidc_update_cap_value(inst, DELIVERY_MODE,
-		adjusted_value, __func__);
+	msm_vidc_update_cap_value(inst, DELIVERY_MODE, adjusted_value, __func__);
 
 	return 0;
 }
 
 int msm_vidc_set_ir_period(void *instance,
-	enum msm_vidc_inst_capability_type cap_id)
+			   enum msm_vidc_inst_capability_type cap_id)
 {
 	int rc = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
@@ -153,14 +150,14 @@ int msm_vidc_set_ir_period(void *instance,
 		   V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD_TYPE_CYCLIC) {
 		ir_type = HFI_PROP_IR_CYCLIC_PERIOD;
 	} else {
-		i_vpr_e(inst, "%s: invalid ir_type %d\n",
+		i_vpr_e(inst, "%s: invalid ir_type %lld\n",
 			__func__, inst->capabilities[IR_TYPE].value);
 		return -EINVAL;
 	}
 
 	rc = venus_hfi_set_ir_period(inst, ir_type, cap_id);
 	if (rc) {
-		i_vpr_e(inst, "%s: failed to set ir period %d\n",
+		i_vpr_e(inst, "%s: failed to set ir period %lld\n",
 			__func__, inst->capabilities[IR_PERIOD].value);
 		return rc;
 	}
@@ -169,7 +166,7 @@ int msm_vidc_set_ir_period(void *instance,
 }
 
 int msm_vidc_set_signal_color_info(void *instance,
-	enum msm_vidc_inst_capability_type cap_id)
+				   enum msm_vidc_inst_capability_type cap_id)
 {
 	int rc = 0;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
@@ -195,18 +192,18 @@ int msm_vidc_set_signal_color_info(void *instance,
 
 	input_fmt = &inst->fmts[INPUT_PORT];
 	pix_fmt = v4l2_colorformat_to_driver(inst,
-		input_fmt->fmt.pix_mp.pixelformat, __func__);
+					     input_fmt->fmt.pix_mp.pixelformat, __func__);
 	if (primaries != V4L2_COLORSPACE_DEFAULT ||
 	    matrix_coeff != V4L2_YCBCR_ENC_DEFAULT ||
 	    transfer_char != V4L2_XFER_FUNC_DEFAULT) {
 		colour_description_present_flag = 1;
 		video_signal_type_present_flag = 1;
 		primaries = v4l2_color_primaries_to_driver(inst,
-			primaries, __func__);
+							   primaries, __func__);
 		matrix_coeff = v4l2_matrix_coeff_to_driver(inst,
-			matrix_coeff, __func__);
+							   matrix_coeff, __func__);
 		transfer_char = v4l2_transfer_char_to_driver(inst,
-			transfer_char, __func__);
+							     transfer_char, __func__);
 	} else if (is_rgba_colorformat(pix_fmt)) {
 		colour_description_present_flag = 1;
 		video_signal_type_present_flag = 1;
@@ -230,7 +227,7 @@ int msm_vidc_set_signal_color_info(void *instance,
 		((video_signal_type_present_flag << 29) & 0x20000000);
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_32_PACKED,
-		&hfi_value, sizeof(u32), __func__);
+					&hfi_value, sizeof(u32), __func__);
 	if (rc)
 		return rc;
 
@@ -240,7 +237,7 @@ int msm_vidc_set_signal_color_info(void *instance,
 int msm_vidc_adjust_csc(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
-	s32 pix_fmt = -1;
+	s64 pix_fmt = -1;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
 	if (is_decode_session(inst))
@@ -249,7 +246,7 @@ int msm_vidc_adjust_csc(void *instance, struct v4l2_ctrl *ctrl)
 	adjusted_value = ctrl ? ctrl->val : inst->capabilities[CSC].value;
 
 	if (msm_vidc_get_parent_value(inst, CSC, PIX_FMTS,
-		&pix_fmt, __func__))
+				      &pix_fmt, __func__))
 		return -EINVAL;
 
 	/* disable csc for 10-bit encoding */
@@ -257,6 +254,30 @@ int msm_vidc_adjust_csc(void *instance, struct v4l2_ctrl *ctrl)
 		adjusted_value = 0;
 
 	msm_vidc_update_cap_value(inst, CSC, adjusted_value, __func__);
+
+	return 0;
+}
+
+int msm_vidc_adjust_csc_custom_matrix(void *instance, struct v4l2_ctrl *ctrl)
+{
+	s32 adjusted_value;
+	s64 cscVal = 0;
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+
+	if (is_decode_session(inst))
+		return 0;
+
+	adjusted_value = ctrl ? ctrl->val : inst->capabilities[CSC_CUSTOM_MATRIX].value;
+
+	if (msm_vidc_get_parent_value(inst, CSC_CUSTOM_MATRIX, CSC,
+				      &cscVal, __func__))
+		return -EINVAL;
+
+	/* disable CSC_CUSTOM_MATRIX if CSC is not enabled */
+	if (!cscVal)
+		adjusted_value = 0;
+
+	msm_vidc_update_cap_value(inst, CSC_CUSTOM_MATRIX, adjusted_value, __func__);
 
 	return 0;
 }

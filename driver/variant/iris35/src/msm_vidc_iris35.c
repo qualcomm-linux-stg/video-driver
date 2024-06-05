@@ -88,7 +88,9 @@ typedef enum {
 #define WRAPPER_DEBUG_BRIDGE_LPI_STATUS_IRIS35        (WRAPPER_BASE_OFFS_IRIS35 + 0x58)
 #define WRAPPER_IRIS_CPU_NOC_LPI_CONTROL              (WRAPPER_BASE_OFFS_IRIS35 + 0x5C)
 #define WRAPPER_IRIS_CPU_NOC_LPI_STATUS               (WRAPPER_BASE_OFFS_IRIS35 + 0x60)
+#define WRAPPER_IRIS_VCODEC_VPU_WRAPPER_SPARE_0       (WRAPPER_BASE_OFFS_IRIS35 + 0x78)
 #define WRAPPER_CORE_POWER_STATUS                     (WRAPPER_BASE_OFFS_IRIS35 + 0x80)
+#define WRAPPER_CORE_POWER_CONTROL                    (WRAPPER_BASE_OFFS_IRIS35 + 0x84)
 #define WRAPPER_CORE_CLOCK_CONFIG_IRIS35              (WRAPPER_BASE_OFFS_IRIS35 + 0x88)
 
 /*
@@ -238,8 +240,11 @@ static int __get_device_region_info(struct msm_vidc_core *core,
 static int __program_bootup_registers_iris35(struct msm_vidc_core *core)
 {
 	u32 min_dev_reg_addr = 0, dev_reg_size = 0;
+	struct device *dev = NULL;
 	u32 value;
 	int rc = 0;
+
+	dev = &core->pdev->dev;
 
 	value = (u32)core->iface_q_table.align_device_addr;
 	rc = __write_register(core, HFI_UC_REGION_ADDR_IRIS35, value);
@@ -296,6 +301,17 @@ static int __program_bootup_registers_iris35(struct msm_vidc_core *core)
 			return rc;
 	}
 
+	/* Based on below register programming, firmware WA for sm8750-v2 would be enabled */
+	if (of_device_is_compatible(dev->of_node, "qcom,sm8750-vidc-v2")) {
+		rc = __write_register(core, WRAPPER_IRIS_VCODEC_VPU_WRAPPER_SPARE_0, 0x1);
+		if (rc)
+			return rc;
+	} else {
+		rc = __write_register(core, WRAPPER_IRIS_VCODEC_VPU_WRAPPER_SPARE_0, 0x0);
+		if (rc)
+			return rc;
+	}
+
 	return 0;
 }
 
@@ -336,7 +352,8 @@ static int __boot_firmware_iris35(struct msm_vidc_core *core)
 	}
 
 	if (count >= max_tries) {
-		d_vpr_e("Error booting up vidc firmware, ctrl status %#x\n", ctrl_status);
+		d_vpr_e(FMT_STRING_BOOT_FIRMWARE_ERROR,
+			ctrl_status, ctrl_init_val);
 		return -ETIME;
 	}
 
@@ -725,6 +742,15 @@ static int __power_on_iris35_hardware(struct msm_vidc_core *core)
 	if (rc)
 		goto fail_regulator;
 
+	/* video controller and hardware powered on successfully */
+	rc = msm_vidc_change_core_sub_state(core, 0, CORE_SUBSTATE_POWER_ENABLE, __func__);
+	if (rc)
+		goto fail_power_on_substate;
+
+	rc = call_res_op(core, gdsc_sw_ctrl, core);
+	if (rc)
+		goto fail_sw_ctrl;
+
 	rc = call_res_op(core, clk_enable, core, "gcc_video_axi0_clk");
 	if (rc)
 		goto fail_clk_axi;
@@ -744,6 +770,9 @@ fail_clk_controller:
 fail_clk_freerun:
 	call_res_op(core, clk_disable, core, "gcc_video_axi0_clk");
 fail_clk_axi:
+	call_res_op(core, gdsc_hw_ctrl, core);
+fail_sw_ctrl:
+fail_power_on_substate:
 	call_res_op(core, gdsc_off, core, "vcodec");
 fail_regulator:
 	return rc;
@@ -782,10 +811,6 @@ static int __power_on_iris35(struct msm_vidc_core *core)
 		d_vpr_e("%s: failed to power on iris35 hardware\n", __func__);
 		goto fail_power_on_hardware;
 	}
-	/* video controller and hardware powered on successfully */
-	rc = msm_vidc_change_core_sub_state(core, 0, CORE_SUBSTATE_POWER_ENABLE, __func__);
-	if (rc)
-		goto fail_power_on_substate;
 
 	freq_tbl = core->resource->freq_set.freq_tbl;
 	freq = core->power.clk_freq ? core->power.clk_freq :
@@ -805,8 +830,6 @@ static int __power_on_iris35(struct msm_vidc_core *core)
 
 	return rc;
 
-fail_power_on_substate:
-	__power_off_iris35_hardware(core);
 fail_power_on_hardware:
 	__power_off_iris35_controller(core);
 fail_power_on_controller:
@@ -885,6 +908,7 @@ static int __watchdog_iris35(struct msm_vidc_core *core, u32 intr_status)
 	if (intr_status & WRAPPER_INTR_STATUS_A2HWD_BMSK_IRIS35) {
 		d_vpr_e("%s: received watchdog interrupt\n", __func__);
 		rc = 1;
+		MSM_VIDC_FATAL(true);
 	}
 
 	return rc;
@@ -941,7 +965,39 @@ static int __noc_error_info_iris35(struct msm_vidc_core *core)
 		d_vpr_e("%s: NOC_ERL_ERRORLOGGER_MAIN_ERRORLOGGER_ERRLOG3_HIGH:  %#x\n",
 			__func__, value);
 
+	MSM_VIDC_FATAL(true);
 	return rc;
+}
+
+static int __switch_gdsc_mode_iris35(struct msm_vidc_core *core, bool sw_mode)
+{
+	int rc;
+
+	if (sw_mode) {
+		rc = __write_register(core, WRAPPER_CORE_POWER_CONTROL, 0x0);
+		if (rc)
+			return rc;
+		rc = __read_register_with_poll_timeout(core, WRAPPER_CORE_POWER_STATUS,
+						       BIT(1), 0x2, 200, 2000);
+		if (rc) {
+			d_vpr_e("%s: Failed to read WRAPPER_CORE_POWER_STATUS register to 0x1\n",
+				__func__);
+			return rc;
+		}
+	} else {
+		rc = __write_register(core, WRAPPER_CORE_POWER_CONTROL, 0x1);
+		if (rc)
+			return rc;
+		rc = __read_register_with_poll_timeout(core, WRAPPER_CORE_POWER_STATUS,
+						       BIT(1), 0x0, 200, 2000);
+		if (rc) {
+			d_vpr_e("%s: Failed to read WRAPPER_CORE_POWER_STATUS register to 0x0\n",
+				__func__);
+			return rc;
+		}
+	}
+
+	return 0;
 }
 
 int msm_vidc_decide_work_mode_iris35(struct msm_vidc_inst *inst)
@@ -993,7 +1049,7 @@ int msm_vidc_decide_work_mode_iris35(struct msm_vidc_inst *inst)
 	}
 
 exit:
-	i_vpr_h(inst, "Configuring work mode = %u low latency = %u, gop size = %u\n",
+	i_vpr_h(inst, "Configuring work mode = %u low latency = %llu, gop size = %llu\n",
 		work_mode, inst->capabilities[LOWLATENCY_MODE].value,
 		inst->capabilities[GOP_SIZE].value);
 	msm_vidc_update_cap_value(inst, STAGE, work_mode, __func__);
@@ -1087,7 +1143,7 @@ int msm_vidc_adjust_bitrate_boost_iris35(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	s32 rc_type = -1;
+	s64 rc_type = -1;
 	u32 width, height, frame_rate;
 	struct v4l2_format *f;
 	u32 max_bitrate = 0, bitrate = 0;
@@ -1156,6 +1212,7 @@ static struct msm_vidc_venus_ops iris35_ops = {
 	.prepare_pc = __prepare_pc_iris35,
 	.watchdog = __watchdog_iris35,
 	.noc_error_info = __noc_error_info_iris35,
+	.switch_gdsc_mode = __switch_gdsc_mode_iris35,
 };
 
 static struct msm_vidc_session_ops msm_session_ops = {

@@ -8,6 +8,6 @@
 
 struct msm_vidc_resources_ops;
 
-const struct msm_vidc_resources_ops *get_res_ops_ext(void);
+const struct msm_vidc_resources_ops *get_res_ops_ext(struct msm_vidc_core *core);
 
 #endif // _RESOURCES_EXT_H_
