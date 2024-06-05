@@ -88,6 +88,6 @@ struct msm_vidc_memory_ops {
 			   struct msm_vidc_mem *mem);
 };
 
-const struct msm_vidc_memory_ops *get_mem_ops(void);
+struct msm_vidc_memory_ops *get_mem_ops(void);
 
 #endif // _MSM_VIDC_MEMORY_H_
