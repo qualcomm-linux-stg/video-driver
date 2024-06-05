@@ -603,8 +603,6 @@ typedef HFI_U32 HFI_BOOL;
 
 #define HDR10_HIST_EXTRADATA_SIZE (4 * 1024)
 
-#define HDR10_LUT_TBL_SIZE (2 * 1024 * 4)
-
 #define HFI_BUFFER_NON_COMV_H265D(_size, frame_width, frame_height, \
 				num_vpp_pipes) \
 	do { \
@@ -1643,7 +1641,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 	} while (0)
 
 #define HFI_BUFFER_NON_COMV_ENC(_size, frame_width, frame_height, \
-			num_vpp_pipes_enc, lcu_size, standard, profile) \
+			num_vpp_pipes_enc, lcu_size, standard) \
 	do { \
 		HFI_U32 width_in_lcus = 0, height_in_lcus = 0, \
 		frame_width_coded = 0, frame_height_coded = 0, \
@@ -1667,24 +1665,22 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 			   SIZE_BSE_SLICE_CMD_BUF + \
 			   SIZE_LAMBDA_LUT + \
 			   SIZE_OVERRIDE_BUF(num_lcumb) + \
-			   SIZE_IR_BUF(num_lcu_in_frame) + \
-			   (((standard == HFI_CODEC_ENCODE_HEVC) && \
-				(profile == HFI_H265_PROFILE_MAIN_10)) ? HDR10_LUT_TBL_SIZE : 0); \
+			   SIZE_IR_BUF(num_lcu_in_frame); \
 	} while (0)
 
 #define HFI_BUFFER_NON_COMV_H264E(_size, frame_width, frame_height, \
-				num_vpp_pipes_enc, profile) \
+				num_vpp_pipes_enc) \
 	do { \
 		HFI_BUFFER_NON_COMV_ENC(_size, frame_width, frame_height, \
-				num_vpp_pipes_enc, 16, HFI_CODEC_ENCODE_AVC, profile); \
+				num_vpp_pipes_enc, 16, HFI_CODEC_ENCODE_AVC); \
 	} while (0)
 
 #define SIZE_ONE_SLICE_BUF 256
 #define HFI_BUFFER_NON_COMV_H265E(_size, frame_width, frame_height, \
-				num_vpp_pipes_enc, profile) \
+				num_vpp_pipes_enc) \
 	do { \
 		HFI_BUFFER_NON_COMV_ENC(_size, frame_width, frame_height, \
-			num_vpp_pipes_enc, 32, HFI_CODEC_ENCODE_HEVC, profile); \
+			num_vpp_pipes_enc, 32, HFI_CODEC_ENCODE_HEVC); \
 		_size += SIZE_ONE_SLICE_BUF; \
 	} while (0)
 

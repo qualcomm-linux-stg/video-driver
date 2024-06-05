@@ -27,7 +27,7 @@
 
 /* version: major[24:31], minor[16:23], revision[0:15] */
 #define DRIVER_VERSION          0x04000000
-#define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8000800010
+#define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8020010
 #define MAX_BASE_LAYER_PRIORITY_ID 63
 #define MAX_OP_POINT            31
 #define MAX_BITRATE             245000000
@@ -291,7 +291,7 @@ static const struct msm_platform_core_capability core_data_sun[] = {
 	{MAX_NUM_4K_SESSIONS, 8},
 	{MAX_NUM_8K_SESSIONS, 2},
 	{MAX_SECURE_SESSION_COUNT, 3},
-	{MAX_RT_MBPF, 259200},	/* ((7680x4320)/256) * 2)*/
+	{MAX_RT_MBPF, 174080},	/* (8192x4352)/256 + (4096x2176)/256*/
 	{MAX_MBPF, 278528}, /* ((8192x4352)/256) * 2 */
 	{MAX_MBPS, 7833600},
 	/* max_load
@@ -586,7 +586,7 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 
 	{MB_CYCLES_FW_VPP, DEC, CODECS_ALL, 66234, 66234, 1, 66234},
 
-	{ENC_RING_BUFFER_COUNT, ENC, H264,
+	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
 		0, MAX_ENC_RING_BUF_COUNT, 1, 0},
 
 	{CLIENT_ID, ENC | DEC, CODECS_ALL,
@@ -860,12 +860,6 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		HFI_PROP_MAX_GOP_FRAMES,
 		CAP_FLAG_OUTPUT_PORT |
 			CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
-
-	{OPEN_GOP, ENC, HEVC,
-		0, 1, 1, 0,
-		V4L2_CID_MPEG_VIDC_OPEN_GOP_ENABLE,
-		HFI_PROP_OPEN_GOP,
-		CAP_FLAG_OUTPUT_PORT},
 
 	{GOP_CLOSURE, ENC, H264 | HEVC,
 		0, 1, 1, 1,
@@ -1631,15 +1625,15 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		HFI_PROP_BUFFER_HOST_MAX_COUNT,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{CONCEAL_COLOR_8BIT, DEC, CODECS_ALL, 0x0, 0xFF00FF00FF, 1,
+	{CONCEAL_COLOR_8BIT, DEC, CODECS_ALL, 0x0, 0xff3fcff, 1,
 		DEFAULT_VIDEO_CONCEAL_COLOR_BLACK,
-		V4L2_CID_MPEG_VIDEO_DEC_CONCEAL_COLOR,
+		V4L2_CID_MPEG_VIDEO_MUTE_YUV,
 		HFI_PROP_CONCEAL_COLOR_8BIT,
 		CAP_FLAG_INPUT_PORT},
 
-	{CONCEAL_COLOR_10BIT, DEC, CODECS_ALL, 0x0, 0x3FF03FF03FF, 1,
+	{CONCEAL_COLOR_10BIT, DEC, CODECS_ALL, 0x0, 0x3fffffff, 1,
 		DEFAULT_VIDEO_CONCEAL_COLOR_BLACK,
-		V4L2_CID_MPEG_VIDEO_DEC_CONCEAL_COLOR,
+		V4L2_CID_MPEG_VIDEO_MUTE_YUV,
 		HFI_PROP_CONCEAL_COLOR_10BIT,
 		CAP_FLAG_INPUT_PORT},
 
@@ -1850,22 +1844,6 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		0, MSM_VIDC_META_DISABLE,
 		V4L2_CID_MPEG_VIDC_METADATA_HISTOGRAM_INFO,
 		HFI_PROP_HISTOGRAM_INFO,
-		CAP_FLAG_BITMASK | CAP_FLAG_META},
-
-	{META_HIST_INFO, ENC, HEVC,
-		MSM_VIDC_META_DISABLE,
-		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
-		0, MSM_VIDC_META_DISABLE,
-		V4L2_CID_MPEG_VIDC_METADATA_HISTOGRAM_INFO,
-		HFI_PROP_HISTOGRAM_INFO,
-		CAP_FLAG_BITMASK | CAP_FLAG_META},
-
-	{META_HDR10_MAX_RGB_INFO, ENC, HEVC,
-		MSM_VIDC_META_DISABLE,
-		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_OUTPUT,
-		0, MSM_VIDC_META_DISABLE,
-		V4L2_CID_MPEG_VIDC_METADATA_HDR10_MAX_RGB_INFO,
-		HFI_PROP_HDR10_MAX_RGB_INFO,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
 	{META_TRANSCODING_STAT_INFO, DEC, HEVC|H264,
@@ -2083,12 +2061,6 @@ static struct msm_platform_inst_capability instance_cap_data_sun[] = {
 		V4L2_CID_MPEG_VIDC_SIGNAL_COLOR_INFO,
 		HFI_PROP_SIGNAL_COLOR_INFO,
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
-
-	{CAPTURE_DATA_OFFSET, ENC, HEVC,
-		0, 256, 1, 0,
-		V4L2_CID_MPEG_VIDC_CAPTURE_DATA_OFFSET,
-		0,
-		CAP_FLAG_NONE},
 };
 
 static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[] = {
@@ -2125,7 +2097,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		{0},
 		msm_vidc_adjust_dec_operating_rate},
 
-	{ENC_RING_BUFFER_COUNT, ENC, H264,
+	{ENC_RING_BUFFER_COUNT, ENC, CODECS_ALL,
 		{0},
 		NULL,
 		msm_vidc_set_ring_buffer_count_sun},
@@ -2136,7 +2108,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		msm_vidc_set_u32},
 
 	{META_OUTBUF_FENCE, DEC, H264 | HEVC | AV1 | VP9,
-		{OUTBUF_FENCE_TYPE, OUTBUF_FENCE_DIRECTION},
+		{LOWLATENCY_MODE, OUTBUF_FENCE_TYPE, OUTBUF_FENCE_DIRECTION},
 		NULL,
 		NULL},
 
@@ -2234,8 +2206,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 			P_FRAME_QP, B_FRAME_QP, CONSTANT_QUALITY, ENH_LAYER_COUNT,
 			BIT_RATE, META_ROI_INFO, MIN_QUALITY, BITRATE_BOOST, VBV_DELAY,
 			PEAK_BITRATE, SLICE_MODE, CONTENT_ADAPTIVE_CODING,
-			BLUR_TYPES, LOWLATENCY_MODE, META_EVA_STATS,
-			META_TRANSCODING_STAT_INFO, OPEN_GOP},
+			BLUR_TYPES, LOWLATENCY_MODE, META_EVA_STATS, META_TRANSCODING_STAT_INFO},
 		msm_vidc_adjust_bitrate_mode,
 		msm_vidc_set_u32_enum},
 
@@ -2257,11 +2228,6 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 	{GOP_SIZE, ENC, HEIC,
 		{0},
 		NULL,
-		msm_vidc_set_u32},
-
-	{OPEN_GOP, ENC, HEVC,
-		{GOP_SIZE},
-		msm_vidc_adjust_open_gop,
 		msm_vidc_set_u32},
 
 	{B_FRAME, ENC, H264 | HEVC,
@@ -2299,9 +2265,14 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		msm_vidc_adjust_enc_lowlatency_mode,
 		NULL},
 
-	{LOWLATENCY_MODE, DEC, H264 | HEVC | VP9 | AV1,
+	{LOWLATENCY_MODE, DEC, H264 | HEVC | AV1,
 		{STAGE},
-		NULL,
+		msm_vidc_adjust_dec_lowlatency_mode,
+		NULL},
+
+	{LOWLATENCY_MODE, DEC, VP9,
+		{STAGE},
+		msm_vidc_adjust_dec_lowlatency_mode,
 		NULL},
 
 	{LTR_COUNT, ENC, H264 | HEVC,
@@ -2419,22 +2390,14 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		NULL,
 		msm_vidc_set_frame_qp},
 
-	{LAYER_TYPE, ENC, H264,
+	{LAYER_TYPE, ENC, H264 | HEVC,
 		{CONTENT_ADAPTIVE_CODING, LTR_COUNT}},
-
-	{LAYER_TYPE, ENC, HEVC,
-		{CONTENT_ADAPTIVE_CODING, LTR_COUNT, OPEN_GOP}},
 
 	{LAYER_ENABLE, ENC, H264 | HEVC,
 		{CONTENT_ADAPTIVE_CODING}},
 
-	{ENH_LAYER_COUNT, ENC, H264,
+	{ENH_LAYER_COUNT, ENC, H264 | HEVC,
 		{GOP_SIZE, B_FRAME, BIT_RATE, MIN_QUALITY, SLICE_MODE, LTR_COUNT},
-		msm_vidc_adjust_layer_count,
-		msm_vidc_set_layer_count_and_type},
-
-	{ENH_LAYER_COUNT, ENC, HEVC,
-		{GOP_SIZE, B_FRAME, BIT_RATE, MIN_QUALITY, SLICE_MODE, LTR_COUNT, OPEN_GOP},
 		msm_vidc_adjust_layer_count,
 		msm_vidc_set_layer_count_and_type},
 
@@ -2488,14 +2451,8 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		NULL,
 		msm_vidc_set_u32_enum},
 
-	{PROFILE, ENC, HEIC,
+	{PROFILE, ENC, HEVC | HEIC,
 		{META_SEI_MASTERING_DISP, META_SEI_CLL, META_HDR10PLUS},
-		msm_vidc_adjust_profile,
-		msm_vidc_set_u32_enum},
-
-	{PROFILE, ENC, HEVC,
-		{META_SEI_MASTERING_DISP, META_SEI_CLL, META_HDR10PLUS,
-		META_HIST_INFO, META_HDR10_MAX_RGB_INFO},
 		msm_vidc_adjust_profile,
 		msm_vidc_set_u32_enum},
 
@@ -2592,12 +2549,12 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 	{CONCEAL_COLOR_8BIT, DEC, CODECS_ALL,
 		{0},
 		NULL,
-		msm_vidc_set_conceal_color},
+		msm_vidc_set_u32_packed},
 
 	{CONCEAL_COLOR_10BIT, DEC, CODECS_ALL,
 		{0},
 		NULL,
-		msm_vidc_set_conceal_color},
+		msm_vidc_set_u32_packed},
 
 	{STAGE, ENC | DEC, CODECS_ALL,
 		{0},
@@ -2713,16 +2670,6 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sun[
 		{0},
 		msm_vidc_adjust_transcoding_stats,
 		NULL},
-
-	{META_HIST_INFO, ENC, HEVC,
-		{0},
-		msm_vidc_adjust_histogram_info,
-		NULL},
-
-	{META_HDR10_MAX_RGB_INFO, ENC, HEVC,
-		{0},
-		msm_vidc_adjust_hdr10_max_rgb_info,
-		NULL},
 };
 
 /* Default UBWC config for LPDDR5 */
@@ -2750,10 +2697,10 @@ static const struct bw_table sun_bw_table[] = {
 	{ "venus-llcc",  1000, 15000000 },
 };
 
-/* name */
-static const struct pd_table sun_pd_table[] = {
-	{ "iris-ctl" },
-	{ "vcodec"   },
+/* name, hw_trigger */
+static const struct regulator_table sun_regulator_table[] = {
+	{ "iris-ctl", 0 },
+	{ "vcodec",   1 },
 };
 
 /* name, clock id, scaling */
@@ -2804,12 +2751,12 @@ static const struct reg_preset_table sun_reg_preset_table[] = {
 	{ 0xB0088, 0x0,        0x11      },
 	{ 0x13030, 0x33332211, 0xFFFFFFFF},
 	{ 0x13034, 0x44444444, 0xFFFFFFFF},
-	{ 0x13038, 0x1011,     0xFFFFFFFF},
+	{ 0x13038, 0x1009,     0xFFFFFFFF},
 	{ 0x13040, 0xFFAA5500, 0xFFFFFFFF},
 	{ 0x13048, 0xFF,       0xFFFFFFFF},
 	{ 0x13430, 0x33332211, 0xFFFFFFFF},
 	{ 0x13434, 0x44444444, 0xFFFFFFFF},
-	{ 0x13438, 0x1011,     0xFFFFFFFF},
+	{ 0x13438, 0x1009,     0xFFFFFFFF},
 	{ 0x13440, 0xFFAA5500, 0xFFFFFFFF},
 	{ 0x13448, 0xFF,       0xFFFFFFFF},
 	{ 0xA013C, 0x99,       0xFFFFFFFF},
@@ -2817,6 +2764,11 @@ static const struct reg_preset_table sun_reg_preset_table[] = {
 
 /* name, phys_addr, size, device_addr, device region type */
 static const struct device_region_table sun_device_region_table[] = {
+	{
+		"aon-registers",
+		0x0AAE0000, 0x1000, 0xFFAE0000,
+		MSM_VIDC_AON
+	},
 	{
 		"ipc_protocol4_client8_version-registers",
 		0x00508000, 0x1000, 0xFFADF000,
@@ -2931,16 +2883,12 @@ static const u32 sun_vdec_output_properties_av1[] = {
 	HFI_PROP_FENCE,
 };
 
-static const u32 sun_msm_vidc_ssr_type[] = {
-	HFI_SSR_TYPE_SW_ERR_FATAL,
-};
-
 static const struct msm_vidc_platform_data sun_data = {
 	/* resources dependent on other module */
 	.bw_tbl = sun_bw_table,
 	.bw_tbl_size = ARRAY_SIZE(sun_bw_table),
-	.pd_tbl = sun_pd_table,
-	.pd_tbl_size = ARRAY_SIZE(sun_pd_table),
+	.regulator_tbl = sun_regulator_table,
+	.regulator_tbl_size = ARRAY_SIZE(sun_regulator_table),
 	.clk_tbl = sun_clk_table,
 	.clk_tbl_size = ARRAY_SIZE(sun_clk_table),
 	.clk_rst_tbl = sun_clk_reset_table,
@@ -3001,9 +2949,6 @@ static const struct msm_vidc_platform_data sun_data = {
 	.dec_output_prop_size_hevc = ARRAY_SIZE(sun_vdec_output_properties_hevc),
 	.dec_output_prop_size_vp9 = ARRAY_SIZE(sun_vdec_output_properties_vp9),
 	.dec_output_prop_size_av1 = ARRAY_SIZE(sun_vdec_output_properties_av1),
-
-	.msm_vidc_ssr_type = sun_msm_vidc_ssr_type,
-	.msm_vidc_ssr_type_size = ARRAY_SIZE(sun_msm_vidc_ssr_type),
 };
 
 int msm_vidc_sun_check_ddr_type(void)
@@ -3042,7 +2987,7 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 		d_vpr_e("%s: invalid memory ext ops\n", __func__);
 		return -EINVAL;
 	}
-	core->res_ops = get_res_ops_ext(core);
+	core->res_ops = get_res_ops_ext();
 	if (!core->res_ops) {
 		d_vpr_e("%s: invalid resource ext ops\n", __func__);
 		return -EINVAL;

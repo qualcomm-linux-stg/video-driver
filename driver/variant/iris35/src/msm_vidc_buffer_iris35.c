@@ -381,21 +381,20 @@ static u32 msm_vidc_encoder_non_comv_size_iris35(struct msm_vidc_inst *inst)
 {
 	struct msm_vidc_core *core;
 	u32 size = 0;
-	u32 width, height, num_vpp_pipes, profile;
+	u32 width, height, num_vpp_pipes;
 	struct v4l2_format *f;
 
 	core = inst->core;
 
 	num_vpp_pipes = core->capabilities[NUM_VPP_PIPE].value;
-	profile = inst->capabilities[PROFILE].value;
 	f = &inst->fmts[OUTPUT_PORT];
 	width = f->fmt.pix_mp.width;
 	height = f->fmt.pix_mp.height;
 
 	if (inst->codec == MSM_VIDC_H264)
-		HFI_BUFFER_NON_COMV_H264E(size, width, height, num_vpp_pipes, profile);
+		HFI_BUFFER_NON_COMV_H264E(size, width, height, num_vpp_pipes);
 	else if (inst->codec == MSM_VIDC_HEVC || inst->codec == MSM_VIDC_HEIC)
-		HFI_BUFFER_NON_COMV_H265E(size, width, height, num_vpp_pipes, profile);
+		HFI_BUFFER_NON_COMV_H265E(size, width, height, num_vpp_pipes);
 
 	i_vpr_l(inst, "%s: size %d\n", __func__, size);
 	return size;

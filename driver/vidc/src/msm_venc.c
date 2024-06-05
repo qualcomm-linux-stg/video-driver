@@ -830,7 +830,7 @@ static int msm_venc_metadata_subscription(struct msm_vidc_inst *inst,
 			if (is_meta_rx_out_enabled(inst, i)) {
 				if (count + 1 >= sizeof(payload) / sizeof(u32)) {
 					i_vpr_e(inst,
-						"%s: output metadatas (%d) exceeded limit (%lu)\n",
+						"%s: input metadatas (%d) exceeded limit (%lu)\n",
 						__func__, count, sizeof(payload) / sizeof(u32));
 					return -EINVAL;
 				}

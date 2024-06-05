@@ -8,7 +8,6 @@
 #include "msm_vidc_driver.h"
 #include "msm_vidc_inst.h"
 #include "msm_vidc_core.h"
-#include "msm_vidc_platform.h"
 #include "msm_vidc_debug.h"
 #include "perf_static_model.h"
 #include "msm_vidc_power.h"
@@ -51,7 +50,6 @@ static int msm_vidc_init_codec_input_freq(struct msm_vidc_inst *inst, u32 data_s
 {
 	enum msm_vidc_port_type port;
 	u32 color_fmt, tile_rows_columns = 0;
-	struct msm_vidc_core *core;
 
 	if (is_encode_session(inst)) {
 		codec_input->decoder_or_encoder = CODEC_ENCODER;
@@ -102,7 +100,7 @@ static int msm_vidc_init_codec_input_freq(struct msm_vidc_inst *inst, u32 data_s
 	} else if (inst->capabilities[STAGE].value == MSM_VIDC_STAGE_2) {
 		codec_input->vsp_vpp_mode = CODEC_VSPVPP_MODE_2S;
 	} else {
-		d_vpr_e("%s: invalid stage %lld\n", __func__,
+		d_vpr_e("%s: invalid stage %d\n", __func__,
 				inst->capabilities[STAGE].value);
 		return -EINVAL;
 	}
@@ -139,16 +137,16 @@ static int msm_vidc_init_codec_input_freq(struct msm_vidc_inst *inst, u32 data_s
 		/* check resolution and tile info */
 		codec_input->av1d_commer_tile_enable = 1;
 
-		if (res_is_less_than_or_equal_to(codec_input->frame_width,
-				codec_input->frame_height, 1920, 1088)) {
+		if (res_is_less_than_or_equal_to(1920, 1088, codec_input->frame_width,
+				codec_input->frame_height)) {
 			if (tile_rows_columns <= 2)
 				codec_input->av1d_commer_tile_enable = 0;
-		} else if (res_is_less_than_or_equal_to(codec_input->frame_width,
-				codec_input->frame_height, 4096, 2172)) {
+		} else if (res_is_less_than_or_equal_to(4096, 2172, codec_input->frame_width,
+				codec_input->frame_height)) {
 			if (tile_rows_columns <= 4)
 				codec_input->av1d_commer_tile_enable = 0;
-		} else if (res_is_less_than_or_equal_to(codec_input->frame_width,
-				codec_input->frame_height, 8192, 4320)) {
+		} else if (res_is_less_than_or_equal_to(8192, 4320, codec_input->frame_width,
+				codec_input->frame_height)) {
 			if (tile_rows_columns <= 16)
 				codec_input->av1d_commer_tile_enable = 0;
 		}
@@ -159,9 +157,6 @@ static int msm_vidc_init_codec_input_freq(struct msm_vidc_inst *inst, u32 data_s
 	/* set as sanity mode, this regression mode has no effect on power calculations */
 	codec_input->regression_mode = REGRESSION_MODE_SANITY;
 
-	core = inst->core;
-	codec_input->vpu_ver = core->platform->data.vpu_ver;
-
 	return 0;
 }
 
@@ -170,7 +165,6 @@ static int msm_vidc_init_codec_input_bus(struct msm_vidc_inst *inst, struct vidc
 {
 	u32 complexity_factor_int = 0, complexity_factor_frac = 0, tile_rows_columns = 0;
 	bool opb_compression_enabled = false;
-	struct msm_vidc_core *core;
 
 	if (!d)
 		return -EINVAL;
@@ -196,7 +190,7 @@ static int msm_vidc_init_codec_input_bus(struct msm_vidc_inst *inst, struct vidc
 			codec_input->entropy_coding_mode = CODEC_ENTROPY_CODING_CAVLC;
 			codec_input->codec = CODEC_H264_CAVLC;
 		} else {
-			d_vpr_e("%s: invalid entropy %lld\n", __func__,
+			d_vpr_e("%s: invalid entropy %d\n", __func__,
 				inst->capabilities[ENTROPY_MODE].value);
 			return -EINVAL;
 		}
@@ -310,25 +304,22 @@ static int msm_vidc_init_codec_input_bus(struct msm_vidc_inst *inst, struct vidc
 		/* check resolution and tile info */
 		codec_input->av1d_commer_tile_enable = 1;
 
-		if (res_is_less_than_or_equal_to(codec_input->frame_width,
-				codec_input->frame_height, 1920, 1088)) {
+		if (res_is_less_than_or_equal_to(1920, 1088, codec_input->frame_width,
+				codec_input->frame_height)) {
 			if (tile_rows_columns <= 2)
 				codec_input->av1d_commer_tile_enable = 0;
-		} else if (res_is_less_than_or_equal_to(codec_input->frame_width,
-				codec_input->frame_height, 4096, 2172)) {
+		} else if (res_is_less_than_or_equal_to(4096, 2172, codec_input->frame_width,
+				codec_input->frame_height)) {
 			if (tile_rows_columns <= 4)
 				codec_input->av1d_commer_tile_enable = 0;
-		} else if (res_is_less_than_or_equal_to(codec_input->frame_width,
-				codec_input->frame_height, 8192, 4320)) {
+		} else if (res_is_less_than_or_equal_to(8192, 4320, codec_input->frame_width,
+				codec_input->frame_height)) {
 			if (tile_rows_columns <= 16)
 				codec_input->av1d_commer_tile_enable = 0;
 		}
 	} else {
 		codec_input->av1d_commer_tile_enable = 0;
 	}
-
-	core = inst->core;
-	codec_input->vpu_ver = core->platform->data.vpu_ver;
 
 	/* Dump all the variables for easier debugging */
 	if (msm_vidc_debug & VIDC_BUS) {
@@ -363,7 +354,6 @@ static int msm_vidc_init_codec_input_bus(struct msm_vidc_inst *inst, struct vidc
 		{"lumaonly_decode", "%d", codec_input->lumaonly_decode},
 		{"av1d_commer_tile_enable", "%d", codec_input->av1d_commer_tile_enable},
 		{"regression_mode", "%d", codec_input->regression_mode},
-		{"vpu_ver", "%d", codec_input->vpu_ver},
 		};
 		__dump(dump, ARRAY_SIZE(dump));
 	}
@@ -742,8 +732,7 @@ u64 msm_vidc_calc_freq_iris33_legacy(struct msm_vidc_inst *inst, u32 data_size)
 	freq = max(vpp_cycles, vsp_cycles);
 	freq = max(freq, fw_cycles);
 
-	i_vpr_p(inst,
-		"%s: filled len %d, required freq %llu, vpp %llu, vsp %llu, fw_cycles %llu, fps %u, mbpf %u\n",
+	i_vpr_p(inst, "%s: filled len %d, required freq %llu, vpp %llu, vsp %llu, fw_cycles %llu, fps %u, mbpf %u\n",
 		__func__, data_size, freq,
 		vpp_cycles, vsp_cycles, fw_cycles, fps, mbpf);
 
