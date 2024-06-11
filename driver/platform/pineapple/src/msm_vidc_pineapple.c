@@ -17,6 +17,7 @@
 #include "msm_vidc_internal.h"
 #include "msm_vidc_platform_ext.h"
 #include "msm_vidc_memory_ext.h"
+#include "msm_vidc_synx.h"
 #include "resources_ext.h"
 #include "msm_vidc_iris33.h"
 #include "hfi_property.h"
@@ -3076,6 +3077,11 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 	core->res_ops = get_res_ops_ext(core);
 	if (!core->res_ops) {
 		d_vpr_e("%s: invalid resource ext ops\n", __func__);
+		return -EINVAL;
+	}
+	core->fence_ops = get_synx_fence_ops();
+	if (!core->fence_ops) {
+		d_vpr_e("%s: invalid synx fence ops\n", __func__);
 		return -EINVAL;
 	}
 	rc = msm_vidc_pineapple_check_ddr_type();

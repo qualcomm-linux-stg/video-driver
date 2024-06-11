@@ -25,6 +25,7 @@ module_entry(
         "driver/vidc/src/msm_vidc_memory.c",
         "driver/vidc/src/msm_vidc_memory_ext.c",
         "driver/vidc/src/msm_vidc_fence.c",
+        "driver/vidc/src/msm_vidc_synx.c",
         "driver/vidc/src/venus_hfi.c",
         "driver/vidc/src/venus_hfi_queue.c",
         "driver/vidc/src/hfi_packet.c",
@@ -53,6 +54,9 @@ module_entry(
     },
     deps = [
             "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
+            "//vendor/qcom/opensource/synx-kernel:synx_headers",
+            "//vendor/qcom/opensource/synx-kernel:%b_modules",
+            "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
             "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",
         ],
 )
