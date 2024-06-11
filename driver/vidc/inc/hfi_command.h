@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __H_HFI_COMMAND_H__
@@ -75,6 +75,8 @@ enum hfi_packet_payload_info {
 	HFI_PAYLOAD_U32_ARRAY = 0x0000000b,
 	HFI_PAYLOAD_S32_ARRAY = 0x0000000c,
 	HFI_PAYLOAD_64_PACKED = 0x0000000d,
+	HFI_PAYLOAD_U64_ARRAY = 0x0000000e,
+	HFI_PAYLOAD_S64_ARRAY = 0x0000000f,
 };
 
 enum hfi_packet_port_type {
@@ -97,6 +99,7 @@ enum hfi_buffer_type {
 	HFI_BUFFER_NON_COMV       = 0x0000000B,
 	HFI_BUFFER_PERSIST        = 0x0000000C,
 	HFI_BUFFER_VPSS           = 0x0000000D,
+	HFI_BUFFER_EXTERNAL_METADATA  = 0x00000011,
 };
 
 enum hfi_buffer_host_flags {
@@ -185,6 +188,7 @@ enum hfi_reserve_type {
 #define HFI_CMD_RESERVE                                         0x0100000F
 #define HFI_CMD_FLUSH                                           0x01000010
 #define HFI_CMD_PAUSE                                           0x01000011
+#define HFI_CMD_EARLY_NOTIFY_PARTIAL_FRAME                      0x01000012
 #define HFI_CMD_END                                             0x01FFFFFF
 
 #endif //__H_HFI_COMMAND_H__

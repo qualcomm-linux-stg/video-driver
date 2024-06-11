@@ -346,9 +346,14 @@ int msm_vidc_adjust_enc_lowlatency_mode(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_session_priority(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_roi_info(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_all_intra(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_dec_inbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_outbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_dec_inbuf_fence_direction(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_outbuf_fence_direction(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_slice_mode(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_early_notify_enable(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_early_notify_line_count(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_early_notify_fence_count(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_preprocess(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_eva_stats(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_sei_mastering_disp(void *instance, struct v4l2_ctrl *ctrl);
@@ -393,5 +398,7 @@ int msm_vidc_set_outbuf_fence_direction(void *instance, enum msm_vidc_inst_capab
 int msm_vidc_adjust_histogram_info(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_hdr10_max_rgb_info(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_set_conceal_color(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_inbuf_fence_type(void *instance, enum msm_vidc_inst_capability_type cap_id);
+int msm_vidc_set_inbuf_fence_direction(void *instance, enum msm_vidc_inst_capability_type cap_id);
 
 #endif // _MSM_VIDC_PLATFORM_H_

@@ -83,6 +83,7 @@ enum msm_vidc_metadata_bits {
 #define ENCODE_INPUT_METADATA_SIZE         (512 * 4096) /* 2 MB */
 #define DECODE_INPUT_METADATA_SIZE         MSM_VIDC_METADATA_SIZE
 #define MSM_VIDC_METADATA_DOLBY_RPU_SIZE   (41 * 1024) /* 41 KB */
+#define MSM_VIDC_INPUT_FENCE_METADATA_OFFSET  (4096) /* 4 KB */
 
 #define MAX_NAME_LENGTH   128
 #define VENUS_VERSION_LENGTH 128
@@ -204,6 +205,7 @@ enum msm_vidc_metadata_bits {
 #define SW_PC_DELAY_VALUE             (HW_RESPONSE_TIMEOUT_VALUE + 500)
 #define FW_UNLOAD_DELAY_VALUE         (SW_PC_DELAY_VALUE + 1500)
 
+#define MAX_FENCE_COUNT 10
 #define MAX_DPB_COUNT 32
  /*
   * max dpb count in firmware = 16
@@ -248,6 +250,7 @@ enum msm_vidc_metadata_bits {
 	CAP(META_DPB_MISR)                        \
 	CAP(META_OPB_MISR)                        \
 	CAP(META_INTERLACE)                       \
+	CAP(META_INBUF_FENCE)                     \
 	CAP(META_OUTBUF_FENCE)                    \
 	CAP(META_LTR_MARK_USE)                    \
 	CAP(META_TIMESTAMP)                       \
@@ -292,6 +295,9 @@ enum msm_vidc_metadata_bits {
 	CAP(DELIVERY_MODE)                        \
 	CAP(VUI_TIMING_INFO)                      \
 	CAP(SLICE_DECODE)                         \
+	CAP(EARLY_NOTIFY_ENABLE)                  \
+	CAP(EARLY_NOTIFY_LINE_COUNT)              \
+	CAP(EARLY_NOTIFY_FENCE_COUNT)             \
 	CAP(INBUF_FENCE_TYPE)                     \
 	CAP(OUTBUF_FENCE_TYPE)                    \
 	CAP(INBUF_FENCE_DIRECTION)                \
@@ -335,9 +341,9 @@ enum msm_vidc_metadata_bits {
 	CAP(ENC_RING_BUFFER_COUNT)                \
 	CAP(CLIENT_ID)                            \
 	CAP(SECURE_MODE)                          \
-	CAP(FENCE_ID)                             \
-	CAP(FENCE_FD)                             \
-	CAP(FENCE_ERROR_DATA_CORRUPT)             \
+	CAP(OUTBUF_FENCE_ID)                      \
+	CAP(INBUF_FENCE_FD)                       \
+	CAP(OUTBUF_FENCE_FD)                      \
 	CAP(TS_REORDER)                           \
 	CAP(HFLIP)                                \
 	CAP(VFLIP)                                \
@@ -843,10 +849,11 @@ struct msm_vidc_hfi_frame_info {
 	u32                    cf;
 	u32                    data_corrupt;
 	u32                    overflow;
-	u32                    fence_id;
 	u32                    fence_error;
 	u32                    av1_tile_rows_columns;
 	bool                   av1_non_uniform_tile_spacing;
+	u32                    fence_id[MAX_FENCE_COUNT];
+	u32                    fence_count;
 };
 
 struct msm_vidc_decode_vpp_delay {
@@ -923,18 +930,23 @@ enum msm_vidc_fence_direction {
 struct msm_vidc_fence_context {
 	char                      name[MAX_NAME_LENGTH];
 	u64                       ctx_num;
-	u64                       seq_num;
+	u64                       input_seq_num;
+	u64                       output_seq_num;
 };
 
 struct msm_vidc_fence {
-	struct list_head            list;
-	struct dma_fence            dma_fence;
-	char                        name[MAX_NAME_LENGTH];
-	spinlock_t                  lock;
-	struct sync_file            *sync_file;
-	int                         fd;
-	u64                         fence_id;
-	void                        *session;
+	struct list_head                list;
+	char                            name[MAX_NAME_LENGTH];
+	enum msm_vidc_fence_type        type;
+	enum msm_vidc_fence_direction   direction;
+	int                             fd;
+	u64                             fence_id;
+	u64                             seqno;
+	void                           *session;
+	struct dma_fence                dma_fence;
+	spinlock_t                      lock;
+	struct sync_file               *sync_file;
+	struct dma_fence               *imp_fence;
 };
 
 struct msm_vidc_mem {
@@ -986,9 +998,10 @@ struct msm_vidc_buffer {
 	struct sg_table                   *sg_table;
 	struct dma_buf_attachment         *attach;
 	u32                                dbuf_get:1;
-	u64                                fence_id;
 	u32                                start_time_ms;
 	u32                                end_time_ms;
+	u64                                fence_id[MAX_FENCE_COUNT];
+	u32                                fence_count;
 };
 
 struct msm_vidc_buffers {

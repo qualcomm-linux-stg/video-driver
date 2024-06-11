@@ -221,8 +221,7 @@ static const struct msm_platform_core_capability core_data_sun[] = {
 	{NON_FATAL_FAULTS, 1},
 	{ENC_AUTO_FRAMERATE, 1},
 	{DEVICE_CAPS, V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING},
-	// TODO gdoddabe Enable when Synx changes are available
-	// {SUPPORTS_SYNX_FENCE, 0},
+	{SUPPORTS_SYNX_FENCE, 0},
 	{SUPPORTS_REQUESTS, 0},
 };
 

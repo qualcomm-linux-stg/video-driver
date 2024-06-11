@@ -554,7 +554,8 @@ static int msm_vidc_iommu_map(struct msm_vidc_core *core, struct msm_vidc_mem *m
 
 	cb = msm_vidc_get_context_bank_for_region(core, mem->region);
 	if (!cb) {
-		d_vpr_e("%s: Failed to get context bank device\n", __func__);
+		d_vpr_e("%s: failed to get context bank device for region: %d\n",
+			__func__, mem->region);
 		return -EIO;
 	}
 
@@ -584,8 +585,8 @@ static int msm_vidc_iommu_unmap(struct msm_vidc_core *core, struct msm_vidc_mem 
 
 	cb = msm_vidc_get_context_bank_for_region(core, mem->region);
 	if (!cb) {
-		d_vpr_e("%s: Failed to get context bank device\n",
-			__func__);
+		d_vpr_e("%s: failed to get context bank device for region: %d\n",
+			__func__, mem->region);
 		return -EIO;
 	}
 

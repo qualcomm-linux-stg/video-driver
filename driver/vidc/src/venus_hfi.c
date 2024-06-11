@@ -1629,8 +1629,15 @@ static int venus_hfi_add_pending_packets(struct msm_vidc_inst *inst)
 int venus_hfi_queue_buffer(struct msm_vidc_inst *inst,
 	struct msm_vidc_buffer *buffer, struct msm_vidc_buffer *metabuf)
 {
-	struct msm_vidc_core *core = inst->core;
+	enum msm_vidc_inst_capability_type cap_fence_type;
+	enum msm_vidc_inst_capability_type cap_fence_dir;
 	struct hfi_buffer hfi_buffer, hfi_meta_buffer;
+	struct msm_vidc_core *core = inst->core;
+	enum hfi_packet_payload_info payload_type;
+	bool is_input_fence_metadata_enabled = false;
+	bool is_fence_enabled = false;
+	s32 fence_direction, fence_type;
+	u32 pkt_type, hfi_port;
 	int rc = 0;
 
 	core_lock(core, __func__);
@@ -1683,22 +1690,86 @@ int venus_hfi_queue_buffer(struct msm_vidc_inst *inst,
 			goto unlock;
 	}
 
-	if (is_meta_rx_inp_enabled(inst, META_OUTBUF_FENCE) &&
-		is_output_buffer(buffer->type)) {
-		if (!buffer->fence_id) {
-			i_vpr_e(inst, "%s: fence id cannot be 0\n", __func__);
-			rc = -EINVAL;
-			goto unlock;
-		}
+	if (is_input_buffer(buffer->type) && is_inbuf_fence_enabled(inst)) {
+		pkt_type = HFI_PROP_FENCE_INPUT;
+		cap_fence_type = INBUF_FENCE_TYPE;
+		cap_fence_dir = INBUF_FENCE_DIRECTION;
+		is_fence_enabled = true;
+		if (metabuf && is_input_meta_buffer(metabuf->type))
+			is_input_fence_metadata_enabled = true;
+	} else if (is_output_buffer(buffer->type) && is_outbuf_fence_enabled(inst)) {
+		pkt_type = HFI_PROP_FENCE_OUTPUT;
+		cap_fence_type = OUTBUF_FENCE_TYPE;
+		cap_fence_dir = OUTBUF_FENCE_DIRECTION;
+		is_fence_enabled = true;
+	}
+
+	if (is_fence_enabled) {
+		/* get hfi port */
+		hfi_port = get_hfi_port_from_buffer_type(inst, buffer->type);
+
+		payload_type = buffer->fence_count == 1 ? HFI_PAYLOAD_U64 : HFI_PAYLOAD_U64_ARRAY;
 		rc = hfi_create_packet(inst->packet,
-			inst->packet_size,
-			HFI_PROP_FENCE,
-			0,
-			HFI_PAYLOAD_U64,
-			HFI_PORT_RAW,
-			core->packet_id++,
-			&buffer->fence_id,
-			sizeof(u64));
+				inst->packet_size,
+				pkt_type,
+				0,
+				payload_type,
+				hfi_port,
+				core->packet_id++,
+				&buffer->fence_id[0],
+				buffer->fence_count * sizeof(u64));
+		if (rc)
+			goto unlock;
+
+		fence_type = inst->capabilities[cap_fence_type].value;
+		rc = hfi_create_packet(inst->packet,
+				inst->packet_size,
+				HFI_PROP_FENCE_TYPE,
+				0,
+				HFI_PAYLOAD_U32_ENUM,
+				hfi_port,
+				core->packet_id++,
+				&fence_type,
+				sizeof(u32));
+		if (rc)
+			goto unlock;
+
+		fence_direction = inst->capabilities[cap_fence_dir].value;
+		rc = hfi_create_packet(inst->packet,
+				inst->packet_size,
+				HFI_PROP_FENCE_DIRECTION,
+				0,
+				HFI_PAYLOAD_U32_ENUM,
+				hfi_port,
+				core->packet_id++,
+				&fence_direction,
+				sizeof(u32));
+		if (rc)
+			goto unlock;
+	}
+
+	if (is_input_fence_metadata_enabled) {
+		rc = get_hfi_buffer(inst, metabuf, &hfi_meta_buffer);
+		if (rc)
+			goto unlock;
+
+		hfi_meta_buffer.data_offset = MSM_VIDC_INPUT_FENCE_METADATA_OFFSET;
+		/*
+		 * When I/P fence is enabled then client meta-data size
+		 * is unknown so updating below filed as 0
+		 */
+		hfi_meta_buffer.data_size = 0;
+		hfi_meta_buffer.type = HFI_BUFFER_EXTERNAL_METADATA;
+
+		rc = hfi_create_packet(inst->packet,
+				inst->packet_size,
+				HFI_CMD_BUFFER,
+				HFI_HOST_FLAGS_INTR_REQUIRED,
+				HFI_PAYLOAD_STRUCTURE,
+				get_hfi_port_from_buffer_type(inst, metabuf->type),
+				core->packet_id++,
+				&hfi_meta_buffer,
+				sizeof(hfi_meta_buffer));
 		if (rc)
 			goto unlock;
 	}
@@ -1707,7 +1778,7 @@ int venus_hfi_queue_buffer(struct msm_vidc_inst *inst,
 	if (rc)
 		goto unlock;
 
-	rc = __cmdq_write(inst->core, inst->packet);
+	rc = __cmdq_write(core, inst->packet);
 	if (rc)
 		goto unlock;
 

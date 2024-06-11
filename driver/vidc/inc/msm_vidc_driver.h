@@ -67,6 +67,11 @@ static inline bool is_output_meta_buffer(enum msm_vidc_buffer_type buffer_type)
 	return buffer_type == MSM_VIDC_BUF_OUTPUT_META;
 }
 
+static inline bool is_early_notify_enabled(struct msm_vidc_inst *inst)
+{
+	return !!(inst->capabilities[EARLY_NOTIFY_ENABLE].value);
+}
+
 static inline bool is_ts_reorder_allowed(struct msm_vidc_inst *inst)
 {
 	return !!(inst->capabilities[TS_REORDER].value &&
@@ -270,9 +275,52 @@ static inline bool is_meta_enabled(struct msm_vidc_inst *inst, unsigned int type
 	return enabled;
 }
 
+static inline enum msm_vidc_fence_type fence_type(struct msm_vidc_inst *inst,
+	enum msm_vidc_buffer_type buf_type)
+{
+	enum msm_vidc_fence_type type = MSM_VIDC_FENCE_NONE;
+
+	if (is_input_buffer(buf_type))
+		type = inst->capabilities[INBUF_FENCE_TYPE].value;
+	else if (is_output_buffer(buf_type))
+		type = inst->capabilities[OUTBUF_FENCE_TYPE].value;
+
+	return type;
+}
+
+static inline enum msm_vidc_fence_direction fence_direction(struct msm_vidc_inst *inst,
+	enum msm_vidc_buffer_type buf_type)
+{
+	enum msm_vidc_fence_direction dir = MSM_VIDC_FENCE_DIR_NONE;
+
+	if (is_input_buffer(buf_type))
+		dir = inst->capabilities[INBUF_FENCE_DIRECTION].value;
+	else if (is_output_buffer(buf_type))
+		dir = inst->capabilities[OUTBUF_FENCE_DIRECTION].value;
+
+	return dir;
+}
+
+static inline bool is_sw_fence(struct msm_vidc_inst *inst,
+	enum msm_vidc_fence_type fence_type)
+{
+	return !!(fence_type == MSM_VIDC_SW_FENCE);
+}
+
+static inline bool is_hw_fence(struct msm_vidc_inst *inst,
+	enum msm_vidc_fence_type fence_type)
+{
+	return !!(fence_type == MSM_VIDC_SYNX_V2_FENCE);
+}
+
 static inline bool is_outbuf_fence_enabled(struct msm_vidc_inst *inst)
 {
 	return is_meta_rx_inp_enabled(inst, META_OUTBUF_FENCE);
+}
+
+static inline bool is_inbuf_fence_enabled(struct msm_vidc_inst *inst)
+{
+	return is_meta_tx_inp_enabled(inst, META_INBUF_FENCE);
 }
 
 static inline bool is_linear_yuv_colorformat(enum msm_vidc_colorformat_type colorformat)
@@ -406,6 +454,9 @@ static inline bool is_enc_slice_delivery_mode(struct msm_vidc_inst *inst)
 const char *cap_name(enum msm_vidc_inst_capability_type cap_id);
 const char *v4l2_pixelfmt_name(struct msm_vidc_inst *inst, u32 pixelfmt);
 const char *v4l2_type_name(u32 port);
+void print_fence_buffer(u32 tag, const char *tag_str, const char *str,
+		struct msm_vidc_inst *inst, struct msm_vidc_buffer *buf,
+		struct msm_vidc_fence *fence, int count);
 void print_vidc_buffer(u32 tag, const char *tag_str, const char *str,
 		       struct msm_vidc_inst *inst, struct msm_vidc_buffer *vbuf);
 void print_vb2_buffer(const char *str, struct msm_vidc_inst *inst,
@@ -563,6 +614,8 @@ int msm_vidc_get_fps(struct msm_vidc_inst *inst);
 int msm_vidc_num_buffers(struct msm_vidc_inst *inst,
 			 enum msm_vidc_buffer_type type,
 			 enum msm_vidc_buffer_attributes attr);
+struct msm_vidc_fence *msm_vidc_get_fence_from_id(
+	struct msm_vidc_inst *inst, struct list_head *fence_list, u64 fence_id);
 void core_lock(struct msm_vidc_core *core, const char *function);
 void core_unlock(struct msm_vidc_core *core, const char *function);
 void inst_lock(struct msm_vidc_inst *inst, const char *function);

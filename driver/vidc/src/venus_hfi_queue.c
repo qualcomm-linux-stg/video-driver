@@ -420,9 +420,8 @@ void venus_hfi_queue_deinit(struct msm_vidc_core *core)
 	call_mem_op(core, memory_unmap_free, core, &core->mmap_buf.mem);
 	if (core->capabilities[SUPPORTS_SYNX_FENCE].value) {
 		call_mem_op(core, mem_dma_unmap_page, core,
-			    &core->synx_fence_data.queue);
+			&core->synx_fence_data.queue);
 	}
-
 	for (i = 0; i < VIDC_IFACEQ_NUMQ; i++) {
 		core->iface_queues[i].q_hdr = NULL;
 		core->iface_queues[i].q_array.align_virtual_addr = NULL;
@@ -628,7 +627,7 @@ int venus_hfi_queue_init(struct msm_vidc_core *core)
 		 * driver during msm_vidc_synx_fence_register(..) call
 		 */
 		rc = call_mem_op(core, mem_dma_map_page, core,
-				 &core->synx_fence_data.queue);
+			&core->synx_fence_data.queue);
 		if (rc) {
 			d_vpr_e("%s: synx fence queue buffer map failed\n", __func__);
 			goto fail_alloc_queue;
@@ -691,6 +690,10 @@ int venus_hfi_queue_init(struct msm_vidc_core *core)
 	if (core->aon_reg.mem.device_addr) {
 		payload[11] = core->aon_reg.mem.device_addr;
 		payload[12] = core->aon_reg.mem.size;
+	}
+	if (core->synx_fence_data.queue.device_addr) {
+		payload[13] = core->synx_fence_data.queue.device_addr;
+		payload[14] = core->synx_fence_data.queue.size;
 	}
 	if (core->fence_reg.mem.device_addr) {
 		payload[19] = core->fence_reg.mem.device_addr;

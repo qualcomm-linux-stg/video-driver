@@ -665,9 +665,7 @@ static void msm_vidc_component_master_unbind(struct device *dev)
 	msm_vidc_core_deinit(core, true);
 	venus_hfi_queue_deinit(core);
 	msm_vidc_deinitialize_media(core);
-	if (core->capabilities[SUPPORTS_SYNX_FENCE].value &&
-	    msm_vidc_synx_fence_enable)
-		call_fence_op(core, fence_deregister, core);
+	call_fence_op(core, fence_deregister, core);
 	component_unbind_all(dev, core);
 
 	d_vpr_h("%s(): succssful\n", __func__);

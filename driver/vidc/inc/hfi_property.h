@@ -576,7 +576,7 @@ enum hfi_saliency_type {
 
 #define HFI_PROP_ROI_AS_SALIENCY_INFO                           0x0300018A
 
-#define HFI_PROP_FENCE                                          0x0300018B
+#define HFI_PROP_FENCE_OUTPUT                                   0x0300018B
 
 #define HFI_PROP_REQUEST_PREPROCESS                             0x0300018E
 
@@ -593,6 +593,13 @@ enum hfi_saliency_type {
 #define HFI_PROP_SLICE_DECODE                                   0x03000196
 
 #define HFI_PROP_AV1_UNIFORM_TILE_SPACING                       0x03000197
+
+#define HFI_PROP_EARLY_NOTIFY_ENABLE                            0x03000198
+
+#define HFI_PROP_EARLY_NOTIFY_LINE_COUNT                        0x03000199
+
+#define HFI_PROP_EARLY_NOTIFY_FENCE_COUNT                       0x0300019A
+
 
 #define HFI_PROP_ENC_RING_BIN_BUF                               0x0300019C
 
@@ -614,6 +621,8 @@ enum hfi_fence_direction_type {
 #define HFI_PROP_FENCE_ERROR_DATA_CORRUPT                       0x0300019F
 
 #define HFI_PROP_HDR10_MAX_RGB_INFO                             0x030001A2
+
+#define HFI_PROP_FENCE_INPUT                                    0x030001A4
 
 #define HFI_PROP_OPEN_GOP                                       0x030001A6
 

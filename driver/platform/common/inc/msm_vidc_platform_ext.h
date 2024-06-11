@@ -174,13 +174,13 @@ enum v4l2_mpeg_vidc_av1_tier {
 #define V4L2_CID_MPEG_VIDC_METADATA_OUTBUF_FENCE                             \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x38)
 /* Control to set fence id to driver in order get corresponding fence fd */
-#define V4L2_CID_MPEG_VIDC_SW_FENCE_ID                                       \
+#define V4L2_CID_MPEG_VIDC_OUTBUF_FENCE_ID                                   \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x39)
 /*
  * Control to get fence fd from driver for the fence id
- * set via V4L2_CID_MPEG_VIDC_SW_FENCE_ID
+ * set via V4L2_CID_MPEG_VIDC_OUTBUF_FENCE_ID
  */
-#define V4L2_CID_MPEG_VIDC_SW_FENCE_FD                                       \
+#define V4L2_CID_MPEG_VIDC_OUBUF_FENCE_FD                                    \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x3A)
 #define V4L2_CID_MPEG_VIDC_METADATA_PICTURE_TYPE                             \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x3B)
@@ -189,10 +189,10 @@ enum v4l2_mpeg_vidc_av1_tier {
  * set format has a dependency on this control
  * and gets invoked when this control is updated.
  */
-#define V4L2_CID_MPEG_VIDC_HEVC_ENCODE_DELIVERY_MODE                          \
+#define V4L2_CID_MPEG_VIDC_HEVC_ENCODE_DELIVERY_MODE                         \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x3C)
 
-#define V4L2_CID_MPEG_VIDC_H264_ENCODE_DELIVERY_MODE                          \
+#define V4L2_CID_MPEG_VIDC_H264_ENCODE_DELIVERY_MODE                         \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x3D)
 
 #define V4L2_CID_MPEG_VIDC_CRITICAL_PRIORITY                                 \
@@ -263,6 +263,21 @@ enum v4l2_mpeg_vidc_av1_tier {
 
 #define V4L2_CID_MPEG_VIDC_CAPTURE_DATA_OFFSET                                \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x4E)
+
+/* Enables Input buffer fence id via input metadata */
+#define V4L2_CID_MPEG_VIDC_METADATA_INBUF_FENCE                               \
+	(V4L2_CID_MPEG_VIDC_BASE + 0x4F)
+
+/*
+ * Control to set fence fd to the driver for each I/P buf
+ * set via V4L2_CID_MPEG_VIDC_INBUF_FENCE_FD
+ */
+#define V4L2_CID_MPEG_VIDC_INBUF_FENCE_FD                                     \
+	(V4L2_CID_MPEG_VIDC_BASE + 0x50)
+
+/* set output fence type */
+#define V4L2_CID_MPEG_VIDC_OUTBUF_FENCE_TYPE                                  \
+	(V4L2_CID_MPEG_VIDC_BASE + 0x51)
 
 int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_frame_rate(void *instance, struct v4l2_ctrl *ctrl);

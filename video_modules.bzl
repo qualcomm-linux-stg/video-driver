@@ -32,7 +32,6 @@ module_entry(
         "driver/platform/common/src/msm_vidc_platform.c",
         "driver/platform/common/src/msm_vidc_platform_ext.c",
         "driver/variant/common/src/msm_vidc_variant.c",
-        "driver/vidc/src/msm_vidc_synx.c",
         ],
     config_srcs = {
         "CONFIG_MSM_VIDC_PINEAPPLE" : [
@@ -54,7 +53,6 @@ module_entry(
     },
     deps = [
             "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
-            "//vendor/qcom/opensource/synx-kernel:synx_headers",
             "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",
         ],
 )
