@@ -3,10 +3,90 @@
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#include "kalama_technology.h"
+#include "perf_static_model.h"
 #include "msm_vidc_debug.h"
 
-u32 calculate_number_lcus_kalama(u32 width, u32 height, u32 lcu_size)
+/* 100x */
+static u32 dpbopb_ubwc30_cr_table_cratio_iris3[7][12] = {
+	{237, 399, 272, 137, 225, 158, 185, 259, 203, 138, 167, 152},
+	{269, 404, 302, 202, 367, 238, 210, 299, 232, 134, 181, 149},
+	{269, 404, 302, 202, 367, 238, 210, 299, 232, 134, 181, 149},
+	{269, 404, 302, 202, 367, 238, 210, 299, 232, 134, 181, 149},
+	{237, 399, 272, 137, 225, 158, 185, 259, 203, 138, 167, 152},
+	{269, 404, 302, 202, 367, 238, 210, 299, 232, 134, 181, 149},
+	{269, 404, 302, 202, 367, 238, 210, 299, 232, 134, 181, 149},
+};
+
+/* 100x */
+static u32 rpb_ubwc30_cr_table_cratio_iris3[7][12] = {
+	{193, 294, 218, 135, 214, 155, 175, 241, 191, 139, 162, 149},
+	{285, 406, 316, 207, 373, 243, 201, 280, 221, 139, 177, 152},
+	{285, 406, 316, 207, 373, 243, 201, 280, 221, 139, 177, 152},
+	{285, 406, 316, 207, 373, 243, 201, 280, 221, 139, 177, 152},
+	{193, 294, 218, 135, 214, 155, 175, 241, 191, 139, 162, 149},
+	{285, 406, 316, 207, 373, 243, 201, 280, 221, 139, 177, 152},
+	{285, 406, 316, 207, 373, 243, 201, 280, 221, 139, 177, 152},
+};
+
+/* 100x */
+static u32 ipblossy_ubwc30_cr_table_cratio_iris3[7][12] = {
+	{215, 215, 215, 174, 174, 174, 266, 266, 266, 231, 231, 231},
+	{254, 254, 254, 219, 219, 219, 292, 292, 292, 249, 249, 249},
+	{254, 254, 254, 219, 219, 219, 292, 292, 292, 249, 249, 249},
+	{254, 254, 254, 219, 219, 219, 292, 292, 292, 249, 249, 249},
+	{215, 215, 215, 174, 174, 174, 266, 266, 266, 231, 231, 231},
+	{254, 254, 254, 219, 219, 219, 292, 292, 292, 249, 249, 249},
+	{254, 254, 254, 219, 219, 219, 292, 292, 292, 249, 249, 249},
+};
+
+/* 100x */
+static u32 ipblossless_ubwc30_cr_table_cratio_iris3[7][12] = {
+	{185, 215, 194, 147, 178, 159, 162, 181, 169, 138, 161, 146},
+	{186, 217, 195, 151, 183, 161, 164, 182, 170, 140, 168, 148},
+	{186, 217, 195, 151, 183, 161, 164, 182, 170, 140, 168, 148},
+	{186, 217, 195, 151, 183, 161, 164, 182, 170, 140, 168, 148},
+	{185, 215, 194, 147, 178, 159, 162, 181, 169, 138, 161, 146},
+	{186, 217, 195, 151, 183, 161, 164, 182, 170, 140, 168, 148},
+	{186, 217, 195, 151, 183, 161, 164, 182, 170, 140, 168, 148},
+};
+
+/* 100x */
+static u32 en_original_compression_factor_rgba_pwd_iris3 = 120;
+/* 100x */
+static u32 en_original_compression_factor_rgba_avg_iris3 = 257;
+
+static u32 av1_num_tiles_iris3[7][3] = {
+	{2, 1, 1},
+	{4, 2, 2},
+	{4, 2, 2},
+	{4, 2, 2},
+	{1, 1, 1},
+	{2, 1, 1},
+	{16, 4, 4},
+};
+
+/*                                H   I   J         K   L   M      N   O   P
+ *         TotalW   Total R       Frequency         Write         Read
+ * Name                           B   b   P         B   b   P      B   b   P
+ * I3B4b1P    0.5    1.875        3   4   1         1   0   1      2   2   1
+ * I1B2b1P    0.5    1.75         1   2   1         1   0   1      2   2   1
+ * IbP        0.5    1.5          0   1   1         1   0   1      2   2   1
+ * IPP        1      1            0   0   1         1   0   1      2   2   1
+ * P          1      1            0   0   1         1   0   1      2   2   1
+ * smallB     0      2            0   1   0         1   0   1      2   2   1
+ * bigB       1      2            1   0   0         1   0   1      2   2   1
+ *
+ * Total W = SUMPRODUCT(H16:J16, K16 : M16) / SUM(H16:J16)
+ * Total R = SUMPRODUCT(H16:J16, N16 : P16) / SUM(H16:J16)
+ */
+
+/* 1000x */
+static u32 iris3_en_readfactor[7] = {1000, 1500, 1750, 1875, 1000, 2000, 2000};
+/* 1000x */
+static u32 iris3_en_writefactor[7] = {1000, 500, 500, 500, 1000, 0, 1000};
+static u32 iris3_en_frame_num_parallel = 1;
+
+u32 calculate_number_lcus_iris3(u32 width, u32 height, u32 lcu_size)
 {
 	u32 mbs_width = (width % lcu_size) ?
 		(width / lcu_size + 1) : (width / lcu_size);
@@ -16,7 +96,7 @@ u32 calculate_number_lcus_kalama(u32 width, u32 height, u32 lcu_size)
 	return mbs_width * mbs_height;
 }
 
-u32 calculate_number_ubwctiles_kalama(
+u32 calculate_number_ubwctiles_iris3(
 		u32 width, u32 height, u32 tile_w, u32 tile_h)
 {
 	u32 tiles_width = (width % tile_w) ?
@@ -76,11 +156,11 @@ u32 get_compression_factors(struct compression_factors *compression_factor,
 
 	if (codec_input.decoder_or_encoder == CODEC_DECODER) {
 		compression_factor->dpb_cf_y =
-			dpbopb_ubwc30_cr_table_cratio_kalama[cr_index_entry][cr_index_y];
+			dpbopb_ubwc30_cr_table_cratio_iris3[cr_index_entry][cr_index_y];
 		compression_factor->dpb_cf_cbcr =
-			dpbopb_ubwc30_cr_table_cratio_kalama[cr_index_entry][cr_index_c];
+			dpbopb_ubwc30_cr_table_cratio_iris3[cr_index_entry][cr_index_c];
 		compression_factor->opb_cf_ycbcr =
-			dpbopb_ubwc30_cr_table_cratio_kalama[cr_index_entry][cr_index_uni];
+			dpbopb_ubwc30_cr_table_cratio_iris3[cr_index_entry][cr_index_uni];
 
 		if ((codec_input.regression_mode == 3) &&
 			/* input cr numbers from interface */
@@ -97,25 +177,25 @@ u32 get_compression_factors(struct compression_factors *compression_factor,
 		 */
 		if (frame_width < 3840) {
 			compression_factor->ipb_cr =
-				ipblossless_ubwc30_cr_table_cratio_kalama[cr_index_entry]
+				ipblossless_ubwc30_cr_table_cratio_iris3[cr_index_entry]
 					[cr_index_uni];
 			compression_factor->ipb_cr_y =
-				ipblossless_ubwc30_cr_table_cratio_kalama[cr_index_entry]
+				ipblossless_ubwc30_cr_table_cratio_iris3[cr_index_entry]
 					[cr_index_y];
 		} else {
 			compression_factor->ipb_cr =
-				ipblossy_ubwc30_cr_table_cratio_kalama[cr_index_entry]
+				ipblossy_ubwc30_cr_table_cratio_iris3[cr_index_entry]
 					[cr_index_uni];
 			compression_factor->ipb_cr_y =
-				ipblossy_ubwc30_cr_table_cratio_kalama[cr_index_entry]
+				ipblossy_ubwc30_cr_table_cratio_iris3[cr_index_entry]
 					[cr_index_y];
 		}
 
 		compression_factor->dpb_cf_y =
-			rpb_ubwc30_cr_table_cratio_kalama[cr_index_entry][cr_index_y];
+			rpb_ubwc30_cr_table_cratio_iris3[cr_index_entry][cr_index_y];
 
 		compression_factor->dpb_cf_cbcr =
-			rpb_ubwc30_cr_table_cratio_kalama[cr_index_entry][cr_index_c];
+			rpb_ubwc30_cr_table_cratio_iris3[cr_index_entry][cr_index_c];
 
 		if ((codec_input.regression_mode == 3) &&
 			/* input cr from interface */
@@ -250,7 +330,7 @@ static int calculate_bandwidth_decoder_iris3(
 	}
 
 	lcu_per_frame =
-		calculate_number_lcus_kalama(frame_width, frame_height, frame_lcu_size);
+		calculate_number_lcus_iris3(frame_width, frame_height, frame_lcu_size);
 
 	target_bitrate = (u32)(codec_input.bitrate_mbps); /* Mbps */
 
@@ -258,11 +338,11 @@ static int calculate_bandwidth_decoder_iris3(
 	ubwc_tile_h = (codec_input.bitdepth == CODEC_BITDEPTH_8) ? 8 : 4;
 
 	frame420_y_bw_linear_8bpp =
-		((calculate_number_ubwctiles_kalama(frame_width, frame_height, 32, 8) *
+		((calculate_number_ubwctiles_iris3(frame_width, frame_height, 32, 8) *
 		256 * codec_input.frame_rate + 999) / 1000 + 999) / 1000;
 
 	frame420_y_bw_no_ubwc_tile_10bpp =
-		((calculate_number_ubwctiles_kalama(frame_width, frame_height, 48, 4) *
+		((calculate_number_ubwctiles_iris3(frame_width, frame_height, 48, 4) *
 		256 * codec_input.frame_rate + 999) / 1000 + 999) / 1000;
 	frame420_y_bw_linear_10bpp = ((frame_width * frame_height *
 		codec_input.frame_rate * 2 + 999) / 1000 + 999) / 1000;
@@ -308,7 +388,7 @@ static int calculate_bandwidth_decoder_iris3(
 		else
 			av1tile_complexity = 0;
 
-		av1_tile_numbers = av1_num_tiles_kalama[av1tile_index_entry][av1tile_complexity];
+		av1_tile_numbers = av1_num_tiles_iris3[av1tile_index_entry][av1tile_complexity];
 
 		/* these bw can be ignored */
 		av1_collated_seg_buffer_rd_wr =
@@ -622,7 +702,7 @@ static int calculate_bandwidth_encoder_iris3(
 	}
 
 	lcu_per_frame =
-		calculate_number_lcus_kalama(frame_width, frame_height, frame_lcu_size);
+		calculate_number_lcus_iris3(frame_width, frame_height, frame_lcu_size);
 
 	bse_tlb_byte_per_lcu = 16; /* TODO Should be in common declaration */
 
@@ -634,16 +714,16 @@ static int calculate_bandwidth_encoder_iris3(
 	/* yuv */
 	if (codec_input.ipb_yuvrgb == 0) {
 		frame420_y_bw_linear_8bpp =
-			((calculate_number_ubwctiles_kalama(frame_width, frame_height,
+			((calculate_number_ubwctiles_iris3(frame_width, frame_height,
 			32, 8) * 256 * codec_input.frame_rate + 999) / 1000 + 999) / 1000;
 	} else { /* RGBA */
 		frame420_y_bw_linear_8bpp =
-			((calculate_number_ubwctiles_kalama(frame_width, frame_height,
+			((calculate_number_ubwctiles_iris3(frame_width, frame_height,
 			6, 4) * 256 * codec_input.frame_rate + 999) / 1000 + 999) / 1000;
 	}
 
 	frame420_y_bw_no_ubwc_tile_10bpp =
-		((calculate_number_ubwctiles_kalama(frame_width, frame_height, 48, 4) *
+		((calculate_number_ubwctiles_iris3(frame_width, frame_height, 48, 4) *
 		256 * codec_input.frame_rate + 999) / 1000 + 999) / 1000;
 
 	frame420_y_bw_linear_10bpp = ((frame_width * frame_height *
@@ -720,7 +800,7 @@ static int calculate_bandwidth_encoder_iris3(
 		frame420_y_bw_no_ubwc_tile_10bpp) * reference_y_read_bw_factor;
 
 	large_bw_calculation_fp = (large_bw_calculation_fp *
-		kalama_en_readfactor[codec_input.hierachical_layer]);
+		iris3_en_readfactor[codec_input.hierachical_layer]);
 
 	large_bw_calculation_fp = (large_bw_calculation_fp +
 		dpb_compression_factor_y - 1) / dpb_compression_factor_y;
@@ -736,7 +816,7 @@ static int calculate_bandwidth_encoder_iris3(
 		frame420_y_bw_no_ubwc_tile_10bpp) * reference_crcb_read_bw_factor / 2;
 
 	large_bw_calculation_fp = large_bw_calculation_fp *
-		kalama_en_readfactor[codec_input.hierachical_layer];
+		iris3_en_readfactor[codec_input.hierachical_layer];
 
 	large_bw_calculation_fp = (large_bw_calculation_fp +
 		dpb_compression_factor_cbcr - 1) / dpb_compression_factor_cbcr;
@@ -749,8 +829,8 @@ static int calculate_bandwidth_encoder_iris3(
 	large_bw_calculation_fp = ((codec_input.bitdepth == CODEC_BITDEPTH_8) ?
 		frame420_y_bw_linear_8bpp : frame420_y_bw_no_ubwc_tile_10bpp) *
 		reconstructed_write_bw_factor_rd *
-		kalama_en_writefactor[codec_input.hierachical_layer] /
-		kalama_en_frame_num_parallel;
+		iris3_en_writefactor[codec_input.hierachical_layer] /
+		iris3_en_frame_num_parallel;
 
 	large_bw_calculation_fp = (large_bw_calculation_fp + 999) / 1000;
 
@@ -837,14 +917,14 @@ static int calculate_bandwidth_encoder_iris3(
 				if (codec_input.complexity_setting == 0) /* pwc */
 					codec_output->ipb_rd_total_noc =
 						(large_bw_calculation_fp * 100 +
-						en_original_compression_factor_rgba_pwd_kalama
+						en_original_compression_factor_rgba_pwd_iris3
 						- 1) /
-						en_original_compression_factor_rgba_pwd_kalama;
+						en_original_compression_factor_rgba_pwd_iris3;
 				else
 					codec_output->ipb_rd_total_noc =
 					(large_bw_calculation_fp * 100 +
-					en_original_compression_factor_rgba_avg_kalama - 1) /
-					en_original_compression_factor_rgba_avg_kalama;
+					en_original_compression_factor_rgba_avg_iris3 - 1) /
+					en_original_compression_factor_rgba_avg_iris3;
 			}
 		}
 	} else {

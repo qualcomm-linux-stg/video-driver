@@ -14,6 +14,22 @@ ddk_headers(
 )
 
 ddk_headers(
+    name = "niobe_headers",
+    hdrs = glob([
+      "driver/platform/niobe/inc/*.h",
+    ]),
+    includes = ["driver/platform/niobe/inc"]
+)
+
+ddk_headers(
+    name = "iris3_headers",
+    hdrs = glob([
+      "driver/variant/iris3/inc/*.h",
+    ]),
+    includes = ["driver/variant/iris3/inc"]
+)
+
+ddk_headers(
     name = "pineapple_headers",
     hdrs = glob([
       "driver/platform/pineapple/inc/*.h",
@@ -57,7 +73,7 @@ ddk_headers(
 
 ddk_headers(
     name = "video_driver_headers",
-    hdrs = [":uapi_headers", "pineapple_headers", "sun_headers", "iris33_headers", "iris35_headers", "vidc_headers"]
+    hdrs = [":uapi_headers", "niobe_headers", "pineapple_headers", "sun_headers", "iris3_headers", "iris33_headers", "iris35_headers", "vidc_headers"]
 )
 
 load(":target.bzl", "define_target_modules")
