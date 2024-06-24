@@ -723,20 +723,6 @@ static int msm_vdec_set_output_properties(struct msm_vidc_inst *inst)
 	return rc;
 }
 
-static bool msm_vdec_check_inbuf_fence_allowed(struct msm_vidc_inst *inst)
-{
-	enum msm_vidc_fence_type type = fence_type(inst, MSM_VIDC_BUF_INPUT);
-	bool is_allowed = false;
-
-	if (is_hw_fence(inst, type))
-		is_allowed = true;
-
-	if (!is_allowed)
-		i_vpr_e(inst, "%s: unsupported fence_type %u\n", __func__, type);
-
-	return is_allowed;
-}
-
 static bool msm_vdec_check_outbuf_fence_allowed(struct msm_vidc_inst *inst)
 {
 	u32 reorder_count = inst->capabilities[MAX_NUM_REORDER_FRAMES].value >> 16;
@@ -1208,7 +1194,7 @@ static int msm_vdec_set_delivery_mode_property(struct msm_vidc_inst *inst,
 		META_OUTBUF_FENCE,
 	};
 	static const u32 property_input_list[] = {
-		META_INBUF_FENCE
+		INPBUF_FENCE_ENABLE,
 	};
 
 	i_vpr_h(inst, "%s() port %d\n", __func__, port);
@@ -1217,14 +1203,14 @@ static int msm_vdec_set_delivery_mode_property(struct msm_vidc_inst *inst,
 
 	if (port == INPUT_PORT) {
 		for (i = 0; i < ARRAY_SIZE(property_input_list); i++) {
-			if (property_input_list[i] == META_INBUF_FENCE) {
-				if (is_inbuf_fence_enabled(inst)) {
+			if (property_input_list[i] == INPBUF_FENCE_ENABLE) {
+				if (is_inpbuf_fence_rx_enabled(inst)) {
 					/*
-					 * if input buffer fence enabled via
-					 * META_INBUF_FENCE, then driver will send
-					 * fence id via HFI_PROP_FENCE_INPUT to firmware.
-					 * So enable HFI_PROP_FENCE_INPUT property as
-					 * delivery mode property.
+					 * if input buffer fence enabled via INPBUF_FENCE_ENABLE,
+					 * then driver will send fence info using
+					 * HFI_PROP_FENCE_INPUT to firmware via property,
+					 * so enable HFI_PROP_FENCE_INPUT as delivery mode
+					 * property.
 					 */
 					payload[++count] =
 						inst->capabilities[property_input_list[i]].hfi_id;
@@ -1240,13 +1226,13 @@ static int msm_vdec_set_delivery_mode_property(struct msm_vidc_inst *inst,
 	} else if (port == OUTPUT_PORT) {
 		for (i = 0; i < ARRAY_SIZE(property_output_list); i++) {
 			if (property_output_list[i] == META_OUTBUF_FENCE) {
-				if (is_outbuf_fence_enabled(inst)) {
+				if (is_outbuf_fence_tx_enabled(inst)) {
 					/*
-					 * if output buffer fence enabled via
-					 * META_OUTBUF_FENCE, then driver will send
-					 * fence id via HFI_PROP_FENCE_OUTPUT to firmware.
-					 * So enable HFI_PROP_FENCE_OUTPUT property as
-					 * delivery mode property.
+					 * if output buffer fence enabled via META_OUTBUF_FENCE,
+					 * then driver will send fence info using
+					 * HFI_PROP_FENCE_OUTPUT to firmware via property,
+					 * so enable HFI_PROP_FENCE_OUTPUT as delivery mode
+					 * property.
 					 */
 					payload[++count] =
 						inst->capabilities[property_output_list[i]].hfi_id;
@@ -1544,11 +1530,10 @@ int msm_vdec_streamon_input(struct msm_vidc_inst *inst)
 	if (rc)
 		goto error;
 
-	if (is_inbuf_fence_enabled(inst)) {
-		if (!msm_vdec_check_inbuf_fence_allowed(inst)) {
-			rc = -EINVAL;
-			goto error;
-		}
+	if (is_inpbuf_fence_rx_enabled(inst) &&
+		!msm_vidc_check_inpbuf_fence_allowed(inst)) {
+		rc = -EINVAL;
+		goto error;
 	}
 
 	/* Decide bse vpp delay after work mode */
@@ -1844,7 +1829,7 @@ int msm_vdec_streamon_output(struct msm_vidc_inst *inst)
 	if (rc)
 		goto error;
 
-	if (is_outbuf_fence_enabled(inst)) {
+	if (is_outbuf_fence_tx_enabled(inst)) {
 		if (!msm_vdec_check_outbuf_fence_allowed(inst)) {
 			rc = -EINVAL;
 			goto error;

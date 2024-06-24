@@ -264,20 +264,37 @@ enum v4l2_mpeg_vidc_av1_tier {
 #define V4L2_CID_MPEG_VIDC_CAPTURE_DATA_OFFSET                                \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x4E)
 
-/* Enables Input buffer fence id via input metadata */
-#define V4L2_CID_MPEG_VIDC_METADATA_INBUF_FENCE                               \
+/*
+ * Userspace need to enable input fence feature via
+ * control V4L2_CID_MPEG_VIDC_INPBUF_FENCE_ENABLE
+ */
+#define V4L2_CID_MPEG_VIDC_INPBUF_FENCE_ENABLE                                \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x4F)
 
 /*
  * Control to set fence fd to the driver for each I/P buf
- * set via V4L2_CID_MPEG_VIDC_INBUF_FENCE_FD
+ * set via V4L2_CID_MPEG_VIDC_INPBUF_FENCE_FD
  */
-#define V4L2_CID_MPEG_VIDC_INBUF_FENCE_FD                                     \
+#define V4L2_CID_MPEG_VIDC_INPBUF_FENCE_FD                                    \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x50)
 
-/* set output fence type */
-#define V4L2_CID_MPEG_VIDC_OUTBUF_FENCE_TYPE                                  \
+/* set input & output fence type */
+#define V4L2_CID_MPEG_VIDC_INPBUF_FENCE_TYPE                                  \
 	(V4L2_CID_MPEG_VIDC_BASE + 0x51)
+#define V4L2_CID_MPEG_VIDC_OUTBUF_FENCE_TYPE                                  \
+	(V4L2_CID_MPEG_VIDC_BASE + 0x52)
+enum v4l2_mpeg_vidc_fence_type {
+	V4L2_MPEG_VIDC_FENCE_NONE       = 0,
+	V4L2_MPEG_VIDC_FENCE_SW         = 1,
+	V4L2_MPEG_VIDC_FENCE_SYNX_V2    = 2,
+};
+
+/**
+ * If client sets this extra metada offset, then send additional
+ * metadata buffer to fw.
+ */
+#define V4L2_CID_MPEG_VIDC_INPUT_EXTRA_METADATA_OFFSET                       \
+	(V4L2_CID_MPEG_VIDC_BASE + 0x53)
 
 int msm_vidc_adjust_ir_period(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_dec_frame_rate(void *instance, struct v4l2_ctrl *ctrl);

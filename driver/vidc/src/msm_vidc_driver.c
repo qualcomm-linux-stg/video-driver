@@ -127,6 +127,20 @@ const char *v4l2_type_name(u32 port)
 	return "UNKNOWN";
 }
 
+bool msm_vidc_check_inpbuf_fence_allowed(struct msm_vidc_inst *inst)
+{
+	enum msm_vidc_fence_type type = get_fence_type(inst, MSM_VIDC_BUF_INPUT);
+	bool is_allowed = false;
+
+	if (is_synx_v2_fence(inst, type))
+		is_allowed = true;
+
+	if (!is_allowed)
+		i_vpr_e(inst, "%s: unsupported fence_type %u\n", __func__, type);
+
+	return is_allowed;
+}
+
 const char *v4l2_pixelfmt_name(struct msm_vidc_inst *inst, u32 pixfmt)
 {
 	struct msm_vidc_core *core;
@@ -255,11 +269,11 @@ static int msm_vidc_destroy_fence_array(struct msm_vidc_inst *inst, struct msm_v
 	bool is_fence_enabled = false;
 	int cnt, rc = 0;
 
-	if (is_input_buffer(buf->type) && is_inbuf_fence_enabled(inst)) {
+	if (is_input_buffer(buf->type) && is_inpbuf_fence_rx_enabled(inst)) {
 		fence_list = &inst->input_fence_list;
-		cap_id = INBUF_FENCE_TYPE;
+		cap_id = INPBUF_FENCE_TYPE;
 		is_fence_enabled = true;
-	} else if (is_output_buffer(buf->type) && is_outbuf_fence_enabled(inst)) {
+	} else if (is_output_buffer(buf->type) && is_outbuf_fence_tx_enabled(inst)) {
 		fence_list = &inst->output_fence_list;
 		cap_id = OUTBUF_FENCE_TYPE;
 		is_fence_enabled = true;
@@ -305,11 +319,11 @@ static int msm_vidc_populate_fence_array(struct msm_vidc_inst *inst, struct msm_
 	bool is_fence_enabled = false;
 	int cnt, fence_count = 0, rc = 0;
 
-	if (is_input_buffer(buf->type) && is_inbuf_fence_enabled(inst)) {
+	if (is_input_buffer(buf->type) && is_inpbuf_fence_rx_enabled(inst)) {
 		fence_list = &inst->input_fence_list;
 		fence_count = 1;
 		is_fence_enabled = true;
-	} else if (is_output_buffer(buf->type) && is_outbuf_fence_enabled(inst)) {
+	} else if (is_output_buffer(buf->type) && is_outbuf_fence_tx_enabled(inst)) {
 		fence_list = &inst->output_fence_list;
 		fence_count = is_early_notify_enabled(inst) ?
 			(int)inst->capabilities[EARLY_NOTIFY_FENCE_COUNT].value : 1;
@@ -327,7 +341,7 @@ static int msm_vidc_populate_fence_array(struct msm_vidc_inst *inst, struct msm_
 		return -EINVAL;
 	}
 
-	memset(buf->fence_id, 0, sizeof(buf->fence_id));
+	/* reset fence count */
 	buf->fence_count = 0;
 	for (cnt = 0; cnt < fence_count; cnt++) {
 		if (is_input_buffer(buf->type))
@@ -956,7 +970,7 @@ bool msm_vidc_allow_metadata_subscription(struct msm_vidc_inst *inst, u32 cap_id
 		case META_SEI_MASTERING_DISP:
 		case META_SEI_CLL:
 		case META_HDR10PLUS:
-			if (!is_outbuf_fence_enabled(inst)) {
+			if (!is_outbuf_fence_tx_enabled(inst)) {
 				i_vpr_h(inst,
 					"%s: cap: %24s not allowed as output buffer fence is disabled\n",
 					__func__, cap_name(cap_id));
@@ -998,7 +1012,7 @@ bool msm_vidc_allow_property(struct msm_vidc_inst *inst, u32 hfi_id)
 			is_allowed = false;
 		break;
 	case HFI_PROP_FENCE_OUTPUT:
-		if (!is_outbuf_fence_enabled(inst)) {
+		if (!is_outbuf_fence_tx_enabled(inst)) {
 			i_vpr_h(inst,
 				"%s: cap: %24s not enabled, hence not allowed to subscribe\n",
 				__func__, cap_name(META_OUTBUF_FENCE));
@@ -1547,8 +1561,6 @@ static int msm_vidc_flush_fences(struct msm_vidc_inst *inst,
 	struct msm_vidc_fence *fence, *dummy_fence;
 	int cnt = 0;
 
-
-
 	if (is_input_buffer(type)) {
 		fence_list = &inst->input_fence_list;
 	} else if (is_output_buffer(type)) {
@@ -1561,7 +1573,7 @@ static int msm_vidc_flush_fences(struct msm_vidc_inst *inst,
 
 	list_for_each_entry_safe(fence, dummy_fence, fence_list, list) {
 		/* print fence info */
-		print_fence_buffer(VIDC_ERR, "err ",
+		print_fence_buffer(VIDC_HIGH, "high",
 			(fence->imp_fence ? "release" : "destroy"),
 			 inst, NULL, fence, cnt++);
 		if (fence->imp_fence)
@@ -1738,7 +1750,7 @@ int vb2_buffer_to_driver(struct vb2_buffer *vb2,
 	buf->flags = vbuf->flags;
 	buf->attr = 0;
 	buf->fence_count = 0;
-	buf->fence_id[0] = 0;
+	memset(&buf->fence_id[0], 0, sizeof(buf->fence_id));
 
 	return rc;
 }
@@ -2731,12 +2743,19 @@ static int msm_vidc_queue_buffer(struct msm_vidc_inst *inst, struct msm_vidc_buf
 		return -EINVAL;
 	}
 
-	if (msm_vidc_is_super_buffer(inst) && is_input_buffer(buf->type))
-		rc = venus_hfi_queue_super_buffer(inst, buf, meta);
-	else
-		rc = venus_hfi_queue_buffer(inst, buf, meta);
+	/* populate fence array */
+	rc = msm_vidc_populate_fence_array(inst, buf);
 	if (rc)
 		return rc;
+
+	if (msm_vidc_is_super_buffer(inst) && is_input_buffer(buf->type))
+		rc = venus_hfi_queue_super_buffer(inst, buf, meta);
+	else if (is_input_buffer(buf->type))
+		rc = venus_hfi_queue_input_buffer(inst, buf, meta);
+	else
+		rc = venus_hfi_queue_output_buffer(inst, buf, meta);
+	if (rc)
+		goto exit;
 
 	buf->attr &= ~MSM_VIDC_ATTR_DEFERRED;
 	buf->attr |= MSM_VIDC_ATTR_QUEUED;
@@ -2763,25 +2782,10 @@ static int msm_vidc_queue_buffer(struct msm_vidc_inst *inst, struct msm_vidc_buf
 	msm_vidc_update_stats(inst, buf, etype);
 
 	return 0;
-}
-
-static int msm_vidc_queue_fence_buffer(struct msm_vidc_inst *inst, struct msm_vidc_buffer *buf)
-{
-	int rc = 0;
-
-	rc = msm_vidc_populate_fence_array(inst, buf);
-	if (rc)
-		return rc;
-
-	rc = msm_vidc_queue_buffer(inst, buf);
-	if (rc)
-		goto exit;
 
 exit:
-	if (rc) {
-		i_vpr_e(inst, "%s: qbuf failed\n", __func__);
-		msm_vidc_destroy_fence_array(inst, buf);
-	}
+	/* destroy fence array */
+	msm_vidc_destroy_fence_array(inst, buf);
 	return rc;
 }
 
@@ -2827,7 +2831,7 @@ int msm_vidc_queue_deferred_buffers(struct msm_vidc_inst *inst, enum msm_vidc_bu
 		if (!(buf->attr & MSM_VIDC_ATTR_DEFERRED))
 			continue;
 
-		rc = msm_vidc_queue_fence_buffer(inst, buf);
+		rc = msm_vidc_queue_buffer(inst, buf);
 		if (rc)
 			return rc;
 	}
@@ -2841,7 +2845,7 @@ int msm_vidc_buf_queue(struct msm_vidc_inst *inst, struct msm_vidc_buffer *buf)
 
 	msm_vidc_scale_power(inst, is_input_buffer(buf->type));
 
-	rc = msm_vidc_queue_fence_buffer(inst, buf);
+	rc = msm_vidc_queue_buffer(inst, buf);
 	if (rc)
 		return rc;
 
@@ -3097,7 +3101,7 @@ int msm_vidc_queue_internal_buffers(struct msm_vidc_inst *inst,
 		/* do not queue already queued buffers */
 		if (buffer->attr & MSM_VIDC_ATTR_QUEUED)
 			continue;
-		rc = venus_hfi_queue_buffer(inst, buffer, NULL);
+		rc = venus_hfi_queue_internal_buffer(inst, buffer);
 		if (rc)
 			return rc;
 		/* mark queued */
@@ -3668,8 +3672,6 @@ int msm_vidc_session_streamoff(struct msm_vidc_inst *inst,
 	if (rc)
 		goto error;
 
-	/* flush pending fences */
-	msm_vidc_flush_fences(inst, buffer_type, __func__);
 	/* flush deferred buffers */
 	msm_vidc_flush_buffers(inst, buffer_type);
 	msm_vidc_flush_read_only_buffers(inst, buffer_type);
@@ -3677,7 +3679,6 @@ int msm_vidc_session_streamoff(struct msm_vidc_inst *inst,
 
 error:
 	msm_vidc_kill_session(inst);
-	msm_vidc_flush_fences(inst, buffer_type, __func__);
 	msm_vidc_flush_buffers(inst, buffer_type);
 	msm_vidc_flush_read_only_buffers(inst, buffer_type);
 	return rc;
@@ -4584,6 +4585,9 @@ int msm_vidc_flush_buffers(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
+	/* flush pending fences before flushing the buffers */
+	msm_vidc_flush_fences(inst, type, __func__);
+
 	for (i = 0; i < ARRAY_SIZE(buffer_type); i++) {
 		buffers = msm_vidc_get_buffers(inst, buffer_type[i], __func__);
 		if (!buffers)
@@ -4658,6 +4662,7 @@ void msm_vidc_destroy_buffers(struct msm_vidc_inst *inst)
 	struct msm_vidc_buffer_stats *stats, *dummy_stats;
 	struct msm_vidc_inst_cap_entry *entry, *dummy_entry;
 	struct msm_vidc_input_cr_data *cr, *dummy_cr;
+	struct msm_vidc_fence *fence, *dummy_fence;
 	struct msm_vidc_core *core;
 
 	static const enum msm_vidc_buffer_type ext_buf_types[] = {
@@ -4797,11 +4802,25 @@ void msm_vidc_destroy_buffers(struct msm_vidc_inst *inst)
 		vfree(cr);
 	}
 
-	/* flush input fence list */
-	msm_vidc_flush_fences(inst, MSM_VIDC_BUF_INPUT, __func__);
+	list_for_each_entry_safe(fence, dummy_fence, &inst->input_fence_list, list) {
+		print_fence_buffer(VIDC_ERR, "err ",
+			(fence->imp_fence ? "release" : "destroy"),
+			 inst, NULL, fence, 0);
+		if (fence->imp_fence)
+			call_fence_op(core, fence_release, inst, fence, true);
+		else
+			call_fence_op(core, fence_destroy, inst, fence, true);
+	}
 
-	/* flush output fence list */
-	msm_vidc_flush_fences(inst, MSM_VIDC_BUF_OUTPUT, __func__);
+	list_for_each_entry_safe(fence, dummy_fence, &inst->output_fence_list, list) {
+		print_fence_buffer(VIDC_ERR, "err ",
+			(fence->imp_fence ? "release" : "destroy"),
+			 inst, NULL, fence, 0);
+		if (fence->imp_fence)
+			call_fence_op(core, fence_release, inst, fence, true);
+		else
+			call_fence_op(core, fence_destroy, inst, fence, true);
+	}
 
 	/* destroy buffers from pool */
 	msm_vidc_pools_deinit(inst);

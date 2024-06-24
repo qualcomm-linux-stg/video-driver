@@ -602,14 +602,14 @@ static int msm_vidc_component_master_bind(struct device *dev)
 		return rc;
 	}
 
-	if (core->capabilities[SUPPORTS_SYNX_FENCE].value) {
+	if (core->capabilities[SUPPORTS_SYNX_V2_FENCE].value) {
 		if (msm_vidc_synx_fence_enable) {
 			/* register for synx fence */
 			rc = call_fence_op(core, fence_register, core);
 			if (rc) {
 				d_vpr_e("%s: failed to register synx fence\n",
 					__func__);
-				core->capabilities[SUPPORTS_SYNX_FENCE].value = 0;
+				core->capabilities[SUPPORTS_SYNX_V2_FENCE].value = 0;
 				return rc;
 			}
 		} else {
@@ -619,7 +619,7 @@ static int msm_vidc_component_master_bind(struct device *dev)
 				d_vpr_e("%s: invalid dma fence ops\n", __func__);
 				return -EINVAL;
 			}
-			core->capabilities[SUPPORTS_SYNX_FENCE].value = 0;
+			core->capabilities[SUPPORTS_SYNX_V2_FENCE].value = 0;
 		}
 	}
 

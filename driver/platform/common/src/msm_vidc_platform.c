@@ -571,6 +571,10 @@ int msm_vidc_v4l2_to_hfi_enum(struct msm_vidc_inst *inst,
 	case HEVC_TIER:
 	case AV1_TIER:
 	case BLUR_TYPES:
+	case INPBUF_FENCE_TYPE:
+	case INPBUF_FENCE_DIRECTION:
+	case OUTBUF_FENCE_TYPE:
+	case OUTBUF_FENCE_DIRECTION:
 		*value = inst->capabilities[cap_id].value;
 		return 0;
 	case LAYER_TYPE:
@@ -2252,11 +2256,11 @@ int msm_vidc_adjust_dec_outbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl
 
 	/* override to sw fence, if synx not supported */
 	if (adjusted_value == MSM_VIDC_SYNX_V2_FENCE)
-		if (!core->capabilities[SUPPORTS_SYNX_FENCE].value)
+		if (!core->capabilities[SUPPORTS_SYNX_V2_FENCE].value)
 			adjusted_value = MSM_VIDC_SW_FENCE;
 
 	/* mark fence dir as none, if fence not enabled */
-	if (!is_outbuf_fence_enabled(inst))
+	if (!is_outbuf_fence_tx_enabled(inst))
 		adjusted_value = MSM_VIDC_FENCE_NONE;
 
 	msm_vidc_update_cap_value(inst, OUTBUF_FENCE_TYPE, adjusted_value, __func__);
@@ -2264,27 +2268,21 @@ int msm_vidc_adjust_dec_outbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl
 	return 0;
 }
 
-int msm_vidc_adjust_dec_inbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl)
+int msm_vidc_adjust_dec_inpbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	struct msm_vidc_inst_cap *capability = inst->capabilities;
-	s64 adjusted_value, meta_inbuf_fence = 0;
+	s64 adjusted_value, inpbuf_fence_enable = 0;
 
-	capability = inst->capabilities;
-
-	adjusted_value = ctrl ? ctrl->val :
-		capability[INBUF_FENCE_TYPE].value;
-
-	if (msm_vidc_get_parent_value(inst, INBUF_FENCE_TYPE,
-			META_INBUF_FENCE, &meta_inbuf_fence, __func__))
+	if (msm_vidc_get_parent_value(inst, INPBUF_FENCE_TYPE,
+			INPBUF_FENCE_ENABLE, &inpbuf_fence_enable, __func__))
 		return -EINVAL;
 
-	if (is_inbuf_fence_enabled(inst))
+	if (is_inpbuf_fence_rx_enabled(inst))
 		adjusted_value = MSM_VIDC_SYNX_V2_FENCE;
 	else
 		adjusted_value = MSM_VIDC_FENCE_NONE;
 
-	msm_vidc_update_cap_value(inst, INBUF_FENCE_TYPE, adjusted_value, __func__);
+	msm_vidc_update_cap_value(inst, INPBUF_FENCE_TYPE, adjusted_value, __func__);
 
 	return 0;
 }
@@ -2293,19 +2291,13 @@ int msm_vidc_adjust_dec_inbuf_fence_type(void *instance, struct v4l2_ctrl *ctrl)
 int msm_vidc_adjust_dec_outbuf_fence_direction(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	struct msm_vidc_inst_cap *capability = inst->capabilities;
 	s64 adjusted_value, meta_outbuf_fence = 0;
-
-	capability = inst->capabilities;
-
-	adjusted_value = ctrl ? ctrl->val :
-		capability[OUTBUF_FENCE_DIRECTION].value;
 
 	if (msm_vidc_get_parent_value(inst, OUTBUF_FENCE_DIRECTION,
 			META_OUTBUF_FENCE, &meta_outbuf_fence, __func__))
 		return -EINVAL;
 
-	if (is_outbuf_fence_enabled(inst))
+	if (is_outbuf_fence_tx_enabled(inst))
 		adjusted_value = MSM_VIDC_FENCE_DIR_TX;
 	else
 		adjusted_value = MSM_VIDC_FENCE_DIR_NONE;
@@ -2315,27 +2307,25 @@ int msm_vidc_adjust_dec_outbuf_fence_direction(void *instance, struct v4l2_ctrl 
 	return 0;
 }
 
-int msm_vidc_adjust_dec_inbuf_fence_direction(void *instance, struct v4l2_ctrl *ctrl)
+int msm_vidc_adjust_dec_inpbuf_fence_direction(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	struct msm_vidc_inst_cap *capability = inst->capabilities;
-	s64 adjusted_value, meta_outbuf_fence = 0;
-
-	capability = inst->capabilities;
+	s64 adjusted_value, inpbuf_fence_enable = 0;
 
 	adjusted_value = ctrl ? ctrl->val :
-		capability[INBUF_FENCE_DIRECTION].value;
+		capability[INPBUF_FENCE_DIRECTION].value;
 
-	if (msm_vidc_get_parent_value(inst, INBUF_FENCE_DIRECTION,
-			META_INBUF_FENCE, &meta_outbuf_fence, __func__))
+	if (msm_vidc_get_parent_value(inst, INPBUF_FENCE_DIRECTION,
+			INPBUF_FENCE_ENABLE, &inpbuf_fence_enable, __func__))
 		return -EINVAL;
 
-	if (is_inbuf_fence_enabled(inst))
+	if (is_inpbuf_fence_rx_enabled(inst))
 		adjusted_value = MSM_VIDC_FENCE_DIR_RX;
 	else
 		adjusted_value = MSM_VIDC_FENCE_DIR_NONE;
 
-	msm_vidc_update_cap_value(inst, INBUF_FENCE_DIRECTION, adjusted_value, __func__);
+	msm_vidc_update_cap_value(inst, INPBUF_FENCE_DIRECTION, adjusted_value, __func__);
 
 	return 0;
 }
@@ -2358,8 +2348,7 @@ int msm_vidc_adjust_dec_slice_mode(void *instance, struct v4l2_ctrl *ctrl)
 				      &outbuf_fence, __func__))
 		return -EINVAL;
 
-	if (!low_latency || !picture_order ||
-			!is_outbuf_fence_enabled(inst))
+	if (!low_latency || !picture_order || !is_outbuf_fence_tx_enabled(inst))
 		adjusted_value = 0;
 
 	msm_vidc_update_cap_value(inst, SLICE_DECODE, adjusted_value, __func__);
@@ -2386,7 +2375,7 @@ int msm_vidc_adjust_early_notify_enable(void *instance, struct v4l2_ctrl *ctrl)
 		return -EINVAL;
 
 	if (!low_latency || !picture_order ||
-	     !is_outbuf_fence_enabled(inst))
+	     !is_outbuf_fence_tx_enabled(inst))
 		adjusted_value = 0;
 
 	msm_vidc_update_cap_value(inst, EARLY_NOTIFY_ENABLE,
@@ -2420,8 +2409,6 @@ int msm_vidc_adjust_early_notify_fence_count(void *instance, struct v4l2_ctrl *c
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *) instance;
 	u64 height = 0, line_cnt = 0, adjusted_value = 0;
-
-	adjusted_value = ctrl ? ctrl->val : inst->capabilities[EARLY_NOTIFY_FENCE_COUNT].value;
 
 	if (msm_vidc_get_parent_value(inst, EARLY_NOTIFY_FENCE_COUNT, EARLY_NOTIFY_LINE_COUNT,
 		&line_cnt, __func__))
@@ -3688,90 +3675,6 @@ int msm_vidc_set_vui_timing_info(void *instance,
 
 	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32,
 					&hfi_value, sizeof(u32), __func__);
-
-	return rc;
-}
-
-int msm_vidc_set_outbuf_fence_type(void *instance,
-				   enum msm_vidc_inst_capability_type cap_id)
-{
-	int rc = 0;
-	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	u32 hfi_value;
-
-	if (inst->capabilities[OUTBUF_FENCE_TYPE].value ==
-	    MSM_VIDC_FENCE_NONE)
-		return 0;
-
-	hfi_value = inst->capabilities[cap_id].value;
-
-	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
-					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
-
-	return rc;
-}
-
-int msm_vidc_set_outbuf_fence_direction(void *instance,
-					enum msm_vidc_inst_capability_type cap_id)
-{
-	int rc = 0;
-	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	u32 hfi_value;
-
-	if (inst->capabilities[OUTBUF_FENCE_DIRECTION].value ==
-	    MSM_VIDC_FENCE_DIR_NONE)
-		return 0;
-
-	hfi_value = inst->capabilities[cap_id].value;
-
-	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
-					&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
-
-	return rc;
-}
-
-int msm_vidc_set_inbuf_fence_type(void *instance,
-		enum msm_vidc_inst_capability_type cap_id)
-{
-	int rc = 0;
-	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	u32 hfi_value;
-
-	if (inst->capabilities[INBUF_FENCE_TYPE].value ==
-	    MSM_VIDC_FENCE_NONE)
-		return 0;
-
-	hfi_value = inst->capabilities[cap_id].value;
-
-	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
-			&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
-
-	return rc;
-}
-
-int msm_vidc_set_inbuf_fence_direction(void *instance,
-		enum msm_vidc_inst_capability_type cap_id)
-{
-	int rc = 0;
-	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	u32 hfi_value;
-
-	if (inst->capabilities[INBUF_FENCE_DIRECTION].value ==
-	    MSM_VIDC_FENCE_DIR_NONE)
-		return 0;
-
-	hfi_value = inst->capabilities[cap_id].value;
-
-	rc = msm_vidc_packetize_control(inst, cap_id, HFI_PAYLOAD_U32_ENUM,
-			&hfi_value, sizeof(u32), __func__);
-	if (rc)
-		return rc;
 
 	return rc;
 }

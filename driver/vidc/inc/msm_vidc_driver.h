@@ -275,26 +275,26 @@ static inline bool is_meta_enabled(struct msm_vidc_inst *inst, unsigned int type
 	return enabled;
 }
 
-static inline enum msm_vidc_fence_type fence_type(struct msm_vidc_inst *inst,
+static inline enum msm_vidc_fence_type get_fence_type(struct msm_vidc_inst *inst,
 	enum msm_vidc_buffer_type buf_type)
 {
 	enum msm_vidc_fence_type type = MSM_VIDC_FENCE_NONE;
 
 	if (is_input_buffer(buf_type))
-		type = inst->capabilities[INBUF_FENCE_TYPE].value;
+		type = inst->capabilities[INPBUF_FENCE_TYPE].value;
 	else if (is_output_buffer(buf_type))
 		type = inst->capabilities[OUTBUF_FENCE_TYPE].value;
 
 	return type;
 }
 
-static inline enum msm_vidc_fence_direction fence_direction(struct msm_vidc_inst *inst,
+static inline enum msm_vidc_fence_direction get_fence_direction(struct msm_vidc_inst *inst,
 	enum msm_vidc_buffer_type buf_type)
 {
 	enum msm_vidc_fence_direction dir = MSM_VIDC_FENCE_DIR_NONE;
 
 	if (is_input_buffer(buf_type))
-		dir = inst->capabilities[INBUF_FENCE_DIRECTION].value;
+		dir = inst->capabilities[INPBUF_FENCE_DIRECTION].value;
 	else if (is_output_buffer(buf_type))
 		dir = inst->capabilities[OUTBUF_FENCE_DIRECTION].value;
 
@@ -307,20 +307,20 @@ static inline bool is_sw_fence(struct msm_vidc_inst *inst,
 	return !!(fence_type == MSM_VIDC_SW_FENCE);
 }
 
-static inline bool is_hw_fence(struct msm_vidc_inst *inst,
+static inline bool is_synx_v2_fence(struct msm_vidc_inst *inst,
 	enum msm_vidc_fence_type fence_type)
 {
 	return !!(fence_type == MSM_VIDC_SYNX_V2_FENCE);
 }
 
-static inline bool is_outbuf_fence_enabled(struct msm_vidc_inst *inst)
+static inline bool is_outbuf_fence_tx_enabled(struct msm_vidc_inst *inst)
 {
 	return is_meta_rx_inp_enabled(inst, META_OUTBUF_FENCE);
 }
 
-static inline bool is_inbuf_fence_enabled(struct msm_vidc_inst *inst)
+static inline bool is_inpbuf_fence_rx_enabled(struct msm_vidc_inst *inst)
 {
-	return is_meta_tx_inp_enabled(inst, META_INBUF_FENCE);
+	return !!(inst->capabilities[INPBUF_FENCE_ENABLE].value);
 }
 
 static inline bool is_linear_yuv_colorformat(enum msm_vidc_colorformat_type colorformat)
@@ -684,6 +684,7 @@ struct context_bank_info
 					      enum msm_vidc_buffer_region region);
 struct context_bank_info
 	*msm_vidc_get_context_bank_for_device(struct msm_vidc_core *core, struct device *dev);
+bool msm_vidc_check_inpbuf_fence_allowed(struct msm_vidc_inst *inst);
 
 #endif // _MSM_VIDC_DRIVER_H_
 

@@ -110,8 +110,8 @@ struct msm_vidc_fence *msm_vidc_get_sw_fence(
 	struct msm_vidc_inst *inst, struct list_head *fence_list,
 	enum msm_vidc_buffer_type buf_type, bool is_imported)
 {
-	enum msm_vidc_fence_type f_type = fence_type(inst, buf_type);
-	enum msm_vidc_fence_direction f_dir = fence_direction(inst, buf_type);
+	enum msm_vidc_fence_type f_type = get_fence_type(inst, buf_type);
+	enum msm_vidc_fence_direction f_dir = get_fence_direction(inst, buf_type);
 	struct msm_vidc_fence *fence = NULL;
 	struct dma_fence *imp_dma_fence = NULL;
 	u64 fence_seqno = 0, fence_id = 0;
@@ -133,12 +133,12 @@ struct msm_vidc_fence *msm_vidc_get_sw_fence(
 	}
 
 	if (is_imported) {
-		fence_fd = inst->capabilities[INBUF_FENCE_FD].value;
+		fence_fd = inst->capabilities[INPBUF_FENCE_FD].value;
 		if (fence_fd == INVALID_FD) {
 			i_vpr_e(inst, "%s: Invalid dma fence fd!\n", __func__);
 			goto error;
 		}
-		inst->capabilities[INBUF_FENCE_FD].value = INVALID_FD;
+		inst->capabilities[INPBUF_FENCE_FD].value = INVALID_FD;
 
 		imp_dma_fence = sync_file_get_fence(fence_fd);
 		if (!imp_dma_fence) {

@@ -600,7 +600,6 @@ enum hfi_saliency_type {
 
 #define HFI_PROP_EARLY_NOTIFY_FENCE_COUNT                       0x0300019A
 
-
 #define HFI_PROP_ENC_RING_BIN_BUF                               0x0300019C
 
 /* u32 */

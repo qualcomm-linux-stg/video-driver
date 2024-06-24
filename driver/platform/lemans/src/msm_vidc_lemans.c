@@ -541,7 +541,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	/*
 	 * Client will enable V4L2_CID_MPEG_VIDC_METADATA_OUTBUF_FENCE
-	 * to get fence_id in input metadata buffer done.
+	 * to get output fence_id in input metadata buffer done.
 	 */
 	{META_OUTBUF_FENCE, DEC, H264 | HEVC | VP9 | AV1 | MPEG2,
 		MSM_VIDC_META_DISABLE,
@@ -1637,6 +1637,11 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 	{ENC_IP_CR, ENC, CODECS_ALL,
 		0, S32_MAX, 1, 0,
 		V4L2_CID_MPEG_VIDC_ENC_INPUT_COMPRESSION_RATIO,
+		0, CAP_FLAG_DYNAMIC_ALLOWED},
+
+	{INPUT_EXTRA_METADATA_OFFSET, DEC, CODECS_ALL,
+		0, INT_MAX, 1, 0,
+		V4L2_CID_MPEG_VIDC_INPUT_EXTRA_METADATA_OFFSET,
 		0, CAP_FLAG_DYNAMIC_ALLOWED},
 
 	{DPB_LIST, DEC, CODECS_ALL,

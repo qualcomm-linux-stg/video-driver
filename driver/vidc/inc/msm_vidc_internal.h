@@ -83,7 +83,6 @@ enum msm_vidc_metadata_bits {
 #define ENCODE_INPUT_METADATA_SIZE         (512 * 4096) /* 2 MB */
 #define DECODE_INPUT_METADATA_SIZE         MSM_VIDC_METADATA_SIZE
 #define MSM_VIDC_METADATA_DOLBY_RPU_SIZE   (41 * 1024) /* 41 KB */
-#define MSM_VIDC_INPUT_FENCE_METADATA_OFFSET  (4096) /* 4 KB */
 
 #define MAX_NAME_LENGTH   128
 #define VENUS_VERSION_LENGTH 128
@@ -250,7 +249,6 @@ enum msm_vidc_metadata_bits {
 	CAP(META_DPB_MISR)                        \
 	CAP(META_OPB_MISR)                        \
 	CAP(META_INTERLACE)                       \
-	CAP(META_INBUF_FENCE)                     \
 	CAP(META_OUTBUF_FENCE)                    \
 	CAP(META_LTR_MARK_USE)                    \
 	CAP(META_TIMESTAMP)                       \
@@ -298,9 +296,10 @@ enum msm_vidc_metadata_bits {
 	CAP(EARLY_NOTIFY_ENABLE)                  \
 	CAP(EARLY_NOTIFY_LINE_COUNT)              \
 	CAP(EARLY_NOTIFY_FENCE_COUNT)             \
-	CAP(INBUF_FENCE_TYPE)                     \
+	CAP(INPBUF_FENCE_ENABLE)                  \
+	CAP(INPBUF_FENCE_TYPE)                    \
 	CAP(OUTBUF_FENCE_TYPE)                    \
-	CAP(INBUF_FENCE_DIRECTION)                \
+	CAP(INPBUF_FENCE_DIRECTION)               \
 	CAP(OUTBUF_FENCE_DIRECTION)               \
 	CAP(PROFILE)                              \
 	CAP(ENH_LAYER_COUNT)                      \
@@ -342,7 +341,7 @@ enum msm_vidc_metadata_bits {
 	CAP(CLIENT_ID)                            \
 	CAP(SECURE_MODE)                          \
 	CAP(OUTBUF_FENCE_ID)                      \
-	CAP(INBUF_FENCE_FD)                       \
+	CAP(INPBUF_FENCE_FD)                      \
 	CAP(OUTBUF_FENCE_FD)                      \
 	CAP(TS_REORDER)                           \
 	CAP(HFLIP)                                \
@@ -416,6 +415,7 @@ enum msm_vidc_metadata_bits {
 	CAP(SUPER_BLOCK)                          \
 	CAP(DRAP)                                 \
 	CAP(ENC_IP_CR)                            \
+	CAP(INPUT_EXTRA_METADATA_OFFSET)          \
 	CAP(COMPLEXITY)                           \
 	CAP(CABAC_MAX_BITRATE)                    \
 	CAP(CAVLC_MAX_BITRATE)                    \
@@ -658,7 +658,7 @@ enum msm_vidc_core_capability_type {
 	ENC_AUTO_FRAMERATE,
 	DEVICE_CAPS,
 	SUPPORTS_REQUESTS,
-	SUPPORTS_SYNX_FENCE,
+	SUPPORTS_SYNX_V2_FENCE,
 	SSR_TYPE,
 	CORE_CAP_MAX,
 };

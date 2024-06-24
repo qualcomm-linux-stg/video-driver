@@ -761,7 +761,7 @@ static int handle_input_buffer(struct msm_vidc_inst *inst,
 	/* ebd: update end timestamp and flags in stats entry */
 	msm_vidc_remove_buffer_stats(inst, buf, buffer->timestamp);
 
-	if (is_inbuf_fence_enabled(inst)) {
+	if (is_inpbuf_fence_rx_enabled(inst)) {
 		if (buf->fence_count != 1) {
 			i_vpr_e(inst, "%s: unexpected input hw fence_count %d\n",
 				__func__, buf->fence_count);
@@ -802,13 +802,13 @@ static int msm_vidc_handle_fence_signal(struct msm_vidc_inst *inst,
 	u64 fence_seqno = 0;
 	int cnt, rc = 0;
 
-	if (!is_outbuf_fence_enabled(inst))
+	if (!is_outbuf_fence_tx_enabled(inst))
 		return 0;
 
-	if (is_hw_fence(inst, fence_type(inst, buf->type))) {
+	if (is_synx_v2_fence(inst, get_fence_type(inst, buf->type))) {
 		if (inst->hfi_frame_info.fence_error)
 			signal_error = true;
-	} else if (is_sw_fence(inst, fence_type(inst, buf->type))) {
+	} else if (is_sw_fence(inst, get_fence_type(inst, buf->type))) {
 		if (!buf->data_size)
 			signal_error = true;
 	}
@@ -839,9 +839,9 @@ static int msm_vidc_handle_fence_signal(struct msm_vidc_inst *inst,
 			rc = call_fence_op(core, fence_destroy, inst, fence, true);
 		} else {
 			print_fence_buffer(VIDC_HIGH, "high",
-				is_hw_fence(inst, fence->type) ? "destroy" : "signal",
+				is_synx_v2_fence(inst, fence->type) ? "destroy" : "signal",
 				inst, buf, fence, cnt);
-			if (is_hw_fence(inst, fence->type))
+			if (is_synx_v2_fence(inst, fence->type))
 				rc = call_fence_op(core, fence_destroy, inst, fence, false);
 			else
 				rc = call_fence_op(core, fence_signal, inst, fence);
@@ -1547,7 +1547,7 @@ static int handle_session_stability(struct msm_vidc_inst *inst,
 static int handle_session_early_notify_partial_frame(struct msm_vidc_inst *inst,
 	struct hfi_packet *pkt)
 {
-	enum msm_vidc_fence_type f_type = fence_type(inst, MSM_VIDC_BUF_OUTPUT);
+	enum msm_vidc_fence_type f_type = get_fence_type(inst, MSM_VIDC_BUF_OUTPUT);
 	struct msm_vidc_core *core = inst->core;
 	struct msm_vidc_fence *fence = NULL;
 	u64 fence_id = 0, fence_seqno = 0;

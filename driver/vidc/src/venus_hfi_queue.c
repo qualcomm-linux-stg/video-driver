@@ -418,7 +418,7 @@ void venus_hfi_queue_deinit(struct msm_vidc_core *core)
 	call_mem_op(core, iommu_unmap, core, &core->fence_reg.mem);
 	call_mem_op(core, iommu_unmap, core, &core->qtimer_reg.mem);
 	call_mem_op(core, memory_unmap_free, core, &core->mmap_buf.mem);
-	if (core->capabilities[SUPPORTS_SYNX_FENCE].value) {
+	if (core->capabilities[SUPPORTS_SYNX_V2_FENCE].value) {
 		call_mem_op(core, mem_dma_unmap_page, core,
 			&core->synx_fence_data.queue);
 	}
@@ -621,7 +621,7 @@ int venus_hfi_queue_init(struct msm_vidc_core *core)
 	*((u32 *)core->sfr.align_virtual_addr) = core->sfr.mem_size;
 
 	/* map synx fence tx/rx queue buffer */
-	if (core->capabilities[SUPPORTS_SYNX_FENCE].value) {
+	if (core->capabilities[SUPPORTS_SYNX_V2_FENCE].value) {
 		/*
 		 * queue memory is already allocated by synx fence
 		 * driver during msm_vidc_synx_fence_register(..) call

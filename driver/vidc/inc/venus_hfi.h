@@ -39,9 +39,14 @@ int venus_hfi_session_property(struct msm_vidc_inst *inst,
 			       u32 pkt_type, u32 flags, u32 port,
 			       u32 payload_type, void *payload,
 			       u32 payload_size);
-int venus_hfi_queue_buffer(struct msm_vidc_inst *inst,
+int venus_hfi_queue_input_buffer(struct msm_vidc_inst *inst,
 			   struct msm_vidc_buffer *buffer,
 			   struct msm_vidc_buffer *metabuf);
+int venus_hfi_queue_output_buffer(struct msm_vidc_inst *inst,
+			   struct msm_vidc_buffer *buffer,
+			   struct msm_vidc_buffer *metabuf);
+int venus_hfi_queue_internal_buffer(struct msm_vidc_inst *inst,
+			   struct msm_vidc_buffer *buffer);
 int venus_hfi_queue_super_buffer(struct msm_vidc_inst *inst,
 				 struct msm_vidc_buffer *buffer,
 				 struct msm_vidc_buffer *metabuf);

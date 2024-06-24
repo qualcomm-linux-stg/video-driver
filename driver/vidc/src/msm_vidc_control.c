@@ -102,6 +102,13 @@ static const char *const mpeg_video_vidc_ir_type[] = {
 	NULL,
 };
 
+static const char *const mpeg_video_vidc_fence_type[] = {
+	"Fence None",
+	"Sw Fence",
+	"Synx_v2 Fence",
+	NULL,
+};
+
 static const char * const *msm_vidc_get_qmenu_type(
 		struct msm_vidc_inst *inst, u32 cap_id)
 {
@@ -130,6 +137,9 @@ static const char * const *msm_vidc_get_qmenu_type(
 		return av1_tier;
 	case IR_TYPE:
 		return mpeg_video_vidc_ir_type;
+	case INPBUF_FENCE_TYPE:
+	case OUTBUF_FENCE_TYPE:
+		return mpeg_video_vidc_fence_type;
 	default:
 		i_vpr_e(inst, "%s: No available qmenu for cap id %d\n",
 			__func__, cap_id);
