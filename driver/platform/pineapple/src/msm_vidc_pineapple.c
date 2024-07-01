@@ -322,7 +322,7 @@ static struct msm_platform_core_capability core_data_pineapple[] = {
 	{ENC_AUTO_FRAMERATE, 1},
 	{DEVICE_CAPS, V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_META_CAPTURE |
 		V4L2_CAP_STREAMING},
-	{SUPPORTS_SYNX_V2_FENCE, 1},
+	{SUPPORTS_SYNX_V2_FENCE, 0},
 	{SUPPORTS_REQUESTS, 0},
 };
 
@@ -2169,22 +2169,22 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_pine
 	{INPBUF_FENCE_TYPE, DEC, H264 | HEVC | VP9 | AV1,
 		{0},
 		msm_vidc_adjust_dec_inpbuf_fence_type,
-		msm_vidc_set_u32_enum},
+		NULL},
 
 	{OUTBUF_FENCE_TYPE, DEC, H264 | HEVC | VP9 | AV1,
 		{0},
 		msm_vidc_adjust_dec_outbuf_fence_type,
-		msm_vidc_set_u32_enum},
+		NULL},
 
 	{INPBUF_FENCE_DIRECTION, DEC, H264 | HEVC | VP9 | AV1,
 		{0},
 		msm_vidc_adjust_dec_inpbuf_fence_direction,
-		msm_vidc_set_u32_enum},
+		NULL},
 
 	{OUTBUF_FENCE_DIRECTION, DEC, H264 | HEVC | VP9 | AV1,
 		{0},
 		msm_vidc_adjust_dec_outbuf_fence_direction,
-		msm_vidc_set_u32_enum},
+		NULL},
 
 	{HFLIP, ENC, CODECS_ALL,
 		{0},
@@ -3077,11 +3077,6 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 	core->res_ops = get_res_ops_ext(core);
 	if (!core->res_ops) {
 		d_vpr_e("%s: invalid resource ext ops\n", __func__);
-		return -EINVAL;
-	}
-	core->fence_ops = get_synx_fence_ops();
-	if (!core->fence_ops) {
-		d_vpr_e("%s: invalid synx fence ops\n", __func__);
 		return -EINVAL;
 	}
 	rc = msm_vidc_pineapple_check_ddr_type();

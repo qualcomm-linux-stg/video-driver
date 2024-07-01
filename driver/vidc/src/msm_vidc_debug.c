@@ -24,9 +24,6 @@ extern struct msm_vidc_core *g_core;
 unsigned int msm_vidc_debug = DRV_LOG;
 unsigned int msm_fw_debug = FW_LOG;
 
-/* disabled synx fence by default temporarily */
-bool msm_vidc_synx_fence_enable = false;
-
 static int debug_level_set_drv(const char *val,
 	const struct kernel_param *kp)
 {
@@ -173,41 +170,9 @@ static const struct kernel_param_ops msm_vidc_fw_dump_fops = {
 	.get = fw_dump_get,
 };
 
-static int synx_fence_set(const char *val,
-	const struct kernel_param *kp)
-{
-	unsigned int dvalue;
-	int ret;
-
-	if (!kp || !kp->arg || !val) {
-		d_vpr_e("%s: Invalid params\n", __func__);
-		return -EINVAL;
-	}
-
-	ret = kstrtouint(val, 0, &dvalue);
-	if (ret)
-		return ret;
-
-	msm_vidc_synx_fence_enable = dvalue;
-
-	return 0;
-}
-
-static int synx_fence_get(char *buffer, const struct kernel_param *kp)
-{
-	return scnprintf(buffer, PAGE_SIZE, "%#x", msm_vidc_synx_fence_enable);
-}
-
-static const struct kernel_param_ops msm_vidc_synx_fence_debug_fops = {
-	.set = synx_fence_set,
-	.get = synx_fence_get,
-};
-
 module_param_cb(msm_vidc_debug, &msm_vidc_debug_fops, &g_core, 0644);
 module_param_cb(msm_fw_debug, &msm_fw_debug_fops, &g_core, 0644);
 module_param_cb(msm_vidc_fw_dump, &msm_vidc_fw_dump_fops, &g_core, 0644);
-module_param_cb(msm_vidc_synx_fence_enable,
-	&msm_vidc_synx_fence_debug_fops, &g_core, 0644);
 
 bool msm_vidc_lossless_encode = !true;
 EXPORT_SYMBOL(msm_vidc_lossless_encode);

@@ -582,10 +582,6 @@ int msm_vidc_v4l2_to_hfi_enum(struct msm_vidc_inst *inst,
 	case HEVC_TIER:
 	case AV1_TIER:
 	case BLUR_TYPES:
-	case INPBUF_FENCE_TYPE:
-	case INPBUF_FENCE_DIRECTION:
-	case OUTBUF_FENCE_TYPE:
-	case OUTBUF_FENCE_DIRECTION:
 		*value = inst->capabilities[cap_id].value;
 		return 0;
 	case LAYER_TYPE:

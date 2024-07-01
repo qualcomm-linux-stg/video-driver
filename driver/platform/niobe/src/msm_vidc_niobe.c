@@ -2091,22 +2091,22 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_niob
 	{INPBUF_FENCE_TYPE, DEC, H264 | HEVC | VP9 | AV1,
 		{0},
 		msm_vidc_adjust_dec_inpbuf_fence_type,
-		msm_vidc_set_u32_enum},
+		NULL},
 
 	{OUTBUF_FENCE_TYPE, DEC, H264 | HEVC | VP9 | AV1,
 		{0},
 		msm_vidc_adjust_dec_outbuf_fence_type,
-		msm_vidc_set_u32_enum},
+		NULL},
 
 	{INPBUF_FENCE_DIRECTION, DEC, H264 | HEVC | VP9 | AV1,
 		{0},
 		msm_vidc_adjust_dec_inpbuf_fence_direction,
-		msm_vidc_set_u32_enum},
+		NULL},
 
 	{OUTBUF_FENCE_DIRECTION, DEC, H264 | HEVC | VP9 | AV1,
 		{0},
 		msm_vidc_adjust_dec_outbuf_fence_direction,
-		msm_vidc_set_u32_enum},
+		NULL},
 
 	{HFLIP, ENC, CODECS_ALL,
 		{0},
@@ -2968,7 +2968,6 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 		d_vpr_e("%s: invalid synx fence ops\n", __func__);
 		return -EINVAL;
 	}
-
 	rc = msm_vidc_niobe_check_ddr_type();
 	if (rc)
 		return rc;

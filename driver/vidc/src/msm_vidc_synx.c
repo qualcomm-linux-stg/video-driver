@@ -43,6 +43,7 @@ static int msm_vidc_synx_fence_register(struct msm_vidc_core *core)
 	struct synx_session *session = NULL;
 	char synx_session_name[MAX_SYNX_FENCE_SESSION_NAME];
 	struct synx_queue_desc queue_desc;
+	int rc = 0;
 
 	if (!core->capabilities[SUPPORTS_SYNX_V2_FENCE].value)
 		return 0;
@@ -62,7 +63,8 @@ static int msm_vidc_synx_fence_register(struct msm_vidc_core *core)
 		(struct synx_session *)synx_initialize(&params);
 	if (IS_ERR_OR_NULL(session)) {
 		d_vpr_e("%s: invalid synx fence session\n", __func__);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto error;
 	}
 
 	/* fill core synx fence data */
@@ -78,7 +80,12 @@ static int msm_vidc_synx_fence_register(struct msm_vidc_core *core)
 	core->synx_fence_data.queue.direction = DMA_BIDIRECTIONAL;
 
 	d_vpr_h("%s: successfully registered synx fence\n", __func__);
-	return 0;
+	return rc;
+
+error:
+	d_vpr_e("%s: failed. Disable Synx_V2 support\n", __func__);
+	core->capabilities[SUPPORTS_SYNX_V2_FENCE].value = 0;
+	return rc;
 }
 
 static int msm_vidc_synx_fence_deregister(struct msm_vidc_core *core)
