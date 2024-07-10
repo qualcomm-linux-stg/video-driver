@@ -9,7 +9,6 @@
 #include <linux/irqreturn.h>
 #include <linux/of_address.h>
 #include <linux/firmware.h>
-#include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/soc/qcom/llcc-qcom.h>
 #include <linux/iopoll.h>
 
