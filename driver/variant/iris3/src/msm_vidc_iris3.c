@@ -549,6 +549,10 @@ static int __power_off_iris3(struct msm_vidc_core *core)
 	if (!call_venus_op(core, watchdog, core, core->intr_status))
 		disable_irq_nosync(core->resource->irq);
 
+	rc = call_res_op(core, rproc_set_state, core, false);
+	if (rc)
+		d_vpr_e("%s: failed to set rproc state\n", __func__);
+
 	msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_POWER_ENABLE, 0, __func__);
 
 	return rc;
@@ -620,6 +624,12 @@ static int __power_on_iris3(struct msm_vidc_core *core)
 		return -EINVAL;
 	}
 
+	rc = call_res_op(core, rproc_set_state, core, true);
+	if (rc) {
+		d_vpr_e("%s: failed to set rproc state\n", __func__);
+		goto fail_rproc_set_state;
+	}
+
 	/* Vote for all hardware resources */
 	rc = call_res_op(core, set_bw, core, INT_MAX, INT_MAX);
 	if (rc) {
@@ -671,6 +681,8 @@ fail_power_on_hardware:
 fail_power_on_controller:
 	call_res_op(core, set_bw, core, 0, 0);
 fail_vote_buses:
+	call_res_op(core, rproc_set_state, core, false);
+fail_rproc_set_state:
 	msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_POWER_ENABLE, 0, __func__);
 	return rc;
 }
