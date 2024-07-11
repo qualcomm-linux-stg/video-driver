@@ -2998,16 +2998,20 @@ error:
 
 	return rc;
 }
-static int msm_vidc_init_data(struct msm_vidc_core *core)
+
+int msm_vidc_get_platform_data_niobe(struct msm_vidc_core *core)
 {
-	struct device *dev = NULL;
+	d_vpr_h("%s: initialize niobe data\n", __func__);
+	core->platform->data = niobe_data;
+
+	return 0;
+}
+
+int msm_vidc_init_platform_niobe(struct msm_vidc_core *core)
+{
 	int rc = 0;
 
-	dev = &core->pdev->dev;
-
-	d_vpr_h("%s: initialize niobe data\n", __func__);
-
-	core->platform->data = niobe_data;
+	d_vpr_h("%s: initialize niobe ops\n", __func__);
 	core->mem_ops = get_mem_ops_ext();
 	if (!core->mem_ops) {
 		d_vpr_e("%s: invalid memory ext ops\n", __func__);
@@ -3018,29 +3022,22 @@ static int msm_vidc_init_data(struct msm_vidc_core *core)
 		d_vpr_e("%s: invalid resource ext ops\n", __func__);
 		return -EINVAL;
 	}
-	core->fence_ops = get_synx_fence_ops();
-	if (!core->fence_ops) {
-		d_vpr_e("%s: invalid synx fence ops\n", __func__);
-		return -EINVAL;
+	if (core->capabilities[SUPPORTS_SYNX_V2_FENCE].value) {
+		core->fence_ops = get_synx_fence_ops();
+		if (!core->fence_ops) {
+			core->capabilities[SUPPORTS_SYNX_V2_FENCE].value = 0;
+			d_vpr_e("%s: invalid synx fence ops\n", __func__);
+			return -EINVAL;
+		}
+	}
+	if (core->capabilities[SUPPORTS_REMOTE_PROC].value) {
+		rc = msm_vidc_get_rproc_handle(core);
+		if (rc)
+			return rc;
 	}
 	rc = msm_vidc_niobe_check_ddr_type();
 	if (rc)
 		return rc;
 
-	rc = msm_vidc_get_rproc_handle(core);
-	if (rc)
-		return rc;
-
 	return rc;
-}
-
-int msm_vidc_init_platform_niobe(struct msm_vidc_core *core)
-{
-	int rc = 0;
-
-	rc = msm_vidc_init_data(core);
-	if (rc)
-		return rc;
-
-	return 0;
 }

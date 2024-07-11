@@ -755,7 +755,7 @@ static int msm_vidc_probe_video_device(struct platform_device *pdev)
 		goto init_core_failed;
 	}
 
-	rc = msm_vidc_init_platform(core);
+	rc = msm_vidc_init_platform_capabilities(core);
 	if (rc) {
 		d_vpr_e("%s: init platform failed with %d\n", __func__, rc);
 		rc = (rc == -EAGAIN) ? -EPROBE_DEFER : -EINVAL;
@@ -766,18 +766,6 @@ static int msm_vidc_probe_video_device(struct platform_device *pdev)
 	if (rc) {
 		d_vpr_e("%s: init resource failed with %d\n", __func__, rc);
 		goto init_res_failed;
-	}
-
-	rc = msm_vidc_init_core_caps(core);
-	if (rc) {
-		d_vpr_e("%s: init core caps failed with %d\n", __func__, rc);
-		goto init_res_failed;
-	}
-
-	rc = msm_vidc_init_instance_caps(core);
-	if (rc) {
-		d_vpr_e("%s: init inst cap failed with %d\n", __func__, rc);
-		goto init_inst_caps_fail;
 	}
 
 	rc = call_fence_op(core, fence_register, core);
@@ -861,7 +849,6 @@ sub_dev_failed:
 init_group_failed:
 	call_fence_op(core, fence_deregister, core);
 fence_reg_fail:
-init_inst_caps_fail:
 init_res_failed:
 init_plat_failed:
 init_core_failed:
