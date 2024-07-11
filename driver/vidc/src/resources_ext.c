@@ -549,7 +549,6 @@ static int __rproc_set_state_ext(struct msm_vidc_core *core, bool state)
 	else
 		msm_vidc_change_core_sub_state(core, CORE_SUBSTATE_RPROC_ENABLE, 0, __func__);
 
-	d_vpr_h("%s: %s successfully\n", __func__, state ? "enabled" : "disabled");
 	return rc;
 }
 

@@ -2963,11 +2963,9 @@ int msm_vidc_niobe_check_ddr_type(void)
 static int msm_vidc_get_rproc_handle(struct msm_vidc_core *core)
 {
 	struct device *dev = &core->pdev->dev;
+	struct rproc *rproc = NULL;
 	phandle soccp_ph;
 	int rc = 0;
-
-	if (!core->capabilities[SUPPORTS_REMOTE_PROC].value)
-		return 0;
 
 	rc = of_property_read_u32(dev->of_node, "qcom,vidc,soccp-controller", &soccp_ph);
 	if (rc) {
@@ -2976,13 +2974,23 @@ static int msm_vidc_get_rproc_handle(struct msm_vidc_core *core)
 		goto error;
 	}
 
-	core->rproc = rproc_get_by_phandle(soccp_ph);
-	if (!core->rproc) {
+	rproc = rproc_get_by_phandle(soccp_ph);
+	if (!rproc) {
 		d_vpr_e("%s: rproc get failed %u\n", __func__, soccp_ph);
 		rc = -EINVAL;
 		goto error;
 	}
 
+	/* ensure rproc fw is up, if not, defer video-driver probe */
+	if (rproc->state != RPROC_RUNNING) {
+		d_vpr_e("%s: rproc %s is not up(%d), retry again\n",
+			__func__, rproc->name, rproc->state);
+		rc = -EAGAIN;
+		goto error;
+	}
+	core->rproc = rproc;
+
+	d_vpr_h("%s: rproc %s is up and ready\n", __func__, rproc->name);
 	return rc;
 error:
 	d_vpr_e("%s failed. Disable rproc support\n", __func__);
