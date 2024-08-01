@@ -603,6 +603,10 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 
 	{SCALE_FACTOR, ENC, H264 | HEVC | APV, 1, 8, 1, 8},
 
+	{SCALE_FACTOR, DEC, H264 | HEVC | AV1, 1, 8, 1, 8},
+
+	{SCALE_ENABLE, DEC, H264 | HEVC | AV1, 0, 1, 1, 0},
+
 	{MB_CYCLES_VSP, ENC, CODECS_ALL, 25, 25, 1, 25},
 
 	{MB_CYCLES_VSP, DEC, CODECS_ALL, 25, 25, 1, 25},

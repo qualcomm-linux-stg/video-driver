@@ -143,6 +143,7 @@ static u32 msm_vidc_decoder_line_size_iris4(struct msm_vidc_inst *inst)
 	struct v4l2_format *f;
 	bool is_opb;
 	u32 color_fmt;
+	u32 ds_width, ds_height;
 
 	core = inst->core;
 	num_vpp_pipes = core->capabilities[NUM_VPP_PIPE].value;
@@ -169,18 +170,36 @@ static u32 msm_vidc_decoder_line_size_iris4(struct msm_vidc_inst *inst)
 	height = f->fmt.pix_mp.height;
 	out_min_count = inst->buffers.output.min_count;
 	out_min_count = max(vpp_delay + 1, out_min_count);
-	if (inst->codec == MSM_VIDC_H264)
-		HFI_BUFFER_LINE_H264D_IRIS4(size, width, height, is_opb,
-					    num_vpp_pipes);
-	else if (inst->codec == MSM_VIDC_HEVC || inst->codec == MSM_VIDC_HEIC)
-		HFI_BUFFER_LINE_H265D_IRIS4(size, width, height, is_opb,
-					    num_vpp_pipes);
-	else if (inst->codec == MSM_VIDC_VP9)
+	ds_width = inst->compose.width;
+	ds_height = inst->compose.height;
+	if (inst->codec == MSM_VIDC_H264) {
+		if (inst->capabilities[SCALE_ENABLE].value) {
+			HFI_BUFFER_LINE_H264D_DS_IRIS4(size, width, height,
+					ds_width, ds_height, is_opb, num_vpp_pipes);
+		} else {
+			HFI_BUFFER_LINE_H264D_IRIS4(size, width, height, is_opb,
+						num_vpp_pipes);
+		}
+	} else if (inst->codec == MSM_VIDC_HEVC || inst->codec == MSM_VIDC_HEIC) {
+		if (inst->capabilities[SCALE_ENABLE].value) {
+			HFI_BUFFER_LINE_H265D_DS_IRIS4(size, width, height,
+					ds_width, ds_height, is_opb, num_vpp_pipes);
+		} else {
+			HFI_BUFFER_LINE_H265D_IRIS4(size, width, height, is_opb,
+						num_vpp_pipes);
+		}
+	} else if (inst->codec == MSM_VIDC_VP9) {
 		HFI_BUFFER_LINE_VP9D_IRIS4(size, width, height, 0, 0,
-					   is_opb, num_vpp_pipes);
-	else if (inst->codec == MSM_VIDC_AV1)
-		HFI_BUFFER_LINE_AV1D_IRIS4(size, width, height, is_opb,
-					   num_vpp_pipes);
+					is_opb, num_vpp_pipes);
+	} else if (inst->codec == MSM_VIDC_AV1) {
+		if (inst->capabilities[SCALE_ENABLE].value) {
+			HFI_BUFFER_LINE_AV1D_DS_IRIS4(size, width, height,
+					ds_width, ds_height, is_opb, num_vpp_pipes);
+		} else {
+			HFI_BUFFER_LINE_AV1D_IRIS4(size, width, height, is_opb,
+						num_vpp_pipes);
+		}
+	}
 	i_vpr_l(inst, "%s: size %d\n", __func__, size);
 	return size;
 }
@@ -258,16 +277,12 @@ static u32 msm_vidc_decoder_dpb_size_iris4(struct msm_vidc_inst *inst)
 	 * enabled bitstreams (UBWC & linear).
 	 */
 	color_fmt = inst->capabilities[PIX_FMTS].value;
-	if (!is_linear_colorformat(color_fmt)) {
-		if (inst->codec != MSM_VIDC_AV1)
-			return size;
 
-		if (inst->codec == MSM_VIDC_AV1 &&
-			!inst->capabilities[FILM_GRAIN].value)
-			return size;
-	}
+	/* DPB buffers not required if split mode is not enabled */
+	if (!is_split_mode_enabled(inst))
+		return 0;
 
-	f = &inst->fmts[OUTPUT_PORT];
+	f = &inst->fmts[INPUT_PORT];
 	width = f->fmt.pix_mp.width;
 	height = f->fmt.pix_mp.height;
 

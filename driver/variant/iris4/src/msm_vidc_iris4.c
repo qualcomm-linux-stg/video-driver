@@ -1516,6 +1516,149 @@ decision_done:
 	return 0;
 }
 
+static int msm_vidc_decide_scaling_iris4(struct msm_vidc_inst *inst)
+{
+	u32 wxh_contraint = 32;
+	u32 aspect_ratio_w = 0, aspect_ratio_h = 0;
+	u32 factor, factor_w, factor_h;
+	u32 input_width, input_height;
+
+	/* check if scaling requested */
+	if (!inst->capabilities[SCALE_ENABLE].value)
+		return 0;
+
+	/* decide downscaing after reconfig event */
+	if (!inst->fw_min_count)
+		return 0;
+
+	/* disable downscaling if scaling is not supported */
+	if (inst->capabilities[SCALE_FACTOR].max <= 1)
+		goto exit;
+
+	/* downscaling supported for AVC, HEVC, AV1 (not VP9, APV) */
+	if (inst->codec != MSM_VIDC_H264 &&
+	    inst->codec != MSM_VIDC_HEVC &&
+	    inst->codec != MSM_VIDC_AV1)
+		goto exit;
+
+	input_width = inst->fmts[INPUT_PORT].fmt.pix_mp.width;
+	input_height = inst->fmts[INPUT_PORT].fmt.pix_mp.height;
+
+	/* downscaling not supported for odd resolution */
+	if (input_width & 0x1 || input_height & 0x1) {
+		i_vpr_h(inst, "%s: odd wxh %ux%u\n",
+			__func__, input_width, input_height);
+		goto exit;
+	}
+
+	/* downscaling not supported if crop is present */
+	if (inst->crop.top || inst->crop.left ||
+	    inst->crop.width != input_width ||
+	    inst->crop.height != input_height) {
+		i_vpr_h(inst, "%s: crop %ux%u != wxh %ux%u\n",
+			__func__, inst->crop.width, inst->crop.height,
+			input_width, input_height);
+		goto exit;
+	}
+
+	/* disable downscaling if compose not less than crop */
+	if (inst->compose.width >= inst->crop.width ||
+	    inst->compose.height >= inst->crop.height) {
+		i_vpr_h(inst, "%s: compose %ux%u >= crop %ux%u\n",
+			__func__, inst->compose.width, inst->compose.height,
+			inst->crop.width, inst->crop.height);
+		goto exit;
+	}
+
+	/*
+	 * downscaling not supported in below cases
+	 * low latency mode
+	 * film grain enabled
+	 * one pipe case
+	 * Linear OPB colorformat
+	 */
+	if (is_lowlatency_session(inst) ||
+	    inst->capabilities[FILM_GRAIN].value ||
+	    inst->capabilities[PIPE].value == MSM_VIDC_PIPE_1 ||
+	    is_linear_colorformat(inst->capabilities[PIX_FMTS].value)) {
+		i_vpr_h(inst, "%s: latency %u, linear %u, pipe %lld, film_grain %lld\n",
+			__func__, is_lowlatency_session(inst),
+			is_linear_colorformat(inst->capabilities[PIX_FMTS].value),
+			inst->capabilities[PIPE].value,
+			inst->capabilities[FILM_GRAIN].value);
+		goto exit;
+	}
+
+	/*
+	 * downscaling supported for input resolutions
+	 * 7680x4320, 4320x7680, 8192x4320 or 4320x8192 only
+	 */
+	if (input_width == 7680 && input_height == 4320) {
+		if (inst->compose.width > inst->compose.height) {
+			aspect_ratio_w = 16;
+			aspect_ratio_h = 9;
+		}
+	} else if (input_width == 4320 && input_height == 7680) {
+		if (inst->compose.width < inst->compose.height) {
+			aspect_ratio_w = 9;
+			aspect_ratio_h = 16;
+		}
+	} else if (input_width == 8192 && input_height == 4320) {
+		if (inst->compose.width > inst->compose.height) {
+			aspect_ratio_w = 19;
+			aspect_ratio_h = 10;
+		}
+	} else if (input_width == 4320 && input_height == 8192) {
+		if (inst->compose.width < inst->compose.height) {
+			aspect_ratio_w = 10;
+			aspect_ratio_h = 19;
+		}
+	}
+
+	if (!aspect_ratio_w || !aspect_ratio_h) {
+		i_vpr_h(inst, "%s: aspect ratio %ux%u\n",
+			__func__, aspect_ratio_w, aspect_ratio_h);
+		goto exit;
+	}
+
+	/* adjust compose width and height based on video hardware requirements */
+	factor_w = (inst->compose.width +
+			((aspect_ratio_w * wxh_contraint) >> 1)) /
+			(aspect_ratio_w * wxh_contraint);
+	factor_h = (inst->compose.height +
+			((aspect_ratio_h * wxh_contraint) >> 1)) /
+			(aspect_ratio_h * wxh_contraint);
+	factor = (factor_w > factor_h) ? factor_w : factor_h;
+	inst->compose.top = 0;
+	inst->compose.left = 0;
+	inst->compose.width = factor * aspect_ratio_w * wxh_contraint;
+	inst->compose.height = factor * aspect_ratio_h * wxh_contraint;
+
+	/* disable downscaling if updated compose >= input width/height */
+	if (inst->compose.width >= input_width ||
+	    inst->compose.height >= input_height)
+		goto exit;
+
+	i_vpr_h(inst,
+		"scaling enabled, input wxh: %dx%d, compose wxh: %dx%d\n",
+		input_width, input_height,
+		inst->compose.width, inst->compose.height);
+
+	return 0;
+
+exit:
+	inst->compose.top = 0;
+	inst->compose.left = 0;
+	inst->compose.width = inst->crop.width;
+	inst->compose.height = inst->crop.height;
+	msm_vidc_update_cap_value(inst, SCALE_ENABLE, 0, __func__);
+	i_vpr_h(inst, "scaling disabled, input wxh: %dx%d, compose wxh: %dx%d\n",
+		input_width, input_height,
+		inst->compose.width, inst->compose.height);
+
+	return 0;
+}
+
 int msm_vidc_adjust_bitrate_boost_iris4(void *instance, struct v4l2_ctrl *ctrl)
 {
 	s32 adjusted_value;
@@ -1603,6 +1746,7 @@ static struct msm_vidc_session_ops msm_session_ops = {
 	.decide_work_route = msm_vidc_decide_work_route_iris4,
 	.decide_work_mode = msm_vidc_decide_work_mode_iris4,
 	.decide_quality_mode = msm_vidc_decide_quality_mode_iris4,
+	.decide_scaling = msm_vidc_decide_scaling_iris4,
 };
 
 int msm_vidc_init_iris4(struct msm_vidc_core *core)

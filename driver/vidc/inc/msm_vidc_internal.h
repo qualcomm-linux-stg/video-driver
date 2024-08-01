@@ -336,6 +336,7 @@ enum msm_vidc_metadata_bits {
 	CAP(INPUT_RATE)                           \
 	CAP(TIMESTAMP_RATE)                       \
 	CAP(SCALE_FACTOR)                         \
+	CAP(SCALE_ENABLE)                         \
 	CAP(MB_CYCLES_VSP)                        \
 	CAP(MB_CYCLES_VPP)                        \
 	CAP(MB_CYCLES_LP)                         \
