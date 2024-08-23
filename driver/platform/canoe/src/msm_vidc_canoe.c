@@ -663,7 +663,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 
 	{OUTBUF_FENCE_FD, DEC, CODECS_ALL,
 		INVALID_FD, INT_MAX, 1, INVALID_FD,
-		V4L2_CID_MPEG_VIDC_OUBUF_FENCE_FD,
+		V4L2_CID_MPEG_VIDC_OUTBUF_FENCE_FD,
 		0,
 		CAP_FLAG_VOLATILE},
 
