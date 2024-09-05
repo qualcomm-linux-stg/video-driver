@@ -22,6 +22,7 @@
 #include "msm_vidc_platform.h"
 #include "msm_vidc_events.h"
 #include "venus_hfi.h"
+#include "resources.h"
 
 enum video_memory_region {
 	VIDEO_REGION_SECURE_FW_REGION_ID    = 0,
