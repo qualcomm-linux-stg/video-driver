@@ -354,7 +354,9 @@ static struct msm_platform_inst_capability instance_cap_data_niobe[] = {
 
 	{LOSSLESS_FRAME_WIDTH, ENC, HEVC, 96, 4096, 1, 1920},
 
-	{SECURE_FRAME_WIDTH, DEC, CODECS_ALL, 96, 4096, 1, 1920},
+	{SECURE_FRAME_WIDTH, DEC, CODECS_ALL, 96, 8192, 1, 1920},
+
+	{SECURE_FRAME_WIDTH, DEC, VP9 | HEIC, 96, 4096, 1, 1920},
 
 	{SECURE_FRAME_WIDTH, ENC, CODECS_ALL, 128, 4096, 1, 1920},
 
@@ -374,7 +376,9 @@ static struct msm_platform_inst_capability instance_cap_data_niobe[] = {
 
 	{LOSSLESS_FRAME_HEIGHT, ENC, HEVC, 96, 4096, 1, 1080},
 
-	{SECURE_FRAME_HEIGHT, DEC, CODECS_ALL, 96, 4096, 1, 1080},
+	{SECURE_FRAME_HEIGHT, DEC, CODECS_ALL, 96, 8192, 1, 1080},
+
+	{SECURE_FRAME_HEIGHT, DEC, VP9 | HEIC, 96, 4096, 1, 1080},
 
 	{SECURE_FRAME_HEIGHT, ENC, CODECS_ALL, 128, 4096, 1, 1080},
 
@@ -448,7 +452,13 @@ static struct msm_platform_inst_capability instance_cap_data_niobe[] = {
 	/* (4096 * 2304) / 256 */
 	{BATCH_FPS, DEC, H264 | HEVC | VP9 | AV1, 1, 120, 1, 120},
 
-	{SECURE_MBPF, ENC | DEC, H264 | HEVC | VP9 | AV1, 64, 36864, 1, 36864},
+	/* (8192 * 4320) / 256 */
+	{SECURE_MBPF, DEC, H264 | HEVC | AV1, 64, 138240, 1, 138240},
+
+	/* (4096 * 2304) / 256 */
+	{SECURE_MBPF, DEC, VP9, 64, 36864, 1, 36864},
+
+	{SECURE_MBPF, ENC, H264, 64, 36864, 1, 36864},
 
 	{SECURE_MBPF, ENC, HEVC, 36, 36864, 1, 36864},
 
