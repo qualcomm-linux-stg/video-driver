@@ -2379,7 +2379,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 		MSM_VIDC_META_DYN_ENABLE | MSM_VIDC_META_TX_INPUT,
 		0, MSM_VIDC_META_DISABLE,
 		V4L2_CID_MPEG_VIDC_METADATA_EVA_STATS,
-		HFI_PROP_EVA_STAT_INFO,
+		HFI_PROP_EVA_SV_STAT_INFO,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
 	{META_BUF_TAG, ENC, CODECS_ALL,
@@ -7780,7 +7780,8 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 			P_FRAME_QP, B_FRAME_QP, ENH_LAYER_COUNT, BIT_RATE,
 			META_ROI_INFO, MIN_QUALITY, BITRATE_BOOST, VBV_DELAY,
 			PEAK_BITRATE, SLICE_MODE, CONTENT_ADAPTIVE_CODING,
-			BLUR_TYPES, LOWLATENCY_MODE, META_TRANSCODING_STAT_INFO},
+			BLUR_TYPES, LOWLATENCY_MODE, META_EVA_STATS,
+			META_TRANSCODING_STAT_INFO},
 		msm_vidc_adjust_bitrate_mode,
 		msm_vidc_set_u32_enum},
 
@@ -8244,7 +8245,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 		msm_vidc_adjust_all_intra,
 		NULL},
 
-	{META_EVA_STATS, ENC, HEVC | APV,
+	{META_EVA_STATS, ENC, H264 | HEVC | APV,
 		{0},
 		msm_vidc_adjust_eva_stats,
 		NULL},
