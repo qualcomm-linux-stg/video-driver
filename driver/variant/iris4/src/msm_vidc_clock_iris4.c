@@ -517,7 +517,7 @@ static int calculate_apv_freq(struct api_calculation_input codec_input,
 		fmin = worker_Fmin;
 
 	temp = fmin / 1000 / 1000;
-	len = ARRAY_SIZE(frequency_table_iris4) / ARRAY_SIZE(frequency_table_iris4[0]);
+	len = ARRAY_SIZE(frequency_table_iris4[0]);
 	while (index < len - 1) {
 		if (temp >= frequency_table_iris4[0][index])
 			break;
@@ -633,7 +633,7 @@ static int calculate_vpp_min_freq(struct api_calculation_input codec_input,
 		fmin = worker_Fmin;
 
 	temp = fmin / 1000 / 1000;
-	len = ARRAY_SIZE(frequency_table_iris4) / ARRAY_SIZE(frequency_table_iris4[0]);
+	len = ARRAY_SIZE(frequency_table_iris4[0]);
 	while (index < len - 1) {
 		if (temp >= frequency_table_iris4[0][index])
 			break;
