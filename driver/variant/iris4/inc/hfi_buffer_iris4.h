@@ -2150,6 +2150,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 		SIZE_VPSS_LINE_BUF(num_vpp_pipes_enc, frame_height_coded, \
 			frame_width_coded) + \
 		SIZE_TOP_LINE_BUF_FIRST_STG_SAO(frame_width_coded); \
+		_size = _size * 4; \
 	} while (0)
 
 #define HFI_BUFFER_LINE_H264E(_size, frame_width, frame_height, is_ten_bit, \
