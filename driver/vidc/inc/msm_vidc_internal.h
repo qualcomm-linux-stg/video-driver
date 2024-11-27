@@ -666,6 +666,7 @@ enum msm_vidc_core_capability_type {
 	SSR_TYPE,
 	SUPPORTS_REMOTE_PROC,
 	SUPPORTS_FREEZE,
+	NUM_VPU,
 	CORE_CAP_MAX,
 };
 
