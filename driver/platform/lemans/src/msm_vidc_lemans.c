@@ -541,14 +541,14 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		CAP_FLAG_NONE},
 
 	/*
-	 * Client will enable V4L2_CID_MPEG_VIDC_METADATA_OUTBUF_FENCE
+	 * Client will enable V4L2_CID_MPEG_VIDC_METADATA_OUTPUT_TX_FENCE
 	 * to get output fence_id in input metadata buffer done.
 	 */
-	{META_OUTBUF_FENCE, DEC, H264 | HEVC | VP9 | AV1 | MPEG2,
+	{META_OUTPUT_TX_FENCE, DEC, H264 | HEVC | VP9 | AV1 | MPEG2,
 		MSM_VIDC_META_DISABLE,
 		MSM_VIDC_META_ENABLE | MSM_VIDC_META_RX_INPUT,
 		0, MSM_VIDC_META_DISABLE,
-		V4L2_CID_MPEG_VIDC_METADATA_OUTBUF_FENCE,
+		V4L2_CID_MPEG_VIDC_METADATA_OUTPUT_TX_FENCE,
 		HFI_PROP_FENCE,
 		CAP_FLAG_BITMASK | CAP_FLAG_META},
 
@@ -2017,7 +2017,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_lema
 		NULL,
 		msm_vidc_set_u32},
 
-	{META_OUTBUF_FENCE, DEC, H264 | HEVC | AV1 | VP9,
+	{META_OUTPUT_TX_FENCE, DEC, H264 | HEVC | AV1 | VP9,
 		{0},
 		NULL,
 		NULL},

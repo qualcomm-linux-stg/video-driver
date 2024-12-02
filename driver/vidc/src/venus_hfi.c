@@ -1822,7 +1822,7 @@ int venus_hfi_queue_input_buffer(struct msm_vidc_inst *inst,
 			goto unlock;
 	}
 
-	if (is_inpbuf_fence_rx_enabled(inst)) {
+	if (is_input_rx_fence_enabled(inst)) {
 		/* get hfi port */
 		hfi_port = get_hfi_port_from_buffer_type(inst, buffer->type);
 
@@ -1839,7 +1839,7 @@ int venus_hfi_queue_input_buffer(struct msm_vidc_inst *inst,
 		if (rc)
 			goto unlock;
 
-		fence_type = inst->capabilities[INPBUF_FENCE_TYPE].value;
+		fence_type = inst->capabilities[INPUT_RX_FENCE_TYPE].value;
 		rc = hfi_create_packet(inst->packet,
 				inst->packet_size,
 				HFI_PROP_FENCE_TYPE,
@@ -1852,7 +1852,7 @@ int venus_hfi_queue_input_buffer(struct msm_vidc_inst *inst,
 		if (rc)
 			goto unlock;
 
-		fence_direction = inst->capabilities[INPBUF_FENCE_DIRECTION].value;
+		fence_direction = inst->capabilities[INPUT_RX_FENCE_DIRECTION].value;
 		rc = hfi_create_packet(inst->packet,
 				inst->packet_size,
 				HFI_PROP_FENCE_DIRECTION,
@@ -1969,7 +1969,7 @@ int venus_hfi_queue_output_buffer(struct msm_vidc_inst *inst,
 			goto unlock;
 	}
 
-	if (is_outbuf_fence_tx_enabled(inst)) {
+	if (is_output_tx_fence_enabled(inst)) {
 		/* get hfi port */
 		hfi_port = get_hfi_port_from_buffer_type(inst, buffer->type);
 
@@ -1986,7 +1986,7 @@ int venus_hfi_queue_output_buffer(struct msm_vidc_inst *inst,
 		if (rc)
 			goto unlock;
 
-		fence_type = inst->capabilities[OUTBUF_FENCE_TYPE].value;
+		fence_type = inst->capabilities[OUTPUT_TX_FENCE_TYPE].value;
 		rc = hfi_create_packet(inst->packet,
 				inst->packet_size,
 				HFI_PROP_FENCE_TYPE,
@@ -1999,7 +1999,7 @@ int venus_hfi_queue_output_buffer(struct msm_vidc_inst *inst,
 		if (rc)
 			goto unlock;
 
-		fence_direction = inst->capabilities[OUTBUF_FENCE_DIRECTION].value;
+		fence_direction = inst->capabilities[OUTPUT_TX_FENCE_DIRECTION].value;
 		rc = hfi_create_packet(inst->packet,
 				inst->packet_size,
 				HFI_PROP_FENCE_DIRECTION,

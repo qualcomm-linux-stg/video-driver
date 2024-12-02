@@ -232,6 +232,18 @@ enum v4l2_mpeg_vidc_av1_tier {
 
 #define V4L2_CID_MPEG_VIDC_CAPTURE_DATA_OFFSET               (VIDC_BASE + 0x4E)
 
+/* Control to enable input buffer TX fence (video device signal) feature */
+#define V4L2_CID_MPEG_VIDC_INPUT_TX_FENCE_ENABLE             (VIDC_BASE + 0x54)
+
+/* Control to set input buffer TX fence (video device signal) type */
+#define V4L2_CID_MPEG_VIDC_INPUT_TX_FENCE_TYPE               (VIDC_BASE + 0x55)
+
+/* Control to enable output buffer RX fence (video device wait) feature */
+#define V4L2_CID_MPEG_VIDC_OUTPUT_RX_FENCE_ENABLE            (VIDC_BASE + 0x56)
+
+/* Control to set output buffer RX fence (video device wait) type */
+#define V4L2_CID_MPEG_VIDC_OUTPUT_RX_FENCE_TYPE              (VIDC_BASE + 0x57)
+
 /* Profile information for APV */
 #define V4L2_CID_MPEG_VIDC_APV_PROFILE                       (VIDC_BASE + 0x60)
 enum v4l2_mpeg_vidc_apv_profile {
