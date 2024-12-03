@@ -867,7 +867,7 @@ struct msm_vidc_hfi_frame_info {
 	u32                    fence_error;
 	u32                    av1_tile_rows_columns;
 	bool                   av1_non_uniform_tile_spacing;
-	u32                    fence_id[MAX_FENCE_COUNT];
+	u64                    fence_id[MAX_FENCE_COUNT];
 	u32                    fence_count;
 };
 
@@ -957,8 +957,10 @@ enum msm_vidc_fence_direction {
 struct msm_vidc_fence_context {
 	char                      name[MAX_MSM_VIDC_NAME_LENGTH];
 	u64                       ctx_num;
-	u64                       input_seq_num;
-	u64                       output_seq_num;
+	u64                       seq_num;
+	struct list_head          fence_list; /* struct msm_vidc_fence */
+	u32                       fences_per_buffer_counter;
+	u64                       prev_seqno;
 };
 
 struct msm_vidc_fence {
@@ -974,6 +976,7 @@ struct msm_vidc_fence {
 	spinlock_t                      lock;
 	struct sync_file               *sync_file;
 	struct dma_fence               *imp_fence;
+	struct msm_vidc_fence_context  *f_context;
 };
 
 struct msm_vidc_fence_info {
@@ -1033,8 +1036,10 @@ struct msm_vidc_buffer {
 	u32                                dbuf_get:1;
 	u32                                start_time_ms;
 	u32                                end_time_ms;
-	u64                                fence_id[MAX_FENCE_COUNT];
-	u32                                fence_count;
+	u32                                num_rx_fences;
+	u32                                num_tx_fences;
+	u64                                rx_fences[MAX_FENCE_COUNT];
+	u64                                tx_fences[MAX_FENCE_COUNT];
 };
 
 struct msm_vidc_buffers {
