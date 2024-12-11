@@ -746,6 +746,12 @@ disable_power:
 		rc = 0;
 	}
 
+	rc = call_res_op(core, clk_disable, core, "video_cc_mvs0b_clk");
+	if (rc) {
+		d_vpr_e("%s: disable unprepare video_cc_mvs0b_clk failed\n", __func__);
+		rc = 0;
+	}
+
 	return rc;
 }
 
@@ -1033,6 +1039,10 @@ static int __power_on_iris4_hardware(struct msm_vidc_core *core)
 	if (rc)
 		goto fail_clk_controller;
 
+	rc = call_res_op(core, clk_enable, core, "video_cc_mvs0b_clk");
+	if (rc)
+		goto fail_clk_bse_controller;
+
 	rc = __read_register(core, WRAPPER_EFUSE_MONITOR_IRIS4, &value);
 	if (rc)
 		goto fail_read_efuse;
@@ -1077,6 +1087,9 @@ fail_clk_vpp0:
 		call_res_op(core, gdsc_off, core, "vpp0");
 fail_regulator_vpp0:
 fail_read_efuse:
+	call_res_op(core, clk_disable, core, "video_cc_mvs0b_clk");
+fail_clk_bse_controller:
+	call_res_op(core, clk_disable, core, "video_cc_mvs0_clk");
 fail_clk_controller:
 	call_res_op(core, clk_disable, core, "video_cc_mvs0_freerun_clk");
 fail_clk_freerun:
