@@ -18,7 +18,7 @@
 #include "msm_vidc_platform_ext.h"
 #include "msm_vidc_memory_ext.h"
 #include "hfi_property.h"
-#include "msm_vidc_iris33_au.h"
+#include "msm_vidc_iris36.h"
 #include "hfi_command.h"
 #include "resources.h"
 #include "resources_ext.h"
@@ -2150,7 +2150,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_nord
 
 	{BITRATE_BOOST, ENC, H264|HEVC,
 		{0},
-		msm_vidc_adjust_bitrate_boost_iris33_au,
+		msm_vidc_adjust_bitrate_boost_iris36,
 		msm_vidc_set_vbr_related_properties},
 
 	{MIN_QUALITY, ENC, H264,
