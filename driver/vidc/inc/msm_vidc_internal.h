@@ -689,7 +689,7 @@ enum msm_vidc_inst_capability_flags {
 	CAP_FLAG_BITMASK                 = BIT(5),
 	CAP_FLAG_VOLATILE                = BIT(6),
 	CAP_FLAG_META                    = BIT(7),
-	CAP_FLAG_U8                      = BIT(8),
+	CAP_FLAG_BLOB                    = BIT(8),
 };
 
 struct msm_vidc_inst_cap {

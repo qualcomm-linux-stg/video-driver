@@ -797,7 +797,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 		0, sizeof(struct v4l2_vidc_fence_info), 1, 0,
 		V4L2_CID_MPEG_VIDC_FENCE_INFO,
 		0,
-		CAP_FLAG_U8 | CAP_FLAG_DYNAMIC_ALLOWED},
+		CAP_FLAG_BLOB | CAP_FLAG_DYNAMIC_ALLOWED},
 
 	/*
 	 * Client to do set_ctrl with INPUT_RX_FENCE_FD to set fence_fd.
@@ -2700,7 +2700,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe_sku_v2[] = {
 		0, sizeof(struct v4l2_vidc_fence_info), 1, 0,
 		V4L2_CID_MPEG_VIDC_FENCE_INFO,
 		0,
-		CAP_FLAG_U8 | CAP_FLAG_DYNAMIC_ALLOWED},
+		CAP_FLAG_BLOB | CAP_FLAG_DYNAMIC_ALLOWED},
 
 	/*
 	 * Client to do set_ctrl with INPUT_RX_FENCE_FD to set fence_fd.
@@ -4519,7 +4519,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe_sku_v1[] = {
 		0, sizeof(struct v4l2_vidc_fence_info), 1, 0,
 		V4L2_CID_MPEG_VIDC_FENCE_INFO,
 		0,
-		CAP_FLAG_U8 | CAP_FLAG_DYNAMIC_ALLOWED},
+		CAP_FLAG_BLOB | CAP_FLAG_DYNAMIC_ALLOWED},
 
 	/*
 	 * Client to do set_ctrl with INPUT_RX_FENCE_FD to set fence_fd.

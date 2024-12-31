@@ -526,14 +526,14 @@ int msm_vidc_populate_fence_info(struct msm_vidc_inst *inst,
 	}
 
 	/* sanitize rx fence count */
-	if (rx_fence_count < 1 || rx_fence_count > MAX_FENCE_COUNT) {
+	if (rx_fence_count < 0 || rx_fence_count > MAX_FENCE_COUNT) {
 		i_vpr_e(inst, "%s: %s: invalid rx fence count %d\n", __func__,
 			buf_name(buf->type), rx_fence_count);
 		return -EINVAL;
 	}
 
 	/* sanitize tx fence count */
-	if (tx_fence_count < 1 || tx_fence_count > MAX_FENCE_COUNT) {
+	if (tx_fence_count < 0 || tx_fence_count > MAX_FENCE_COUNT) {
 		i_vpr_e(inst, "%s: %s: invalid tx fence count %d\n", __func__,
 			buf_name(buf->type), tx_fence_count);
 		return -EINVAL;
