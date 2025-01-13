@@ -273,6 +273,12 @@ static const struct msm_vidc_compat_handle compat_handle[] = {
 		.init_platform              = msm_vidc_init_platform_canoe,
 		.init_iris                  = msm_vidc_init_iris4,
 	},
+	{
+		.compat                     = "qcom,canoe-vidc-v2",
+		.get_platform_data          = msm_vidc_get_platform_data_canoe,
+		.init_platform              = msm_vidc_init_platform_canoe,
+		.init_iris                  = msm_vidc_init_iris4,
+	},
 #endif
 #if defined(CONFIG_MSM_VIDC_SERAPH)
 	{
