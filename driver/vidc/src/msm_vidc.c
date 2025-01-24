@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <media/v4l2-event.h>
@@ -95,6 +95,27 @@ int msm_vidc_poll(struct msm_vidc_inst *inst, struct file *filp,
 	poll |= get_poll_flags(inst, OUTPUT_PORT);
 
 	return poll;
+}
+
+int msm_vidc_mmap(struct msm_vidc_inst *inst, struct file *filp, struct vm_area_struct *vma)
+{
+	unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
+	int ret = 0;
+
+	if (offset < SRC_META_QUEUE_OFF_BASE) {
+		ret = vb2_mmap(inst->bufq[INPUT_PORT].vb2q, vma);
+	} else if (offset < DST_QUEUE_OFF_BASE) {
+		vma->vm_pgoff -= (SRC_META_QUEUE_OFF_BASE >> PAGE_SHIFT);
+		ret = vb2_mmap(inst->bufq[INPUT_META_PORT].vb2q, vma);
+	} else if (offset < DST_META_QUEUE_OFF_BASE) {
+		vma->vm_pgoff -= (DST_QUEUE_OFF_BASE >> PAGE_SHIFT);
+		ret = vb2_mmap(inst->bufq[OUTPUT_PORT].vb2q, vma);
+	} else {
+		vma->vm_pgoff -= (DST_META_QUEUE_OFF_BASE >> PAGE_SHIFT);
+		ret = vb2_mmap(inst->bufq[OUTPUT_META_PORT].vb2q, vma);
+	}
+
+	return ret;
 }
 
 int msm_vidc_querycap(struct msm_vidc_inst *inst, void *data)
@@ -337,6 +358,24 @@ int msm_vidc_querybuf(struct msm_vidc_inst *inst, void *data)
 		goto exit;
 	}
 
+	if (b->memory == V4L2_MEMORY_MMAP) {
+		switch (port) {
+		case INPUT_PORT:
+			b->m.planes[0].m.mem_offset += 0;
+			break;
+		case INPUT_META_PORT:
+			b->m.planes[0].m.mem_offset += SRC_META_QUEUE_OFF_BASE;
+			break;
+		case OUTPUT_PORT:
+			b->m.planes[0].m.mem_offset += DST_QUEUE_OFF_BASE;
+			break;
+		case OUTPUT_META_PORT:
+			b->m.planes[0].m.mem_offset += DST_META_QUEUE_OFF_BASE;
+			break;
+		default:
+			break;
+		}
+	}
 exit:
 	return rc;
 }
@@ -387,6 +426,29 @@ int msm_vidc_prepare_buf(struct msm_vidc_inst *inst, void *data)
 	rc = vb2_prepare_buf(q, vdev->v4l2_dev->mdev, b);
 	if (rc) {
 		i_vpr_e(inst, "%s: failed with %d\n", __func__, rc);
+		goto exit;
+	}
+
+exit:
+	return rc;
+}
+
+int msm_vidc_exportbuf(struct msm_vidc_inst *inst, void *data)
+{
+	struct v4l2_exportbuffer *eb = data;
+	int rc = 0;
+	struct vb2_queue *q;
+
+	q = msm_vidc_get_vb2q(inst, eb->type, __func__);
+	if (!q) {
+		rc = -EINVAL;
+		goto exit;
+	}
+
+	rc = vb2_expbuf(q, eb);
+	if (rc) {
+		i_vpr_e(inst, "%s: vb2_expbuf(%d) failed, %d\n",
+			__func__, eb->type, rc);
 		goto exit;
 	}
 

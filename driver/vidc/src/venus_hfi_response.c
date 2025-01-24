@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/irqreturn.h>
@@ -610,6 +610,9 @@ static int handle_read_only_buffer(struct msm_vidc_inst *inst,
 		ro_buf->fd = buf->fd;
 		ro_buf->dmabuf = buf->dmabuf;
 		ro_buf->device_addr = buf->device_addr;
+		ro_buf->kvaddr = buf->kvaddr;
+		ro_buf->handler = buf->handler;
+		ro_buf->refcount = buf->refcount;
 		ro_buf->data_offset = buf->data_offset;
 		ro_buf->dbuf_get = buf->dbuf_get;
 		buf->dbuf_get = 0;

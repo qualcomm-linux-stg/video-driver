@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <media/v4l2-event.h>
@@ -111,6 +111,30 @@ static unsigned int msm_v4l2_poll(struct file *filp, struct poll_table_struct *p
 exit:
 	put_inst(inst);
 	return poll;
+}
+
+static int msm_v4l2_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	struct msm_vidc_inst *inst = get_vidc_inst(filp, NULL);
+	int ret;
+
+	inst = get_inst_ref(g_core, inst);
+	if (!inst) {
+		d_vpr_e("%s: invalid instance\n", __func__);
+		return -ENOMEM;
+	}
+
+	if (is_session_error(inst)) {
+		i_vpr_e(inst, "%s: inst in error state\n", __func__);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ret = msm_vidc_mmap((void *)inst, filp, vma);
+
+exit:
+	put_inst(inst);
+	return ret;
 }
 
 static int msm_v4l2_open(struct file *filp)
@@ -253,6 +277,37 @@ static int msm_v4l2_prepare_buf(struct file *filp, void *fh,
 	void *instance = get_vidc_inst(filp, fh);
 
 	return msm_vidc_session(instance, msm_vidc_prepare_buf, data, false, __func__);
+}
+
+static int msm_v4l2_export_buf(struct file *filp, void *fh,
+			struct v4l2_exportbuffer *eb)
+{
+	struct msm_vidc_inst *inst = get_vidc_inst(filp, fh);
+	int rc = 0;
+
+	inst = get_inst_ref(g_core, inst);
+	if (!inst || !eb) {
+		d_vpr_e("%s: invalid instance\n", __func__);
+		return -EINVAL;
+	}
+
+	client_lock(inst, __func__);
+	inst_lock(inst, __func__);
+	if (is_session_error(inst)) {
+		i_vpr_e(inst, "%s: inst in error state\n", __func__);
+		rc = -EBUSY;
+		goto unlock;
+	}
+	rc = msm_vidc_exportbuf((void *)inst, eb);
+	if (rc)
+		goto unlock;
+
+unlock:
+	inst_unlock(inst, __func__);
+	client_unlock(inst, __func__);
+	put_inst(inst);
+
+	return rc;
 }
 
 static int msm_v4l2_qbuf(struct file *filp, void *fh,
@@ -451,6 +506,7 @@ static const struct v4l2_file_operations msm_v4l2_file_operations = {
 	.release                        = msm_v4l2_close,
 	.unlocked_ioctl                 = video_ioctl2,
 	.poll                           = msm_v4l2_poll,
+	.mmap                           = msm_v4l2_mmap,
 };
 
 static const struct v4l2_ioctl_ops msm_v4l2_ioctl_ops_enc = {
@@ -485,6 +541,7 @@ static const struct v4l2_ioctl_ops msm_v4l2_ioctl_ops_enc = {
 	.vidioc_querybuf                = msm_v4l2_querybuf,
 	.vidioc_create_bufs             = msm_v4l2_create_bufs,
 	.vidioc_prepare_buf             = msm_v4l2_prepare_buf,
+	.vidioc_expbuf                  = msm_v4l2_export_buf,
 	.vidioc_qbuf                    = msm_v4l2_qbuf,
 	.vidioc_dqbuf                   = msm_v4l2_dqbuf,
 	.vidioc_streamon                = msm_v4l2_streamon,
@@ -527,6 +584,7 @@ static const struct v4l2_ioctl_ops msm_v4l2_ioctl_ops_dec = {
 	.vidioc_querybuf                = msm_v4l2_querybuf,
 	.vidioc_create_bufs             = msm_v4l2_create_bufs,
 	.vidioc_prepare_buf             = msm_v4l2_prepare_buf,
+	.vidioc_expbuf                  = msm_v4l2_export_buf,
 	.vidioc_qbuf                    = msm_v4l2_qbuf,
 	.vidioc_dqbuf                   = msm_v4l2_dqbuf,
 	.vidioc_streamon                = msm_v4l2_streamon,
