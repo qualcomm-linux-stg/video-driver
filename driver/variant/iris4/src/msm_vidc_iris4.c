@@ -961,6 +961,10 @@ static int __power_off_iris4(struct msm_vidc_core *core)
 	if (rc)
 		d_vpr_e("%s: resetting core clocks failed\n", __func__);
 
+	rc = call_res_op(core, gdsc_sw_ctrl, core);
+	if (rc)
+		d_vpr_e("%s: gdsc_sw_ctrl failed\n", __func__);
+
 	if (__power_off_iris4_apv(core))
 		d_vpr_e("%s: failed to power off apv\n", __func__);
 
