@@ -2925,12 +2925,6 @@ static const struct clk_rst_table seraph_clk_reset_table[] = {
 	{ "video_mvs0c_freerun_reset",          0  },
 };
 
-/* name, llcc_id */
-static const struct subcache_table seraph_subcache_table[] = {
-	{ "vidsc0",     LLCC_VIDSC0 },
-	{ "vidvsp",     LLCC_VIDVSP },
-};
-
 /* name, start, size, secure, dma_coherant, region, dma_mask */
 const struct context_bank_table seraph_context_bank_table[] = {
 	{"qcom,vidc,cb-sec-non-pxl",   0x01000000, 0x32000000, 1, 0, MSM_VIDC_SECURE_NONPIXEL,  0 },
@@ -3074,8 +3068,6 @@ static const struct msm_vidc_platform_data seraph_data = {
 	.clk_tbl_size = ARRAY_SIZE(seraph_clk_table),
 	.clk_rst_tbl = seraph_clk_reset_table,
 	.clk_rst_tbl_size = ARRAY_SIZE(seraph_clk_reset_table),
-	.subcache_tbl = seraph_subcache_table,
-	.subcache_tbl_size = ARRAY_SIZE(seraph_subcache_table),
 
 	/* populate context bank */
 	.context_bank_tbl = seraph_context_bank_table,
@@ -3087,7 +3079,7 @@ static const struct msm_vidc_platform_data seraph_data = {
 	.clock_source_scaling_ratio = 1,
 	.fwname = "vpu40_2v",
 	.pas_id = 9,
-	.supports_mmrm = 1,
+	.supports_mmrm = 0,
 
 	/* caps related resorces */
 	.core_data = core_data_seraph,
