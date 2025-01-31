@@ -891,6 +891,9 @@ int msm_vidc_adjust_profile(void *instance, struct v4l2_ctrl *ctrl)
 	if (pix_fmt == MSM_VIDC_FMT_TP10C || pix_fmt == MSM_VIDC_FMT_P010) {
 		if (is_image_session(inst))
 			adjusted_value = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_STILL_PICTURE;
+		else if (inst->capabilities[PROFILE].value ==
+				V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_MULTIVIEW)
+			adjusted_value = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10_MULTIVIEW;
 		else
 			adjusted_value = V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10;
 	} else {
