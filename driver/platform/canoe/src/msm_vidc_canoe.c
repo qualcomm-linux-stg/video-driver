@@ -8585,7 +8585,7 @@ static struct msm_vidc_efuse_data efuse_data_canoe[] = {
 	/*IRIS APV Disable*/
 	EFUSE_ENTRY(0x221C8114, 4, 0x800000, 0x16, SKU_VERSION),
 	/*IRIS4 1 Pipe*/
-	EFUSE_ENTRY(0x221C8114, 4, 0x100000, 0x18, SKU_VERSION),
+	EFUSE_ENTRY(0x221C8114, 4, 0x1000000, 0x18, SKU_VERSION),
 };
 
 static const struct msm_vidc_platform_data canoe_data = {
