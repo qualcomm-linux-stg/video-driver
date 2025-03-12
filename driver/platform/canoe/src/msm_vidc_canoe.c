@@ -33,7 +33,7 @@
 #define MAX_BITRATE             400000000
 #define MAX_BITRATE_HEVC        180000000
 #define MAX_BITRATE_H264        220000000
-#define APV_MAX_BITRATE         3300000000 /* 3.3 Gpbs */
+#define APV_MAX_BITRATE         2000000000 /* 2 Gpbs */
 #define DEFAULT_BITRATE         20000000
 #define APV_DEFAULT_BITRATE     1000000000
 #define MINIMUM_FPS             1
