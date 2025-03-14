@@ -7991,11 +7991,11 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 	 */
 
 	{PIX_FMTS, ENC, H264,
-		{META_ROI_INFO, IR_PERIOD, CSC}},
+		{IR_PERIOD, CSC}},
 
 	{PIX_FMTS, ENC, HEVC,
 		{PROFILE, MIN_FRAME_QP, MAX_FRAME_QP, I_FRAME_QP, P_FRAME_QP,
-			B_FRAME_QP, META_ROI_INFO, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
+			B_FRAME_QP, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
 			LTR_COUNT, CSC}},
 
 	{PIX_FMTS, ENC, HEIC,
@@ -8731,11 +8731,11 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 	 */
 
 	{PIX_FMTS, ENC, H264,
-		{META_ROI_INFO, IR_PERIOD, CSC}},
+		{IR_PERIOD, CSC}},
 
 	{PIX_FMTS, ENC, HEVC,
 		{PROFILE, MIN_FRAME_QP, MAX_FRAME_QP, I_FRAME_QP, P_FRAME_QP,
-			B_FRAME_QP, META_ROI_INFO, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
+			B_FRAME_QP, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
 			LTR_COUNT, CSC}},
 
 	{PIX_FMTS, ENC, HEIC,
@@ -9353,7 +9353,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 
 	{META_ROI_INFO, ENC, H264 | HEVC,
 		{MIN_QUALITY, IR_PERIOD, BLUR_TYPES},
-		msm_vidc_adjust_roi_info,
+		msm_vidc_adjust_roi_info_iris4,
 		NULL},
 
 	{GRID_ENABLE, ENC, HEIC,
@@ -9422,11 +9422,11 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 	 */
 
 	{PIX_FMTS, ENC, H264,
-		{META_ROI_INFO, IR_PERIOD, CSC}},
+		{IR_PERIOD, CSC}},
 
 	{PIX_FMTS, ENC, HEVC,
 		{PROFILE, MIN_FRAME_QP, MAX_FRAME_QP, I_FRAME_QP, P_FRAME_QP,
-			B_FRAME_QP, META_ROI_INFO, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
+			B_FRAME_QP, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
 			LTR_COUNT, CSC}},
 
 	{PIX_FMTS, ENC, HEIC,
@@ -10070,7 +10070,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 
 	{META_ROI_INFO, ENC, H264 | HEVC,
 		{MIN_QUALITY, IR_PERIOD, BLUR_TYPES},
-		msm_vidc_adjust_roi_info,
+		msm_vidc_adjust_roi_info_iris4,
 		NULL},
 
 	{GRID_ENABLE, ENC, HEIC,
@@ -10165,11 +10165,11 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 	 */
 
 	{PIX_FMTS, ENC, H264,
-		{META_ROI_INFO, IR_PERIOD, CSC}},
+		{IR_PERIOD, CSC}},
 
 	{PIX_FMTS, ENC, HEVC,
 		{PROFILE, MIN_FRAME_QP, MAX_FRAME_QP, I_FRAME_QP, P_FRAME_QP,
-			B_FRAME_QP, META_ROI_INFO, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
+			B_FRAME_QP, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
 			LTR_COUNT, CSC}},
 
 	{PIX_FMTS, ENC, HEIC,
@@ -10788,7 +10788,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 
 	{META_ROI_INFO, ENC, H264 | HEVC,
 		{MIN_QUALITY, IR_PERIOD, BLUR_TYPES},
-		msm_vidc_adjust_roi_info,
+		msm_vidc_adjust_roi_info_iris4,
 		NULL},
 
 	{GRID_ENABLE, ENC, HEIC,
