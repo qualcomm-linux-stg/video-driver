@@ -1738,8 +1738,8 @@ static struct msm_platform_inst_capability instance_cap_data_seraph[] = {
 
 	{STAGE, DEC|ENC, H264 | HEVC | VP9 | HEIC | AV1,
 		MSM_VIDC_STAGE_1,
-		MSM_VIDC_STAGE_2, 1,
-		MSM_VIDC_STAGE_2,
+		MSM_VIDC_STAGE_1, 1,
+		MSM_VIDC_STAGE_1,
 		0,
 		HFI_PROP_STAGE},
 
