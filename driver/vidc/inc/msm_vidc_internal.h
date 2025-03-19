@@ -679,6 +679,7 @@ enum msm_vidc_core_capability_type {
 	SUPPORTS_MINIDUMP,
 	SUPPORTS_DEEPSLEEP,
 	NUM_VPU,
+	SKIP_DELAYED_UNMAP,
 	CORE_CAP_MAX,
 };
 
