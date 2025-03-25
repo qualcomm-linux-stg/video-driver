@@ -1874,14 +1874,11 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 			profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10)) \
 			num_ref = 3; \
 		if (_total_hb_layers > 1) { \
-			if (codec_standard == HFI_CODEC_ENCODE_HEVC) { \
-				num_ref = (_total_hb_layers); \
-				if (profile == HFI_H265_PROFILE_MULTIVIEW_MAIN || \
-					profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10) \
-					num_ref = num_ref * 2; \
-			} else if (codec_standard == HFI_CODEC_ENCODE_AVC) { \
-				num_ref = (1 << (_total_hb_layers - 2)) + 1; \
-			} \
+			num_ref = _total_hb_layers; \
+			if (codec_standard == HFI_CODEC_ENCODE_HEVC && \
+				(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN || \
+				profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10)) \
+				num_ref = num_ref * 2; \
 		} \
 		num_recon = num_ref + 1; \
 	} while (0)
