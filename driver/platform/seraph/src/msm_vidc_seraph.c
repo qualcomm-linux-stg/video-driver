@@ -589,6 +589,10 @@ static struct msm_platform_inst_capability instance_cap_data_seraph[] = {
 
 	{SCALE_FACTOR, ENC, H264 | HEVC, 1, 8, 1, 8},
 
+	{SCALE_FACTOR, DEC, H264 | HEVC | AV1, 1, 8, 1, 8},
+
+	{SCALE_ENABLE, DEC, H264 | HEVC | AV1, 0, 1, 1, 0},
+
 	{MB_CYCLES_VSP, ENC, CODECS_ALL, 25, 25, 1, 25},
 
 	{MB_CYCLES_VSP, DEC, CODECS_ALL, 25, 25, 1, 25},
@@ -2197,11 +2201,11 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sera
 	 */
 
 	{PIX_FMTS, ENC, H264,
-		{META_ROI_INFO, IR_PERIOD, CSC}},
+		{IR_PERIOD, CSC}},
 
 	{PIX_FMTS, ENC, HEVC,
 		{PROFILE, MIN_FRAME_QP, MAX_FRAME_QP, I_FRAME_QP, P_FRAME_QP,
-			B_FRAME_QP, META_ROI_INFO, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
+			B_FRAME_QP, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
 			LTR_COUNT, CSC}},
 
 	{PIX_FMTS, ENC, HEIC,
@@ -2819,7 +2823,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_sera
 
 	{META_ROI_INFO, ENC, H264 | HEVC,
 		{MIN_QUALITY, IR_PERIOD, BLUR_TYPES},
-		msm_vidc_adjust_roi_info,
+		msm_vidc_adjust_roi_info_iris4,
 		NULL},
 
 	{GRID_ENABLE, ENC, HEIC,
