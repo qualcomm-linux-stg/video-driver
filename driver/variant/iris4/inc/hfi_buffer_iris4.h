@@ -1988,7 +1988,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 			/* Avoid 512 Bytes allocation in case of 1Pipe HEVC Direct Mode*/ \
 			_size = 0; \
 		if (lookahead) \
-			_size = (_size << 1) + bitstream_size; \
+			_size = (_size << 1) +  (5 * bitstream_size); \
 	} while (0)
 
 #define HFI_BUFFER_BIN_H264E(_size, rc_type, frame_width, frame_height, \
@@ -2615,7 +2615,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 	} while (0)
 
 #define HFI_BUFFER_COMV_ENC(_size, frame_width, frame_height, lcu_size, \
-			num_recon, standard, profile) \
+			num_recon, standard, profile, lookahead) \
 	do { \
 		HFI_U32 size_colloc_mv = 0, size_colloc_rc = 0; \
 		HFI_U32 mb_width = ((frame_width) + 15) >> 4; \
@@ -2641,16 +2641,20 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 			size_colloc_rc = HFI_ALIGN(size_colloc_rc, \
 				VENUS_DMA_ALIGNMENT) * HFI_MAX_COL_FRAME; \
 		} \
+		if (lookahead) \
+			size_colloc_rc = size_colloc_rc * 2; \
 		_size = size_colloc_mv + size_colloc_rc; \
 	} while (0)
 
-#define HFI_BUFFER_COMV_H264E(_size, frame_width, frame_height, num_recon, profile) \
+#define HFI_BUFFER_COMV_H264E(_size, frame_width, frame_height, \
+		num_recon, profile, lookahead) \
 	HFI_BUFFER_COMV_ENC(_size, frame_width, frame_height, 16, \
-		num_recon, HFI_CODEC_ENCODE_AVC, profile)
+		num_recon, HFI_CODEC_ENCODE_AVC, profile, lookahead)
 
-#define HFI_BUFFER_COMV_H265E(_size, frame_width, frame_height, num_recon, profile) \
+#define HFI_BUFFER_COMV_H265E(_size, frame_width, frame_height, \
+		num_recon, profile, lookahead) \
 	HFI_BUFFER_COMV_ENC(_size, frame_width, frame_height, 32,\
-		num_recon, HFI_CODEC_ENCODE_HEVC, profile)
+		num_recon, HFI_CODEC_ENCODE_HEVC, profile, lookahead)
 
 #define HFI_BUFFER_NON_COMV_ENC(_size, frame_width, frame_height, \
 			num_vpp_pipes_enc, lcu_size, standard, profile, lookahead) \
@@ -2682,6 +2686,9 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 				(profile == HFI_H265_PROFILE_MAIN_10)) ? HDR10_LUT_TBL_SIZE : 0); \
 		if (lookahead) { \
 			_size = (_size << 1); \
+		} \
+		if (lookahead && (frame_width_coded * frame_height_coded <= 352*288)) { \
+			_size = _size + 16000; \
 		} \
 	} while (0)
 
@@ -2832,6 +2839,8 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 				(profile == HFI_H265_PROFILE_MULTIVIEW_MAIN || \
 				profile == HFI_H265_PROFILE_MULTIVIEW_MAIN_10)) \
 				numInput = (((1 << (TotalHBLayers - 1)) * 2) - 1) + 2; \
+			if (lookahead_size > 0) \
+				numInput = numInput + 1; \
 		}                                                         \
 		numInput = numInput + lookahead_size; \
 	} while (0)

@@ -389,19 +389,22 @@ static u32 msm_vidc_get_recon_buf_count(struct msm_vidc_inst *inst)
 static u32 msm_vidc_encoder_comv_size_iris4(struct msm_vidc_inst *inst)
 {
 	u32 size = 0;
-	u32 width, height, num_recon = 0, profile;
+	u32 width, height, num_recon = 0, profile, lookahead_enable;
 	struct v4l2_format *f;
 
 	profile = inst->capabilities[PROFILE].value;
 	f = &inst->fmts[OUTPUT_PORT];
 	width = f->fmt.pix_mp.width;
 	height = f->fmt.pix_mp.height;
+	lookahead_enable = inst->capabilities[LOOKAHEAD_ENCODE_ENABLE].value;
 
 	num_recon = msm_vidc_get_recon_buf_count(inst);
 	if (inst->codec == MSM_VIDC_H264)
-		HFI_BUFFER_COMV_H264E(size, width, height, num_recon, profile);
+		HFI_BUFFER_COMV_H264E(size, width, height, num_recon, profile,
+				lookahead_enable);
 	else if (inst->codec == MSM_VIDC_HEVC || inst->codec == MSM_VIDC_HEIC)
-		HFI_BUFFER_COMV_H265E(size, width, height, num_recon, profile);
+		HFI_BUFFER_COMV_H265E(size, width, height, num_recon, profile,
+				lookahead_enable);
 
 	i_vpr_l(inst, "%s: size %d\n", __func__, size);
 	return size;
