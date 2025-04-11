@@ -781,6 +781,13 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 
 	{MB_CYCLES_FW_VPP, DEC, CODECS_ALL, 66234, 66234, 1, 66234},
 
+	{CODEC_MODE, ENC, CODECS_ALL,
+		HFI_CODEC_MODE_NONE,
+		HFI_CODEC_MODE_LOOKAHEAD,
+		1, HFI_CODEC_MODE_NONE,
+		0,
+		HFI_PROP_CODEC_MODE},
+
 	{ENC_RING_BUFFER_COUNT, ENC, H264,
 		0, MAX_ENC_RING_BUF_COUNT, 1, 0},
 
@@ -2173,6 +2180,18 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 	{LAST_FLAG_EVENT_ENABLE, DEC|ENC, CODECS_ALL,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDC_LAST_FLAG_EVENT_ENABLE},
+
+	{LOOKAHEAD_ENCODE_ENABLE, ENC, H264 | HEVC,
+		0, 1, 1, 0,
+		V4L2_CID_MPEG_VIDC_LOOKAHEAD_ENCODE_ENABLE,
+		0,
+		CAP_FLAG_OUTPUT_PORT},
+
+	{LOOKAHEAD_ENCODE_SIZE, ENC, H264 | HEVC,
+		0, 32, 1, 26,
+		0,
+		HFI_PROP_LOOKAHEAD_SIZE,
+		CAP_FLAG_OUTPUT_PORT},
 
 	{META_BITSTREAM_RESOLUTION, DEC, AV1,
 		MSM_VIDC_META_DISABLE,
@@ -8005,6 +8024,9 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 	{PIX_FMTS, DEC, HEVC | HEIC,
 		{PROFILE}},
 
+	{CODEC_MODE, ENC, CODECS_ALL,
+		{0}},
+
 	{PIX_FMTS, ENC | DEC, APV,
 		{0},
 		NULL,
@@ -8163,7 +8185,8 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 			P_FRAME_QP, B_FRAME_QP, ENH_LAYER_COUNT, BIT_RATE,
 			META_ROI_INFO, MIN_QUALITY, BITRATE_BOOST, VBV_DELAY,
 			PEAK_BITRATE, SLICE_MODE, CONTENT_ADAPTIVE_CODING,
-			BLUR_TYPES, LOWLATENCY_MODE, META_TRANSCODING_STAT_INFO},
+			BLUR_TYPES, LOWLATENCY_MODE, META_TRANSCODING_STAT_INFO,
+			LOOKAHEAD_ENCODE_ENABLE},
 		msm_vidc_adjust_bitrate_mode,
 		msm_vidc_set_u32_enum},
 
@@ -8173,7 +8196,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 			BIT_RATE, META_ROI_INFO, MIN_QUALITY, BITRATE_BOOST, VBV_DELAY,
 			PEAK_BITRATE, SLICE_MODE, CONTENT_ADAPTIVE_CODING,
 			BLUR_TYPES, LOWLATENCY_MODE, META_EVA_STATS,
-			META_TRANSCODING_STAT_INFO, OPEN_GOP},
+			META_TRANSCODING_STAT_INFO, OPEN_GOP, LOOKAHEAD_ENCODE_ENABLE},
 		msm_vidc_adjust_bitrate_mode,
 		msm_vidc_set_u32_enum},
 
@@ -8661,6 +8684,16 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 		{0},
 		NULL,
 		msm_vidc_set_signal_color_info},
+
+	{LOOKAHEAD_ENCODE_ENABLE, ENC, H264 | HEVC,
+		{LOOKAHEAD_ENCODE_SIZE},
+		msm_vidc_adjust_lookahead_encode_enable,
+		NULL},
+
+	{LOOKAHEAD_ENCODE_SIZE, ENC, H264 | HEVC,
+		{0},
+		msm_vidc_adjust_lookahead_encode_size,
+		msm_vidc_set_u32},
 
 	{META_SEI_MASTERING_DISP, ENC, HEVC | HEIC,
 		{0},
