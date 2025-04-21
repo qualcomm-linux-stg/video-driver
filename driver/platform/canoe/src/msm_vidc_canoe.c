@@ -37,6 +37,7 @@
 #define APV_MAX_BITRATE         2000000000 /* 2 Gpbs */
 #define DEFAULT_BITRATE         20000000
 #define APV_DEFAULT_BITRATE     1000000000
+#define APV_MIN_BITRATE         (16 * 480) /* 480fps (max framerate) */
 #define MINIMUM_FPS             1
 #define MAXIMUM_FPS             480
 #define MAXIMUM_DEC_FPS         480
@@ -1031,7 +1032,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 			CAP_FLAG_DYNAMIC_ALLOWED},
 
 	{BIT_RATE, ENC, APV,
-		1, APV_MAX_BITRATE, 1, APV_DEFAULT_BITRATE,
+		APV_MIN_BITRATE, APV_MAX_BITRATE, 1, APV_DEFAULT_BITRATE,
 		V4L2_CID_MPEG_VIDEO_BITRATE,
 		HFI_PROP_TOTAL_BITRATE,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_INPUT_PORT |
@@ -4799,7 +4800,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe_sku_v1[] = {
 			CAP_FLAG_DYNAMIC_ALLOWED},
 
 	{BIT_RATE, ENC, APV,
-		1, APV_MAX_BITRATE, 1, APV_DEFAULT_BITRATE,
+		APV_MIN_BITRATE, APV_MAX_BITRATE, 1, APV_DEFAULT_BITRATE,
 		V4L2_CID_MPEG_VIDEO_BITRATE,
 		HFI_PROP_TOTAL_BITRATE,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_INPUT_PORT |
