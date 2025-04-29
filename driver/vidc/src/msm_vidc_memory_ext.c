@@ -378,9 +378,11 @@ static u32 msm_vidc_buffer_region_ext(struct msm_vidc_inst *inst,
 		case MSM_VIDC_BUF_PARTIAL_DATA:
 			region = MSM_VIDC_NON_SECURE_PIXEL;
 			break;
+		case MSM_VIDC_BUF_BIN:
+			region = MSM_VIDC_NON_SECURE_BITSTREAM;
+			break;
 		case MSM_VIDC_BUF_INPUT_META:
 		case MSM_VIDC_BUF_OUTPUT_META:
-		case MSM_VIDC_BUF_BIN:
 		case MSM_VIDC_BUF_COMV:
 		case MSM_VIDC_BUF_NON_COMV:
 		case MSM_VIDC_BUF_LINE:
