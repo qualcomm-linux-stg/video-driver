@@ -3124,7 +3124,7 @@ int msm_vidc_adjust_lookahead_encode_enable(void *instance, struct v4l2_ctrl *ct
 	s32 value;
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	struct v4l2_format *f;
-	u32 width, height, frame_rate;
+	u32 width = 0, height = 0, frame_rate = 0;
 	s64 hfi_rc_type = -1;
 
 	value = ctrl ? ctrl->val : inst->capabilities[LOOKAHEAD_ENCODE_ENABLE].value;
