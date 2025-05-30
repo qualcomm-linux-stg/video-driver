@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <media/v4l2-event.h>
@@ -16,7 +16,6 @@
 #include "msm_vidc_internal.h"
 #include "msm_vidc_driver.h"
 #include "msm_vidc_vb2.h"
-#include "msm_vidc_v4l2.h"
 #include "msm_vidc_debug.h"
 #include "msm_vidc_control.h"
 #include "msm_vidc_power.h"

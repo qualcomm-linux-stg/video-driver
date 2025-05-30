@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _MSM_VIDC_DRIVER_H_
 #define _MSM_VIDC_DRIVER_H_
 
 #include "msm_vidc_inst.h"
+#include "msm_vidc_core.h"
 
 #define MSM_VIDC_SESSION_INACTIVE_THRESHOLD_MS 1000
 
@@ -472,6 +473,22 @@ static inline bool is_enc_slice_delivery_mode(struct msm_vidc_inst *inst)
 	return (inst->capabilities[SLICE_MODE].value ==
 			V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB &&
 			inst->capabilities[DELIVERY_MODE].value);
+}
+
+static inline struct msm_video_device *get_msm_video_device(
+	struct msm_vidc_core *core, enum msm_vidc_domain_type type)
+{
+	if (type == MSM_VIDC_DECODER)
+		return &core->vdev[0];
+	else
+		return &core->vdev[1];
+}
+
+static inline struct video_device *get_video_device(struct msm_vidc_inst *inst)
+{
+	struct msm_video_device *vdev = get_msm_video_device(inst->core, inst->domain);
+
+	return &vdev->vdev;
 }
 
 const char *cap_name(enum msm_vidc_inst_capability_type cap_id);
