@@ -3646,11 +3646,8 @@ int msm_vidc_vb2_buffer_done(struct msm_vidc_inst *inst,
 
 int msm_vidc_v4l2_fh_init(struct msm_vidc_inst *inst)
 {
+	struct video_device *vdev = get_video_device(inst);
 	int rc = 0;
-	int index;
-	struct msm_vidc_core *core;
-
-	core = inst->core;
 
 	/* do not init, if already inited */
 	if (inst->fh.vdev) {
@@ -3658,14 +3655,7 @@ int msm_vidc_v4l2_fh_init(struct msm_vidc_inst *inst)
 		return -EINVAL;
 	}
 
-	if (is_decode_session(inst))
-		index = 0;
-	else if (is_encode_session(inst))
-		index = 1;
-	else
-		return -EINVAL;
-
-	v4l2_fh_init(&inst->fh, &core->vdev[index].vdev);
+	v4l2_fh_init(&inst->fh, vdev);
 	inst->fh.ctrl_handler = &inst->ctrl_handler;
 	v4l2_fh_add(&inst->fh);
 
