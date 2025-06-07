@@ -2694,7 +2694,7 @@ _yuv_bufcount_min, is_opb, num_vpp_pipes)           \
 		if (lookahead) { \
 			_size = (_size << 1); \
 		} \
-		if (lookahead && (frame_width_coded * frame_height_coded <= 352*288)) { \
+		if (lookahead && (frame_width_coded * frame_height_coded <= 640*480)) { \
 			_size = _size + 16000; \
 		} \
 	} while (0)
