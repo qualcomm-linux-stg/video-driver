@@ -3871,8 +3871,12 @@ int msm_vidc_add_session(struct msm_vidc_inst *inst)
 		rc = -EINVAL;
 		goto unlock;
 	}
-	list_for_each_entry(i, &core->instances, list)
+	list_for_each_entry(i, &core->instances, list) {
 		count++;
+		/* each lookahead session is three times the non-lookahead session */
+		if (i->capabilities[LOOKAHEAD_ENCODE_ENABLE].value)
+			count += 2;
+	}
 
 	if (count < core->capabilities[MAX_SESSION_COUNT].value) {
 		list_add_tail(&inst->list, &core->instances);
