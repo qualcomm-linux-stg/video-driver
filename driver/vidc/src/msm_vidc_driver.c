@@ -1213,6 +1213,7 @@ int msm_vidc_qbuf_cache_operation(struct msm_vidc_inst *inst,
 			cache_type = MSM_MEM_CACHE_CLEAN_INVALIDATE;
 			break;
 		case MSM_VIDC_BUF_OUTPUT:
+		case MSM_VIDC_BUF_OUTPUT_META:
 			cache_type = MSM_MEM_CACHE_INVALIDATE;
 			break;
 		default:
@@ -1252,6 +1253,7 @@ int msm_vidc_dqbuf_cache_operation(struct msm_vidc_inst *inst,
 			skip = true;
 			break;
 		case MSM_VIDC_BUF_OUTPUT:
+		case MSM_VIDC_BUF_OUTPUT_META:
 			cache_type = MSM_MEM_CACHE_INVALIDATE;
 			break;
 		default:
