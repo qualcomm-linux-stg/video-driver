@@ -360,6 +360,7 @@ int msm_vidc_adjust_input_buf_host_max_count(void *instance, struct v4l2_ctrl *c
 int msm_vidc_adjust_output_buf_host_max_count(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_transform_8x8(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_chroma_qp_index_offset(void *instance, struct v4l2_ctrl *ctrl);
+int msm_vidc_adjust_chroma_qp_index_offset_iris35(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_slice_count(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_layer_count(void *instance, struct v4l2_ctrl *ctrl);
 int msm_vidc_adjust_gop_size(void *instance, struct v4l2_ctrl *ctrl);
