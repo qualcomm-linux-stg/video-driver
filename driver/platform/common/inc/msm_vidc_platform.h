@@ -57,6 +57,20 @@ struct regulator_table {
 	bool             hw_trigger;
 };
 
+enum clk_levels {
+	CLK_LEVEL_LOW_SVS_D2,
+	CLK_LEVEL_LOW_SVS_D1,
+	CLK_LEVEL_LOW_SVS,
+	CLK_LEVEL_SVS,
+	CLK_LEVEL_SVS_L1,
+	CLK_LEVEL_NOM,
+	CLK_LEVEL_NOM_L1,
+	CLK_LEVEL_TURBO,
+	CLK_LEVEL_TURBO_L0,
+	CLK_LEVEL_TURBO_L1,
+	CLK_LEVEL_MAX
+};
+
 struct clk_table {
 	const char      *name;
 	u32              clk_id;
@@ -216,6 +230,7 @@ struct msm_vidc_platform_data {
 	struct dev_pm_domain_list *opp_pmdomain_tbl;
 	const struct clk_table *clk_tbl;
 	unsigned int clk_tbl_size;
+	const int *clk_corner_idx_tbl;
 	const struct clk_rst_table *clk_rst_tbl;
 	unsigned int clk_rst_tbl_size;
 	const struct subcache_table *subcache_tbl;
