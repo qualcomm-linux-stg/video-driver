@@ -1560,6 +1560,7 @@ int msm_vidc_adjust_slice_count(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 
+	struct msm_vidc_core *core = inst->core;
 	struct v4l2_format *output_fmt;
 	s32 adjusted_value, slice_mode;
 	s64 rc_type = -1, all_intra = 0, enh_layer_count = 0;
@@ -1663,8 +1664,7 @@ int msm_vidc_adjust_slice_count(void *instance, struct v4l2_ctrl *ctrl)
 
 	if (slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB) {
 		update_cap = SLICE_MAX_MB;
-		slice_val = inst->capabilities[SLICE_MAX_MB].value;
-		slice_val = max(slice_val, mbpf / MAX_SLICES_PER_FRAME);
+		slice_val = call_session_op(core, decide_slice_max_mb, inst);
 	} else {
 		slice_val = inst->capabilities[SLICE_MAX_BYTES].value;
 		update_cap = SLICE_MAX_BYTES;
