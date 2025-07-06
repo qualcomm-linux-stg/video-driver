@@ -1713,7 +1713,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 		V4L2_MPEG_VIDC_APV_LEVEL_BAND0_5_1,
 		V4L2_CID_MPEG_VIDC_APV_LEVEL,
 		HFI_PROP_LEVEL,
-		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
+		CAP_FLAG_VOLATILE | CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
 
 	{LEVEL, DEC, H264,
 		V4L2_MPEG_VIDEO_H264_LEVEL_1_0,
@@ -2492,7 +2492,7 @@ static struct msm_platform_inst_capability instance_cap_data_canoe[] = {
 		HFI_PROP_ENABLE_SLICE_DELIVERY,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{SIGNAL_COLOR_INFO, ENC, H264 | HEVC | HEIC,
+	{SIGNAL_COLOR_INFO, ENC, H264 | HEVC | HEIC | APV,
 		0, INT_MAX, 1, 0,
 		V4L2_CID_MPEG_VIDC_SIGNAL_COLOR_INFO,
 		HFI_PROP_SIGNAL_COLOR_INFO,
@@ -3203,7 +3203,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 		msm_vidc_set_bitrate},
 
 	{BIT_RATE, ENC, APV,
-		{PEAK_BITRATE},
+		{PEAK_BITRATE, LEVEL},
 		msm_vidc_adjust_bitrate_apv,
 		msm_vidc_set_bitrate},
 
@@ -3527,9 +3527,9 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 		NULL,
 		msm_vidc_set_level},
 
-	{LEVEL, ENC | DEC, APV,
+	{LEVEL, ENC, APV,
 		{0},
-		NULL,
+		msm_vidc_adjust_level_tier,
 		msm_vidc_set_apv_level_band},
 
 	{AV1_TIER, DEC, AV1,
@@ -3707,7 +3707,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 		NULL,
 		msm_vidc_set_vui_timing_info},
 
-	{SIGNAL_COLOR_INFO, ENC, H264 | HEVC | HEIC,
+	{SIGNAL_COLOR_INFO, ENC, H264 | HEVC | HEIC | APV,
 		{0},
 		NULL,
 		msm_vidc_set_signal_color_info},
@@ -3975,6 +3975,7 @@ static const u32 canoe_vdec_psc_apv[] = {
 	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
 	HFI_PROP_BUFFER_FW_MIN_OUTPUT_COUNT,
 	HFI_PROP_PROFILE,
+	HFI_PROP_SIGNAL_COLOR_INFO,
 	HFI_PROP_LEVEL,
 };
 
