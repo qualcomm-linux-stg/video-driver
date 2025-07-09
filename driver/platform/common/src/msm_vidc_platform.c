@@ -1442,12 +1442,31 @@ int msm_vidc_adjust_transform_8x8(void *instance, struct v4l2_ctrl *ctrl)
 int msm_vidc_adjust_chroma_qp_index_offset(void *instance, struct v4l2_ctrl *ctrl)
 {
 	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	s32 value, chroma_qp, offset = 12;
+	u32 adjusted_value = 0;
+
+	value = ctrl ? ctrl->val : inst->capabilities[CHROMA_QP_INDEX_OFFSET].value;
+
+	if (value != MIN_CHROMA_QP_OFFSET)
+		value = MAX_CHROMA_QP_OFFSET;
+
+	chroma_qp = value + offset;
+
+	adjusted_value = chroma_qp | chroma_qp << 8;
+
+	msm_vidc_update_cap_value(inst, CHROMA_QP_INDEX_OFFSET, adjusted_value, __func__);
+
+	return 0;
+}
+
+int msm_vidc_adjust_chroma_qp_index_offset_iris35(void *instance, struct v4l2_ctrl *ctrl)
+{
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
 	s32 chroma_qp, profile = 0;
 	s8 chroma_cr_qp = 0, chroma_cb_qp = 0, offset = 12;
 	u32 adjusted_value = 0;
 
-	chroma_qp = ctrl ? ctrl->val :
-		inst->capabilities[CHROMA_QP_INDEX_OFFSET].value;
+	chroma_qp = ctrl ? ctrl->val : inst->capabilities[CHROMA_QP_INDEX_OFFSET].value;
 
 	if (chroma_qp > MAX_CHROMA_QP_OFFSET) {
 		chroma_cr_qp = chroma_qp & 0xFF;
@@ -1461,9 +1480,6 @@ int msm_vidc_adjust_chroma_qp_index_offset(void *instance, struct v4l2_ctrl *ctr
 		chroma_cr_qp += offset;
 		chroma_cb_qp += offset;
 	} else {
-		if (chroma_qp != MIN_CHROMA_QP_OFFSET)
-			chroma_qp = MAX_CHROMA_QP_OFFSET;
-
 		chroma_cr_qp = chroma_qp + offset;
 		chroma_cb_qp = chroma_cr_qp;
 	}
