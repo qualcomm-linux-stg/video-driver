@@ -1384,7 +1384,7 @@ int msm_vidc_adjust_input_buf_host_max_count(void *instance, struct v4l2_ctrl *c
 	adjusted_value = ctrl ? ctrl->val :
 		inst->capabilities[INPUT_BUF_HOST_MAX_COUNT].value;
 
-	if (msm_vidc_is_super_buffer(inst) || is_image_session(inst))
+	if (msm_vidc_is_super_buffer(inst))
 		adjusted_value = DEFAULT_MAX_HOST_BURST_BUF_COUNT;
 
 	msm_vidc_update_cap_value(inst, INPUT_BUF_HOST_MAX_COUNT, adjusted_value, __func__);
