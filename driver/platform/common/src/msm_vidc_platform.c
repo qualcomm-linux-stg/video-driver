@@ -3239,6 +3239,27 @@ disable:
 	return 0;
 }
 
+int msm_vidc_adjust_bitdepth(void *instance, struct v4l2_ctrl *ctrl)
+{
+	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
+	s64 pix_fmts = MSM_VIDC_FMT_NONE;
+	s32 adjusted_value;
+
+	if (is_decode_session(inst))
+		return 0;
+
+	pix_fmts = inst->capabilities[PIX_FMTS].value;
+
+	if (is_8bit_colorformat(pix_fmts))
+		adjusted_value = BIT_DEPTH_8;
+	else
+		adjusted_value = BIT_DEPTH_10;
+
+	msm_vidc_update_cap_value(inst, BIT_DEPTH, adjusted_value, __func__);
+
+	return 0;
+}
+
 /******************* End of Control Adjust functions *************************/
 
 /************************* Control Set functions *****************************/
