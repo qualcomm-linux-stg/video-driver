@@ -3889,6 +3889,16 @@ static const struct clk_table canoe_clk_table[] = {
 		  630000000,  507000000,  360000000}, 7},
 };
 
+static const int canoe_corner_idx_tbl[CLK_LEVEL_MAX] = {
+	[CLK_LEVEL_LOW_SVS_D1] = 6,
+	[CLK_LEVEL_LOW_SVS] = 5,
+	[CLK_LEVEL_SVS] = 4,
+	[CLK_LEVEL_SVS_L1] = 3,
+	[CLK_LEVEL_NOM] = 2,
+	[CLK_LEVEL_TURBO] = 1,
+	[CLK_LEVEL_TURBO_L1] = 0,
+};
+
 /* name, clock id, scaling */
 static const struct clk_table canoe_clk_table_v2[] = {
 	{ "gcc_video_axi1_clk",         GCC_VIDEO_AXI1_CLK,         0},
@@ -3913,6 +3923,17 @@ static const struct clk_table canoe_clk_table_v2[] = {
 	{ "video_cc_mvs0c_clk_src",     VIDEO_CC_MVS0C_CLK_SRC,     1,
 	 (u64[]) {1260000000, 1260000000, 1104000000, 800000000, 666000000,
 		  630000000,  507000000,  360000000}, 8},
+};
+
+static const int canoe_corner_idx_tbl_v2[CLK_LEVEL_MAX] = {
+	[CLK_LEVEL_LOW_SVS_D1] = 7,
+	[CLK_LEVEL_LOW_SVS] = 6,
+	[CLK_LEVEL_SVS] = 5,
+	[CLK_LEVEL_SVS_L1] = 4,
+	[CLK_LEVEL_NOM] = 3,
+	[CLK_LEVEL_TURBO] = 2,
+	[CLK_LEVEL_TURBO_L0] = 1,
+	[CLK_LEVEL_TURBO_L1] = 0,
 };
 
 /* name, exclusive_release */
@@ -4132,6 +4153,7 @@ static const struct msm_vidc_platform_data canoe_data = {
 	.pd_tbl_size = ARRAY_SIZE(canoe_pd_table),
 	.clk_tbl = canoe_clk_table,
 	.clk_tbl_size = ARRAY_SIZE(canoe_clk_table),
+	.clk_corner_idx_tbl = canoe_corner_idx_tbl,
 	.clk_rst_tbl = canoe_clk_reset_table,
 	.clk_rst_tbl_size = ARRAY_SIZE(canoe_clk_reset_table),
 	.subcache_tbl = canoe_subcache_table,
@@ -4333,6 +4355,7 @@ int msm_vidc_get_platform_data_canoe(struct msm_vidc_core *core)
 			ARRAY_SIZE(canoe_context_bank_table_v2);
 		core->platform->data.clk_tbl = canoe_clk_table_v2;
 		core->platform->data.clk_tbl_size = ARRAY_SIZE(canoe_clk_table_v2);
+		core->platform->data.clk_corner_idx_tbl = canoe_corner_idx_tbl_v2;
 		core->platform->data.fwname = "vpu40_2v";
 
 		platform_cap_data = core->platform->data.inst_cap_data;
