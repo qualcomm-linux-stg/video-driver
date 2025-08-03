@@ -3228,7 +3228,7 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 
 	{REQUEST_I_FRAME, ENC, H264 | HEVC,
 		{0},
-		NULL,
+		msm_vidc_adjust_req_sync_frame,
 		msm_vidc_set_req_sync_frame},
 
 	{BIT_RATE, ENC, H264,
@@ -3748,8 +3748,13 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_cano
 		NULL,
 		msm_vidc_set_vui_timing_info},
 
-	{SIGNAL_COLOR_INFO, ENC, H264 | HEVC | HEIC | APV,
+	{SIGNAL_COLOR_INFO, ENC, HEIC | APV,
 		{0},
+		NULL,
+		msm_vidc_set_signal_color_info},
+
+	{SIGNAL_COLOR_INFO, ENC, H264 | HEVC,
+		{REQUEST_I_FRAME},
 		NULL,
 		msm_vidc_set_signal_color_info},
 
