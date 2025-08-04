@@ -363,6 +363,7 @@ enum msm_vidc_log_encode_mode {
 	CAP(INPUT_RX_FENCE_FD)                    \
 	CAP(OUTPUT_TX_FENCE_FD)                   \
 	CAP(FENCE_INFO)                           \
+	CAP(OUTPUT_SCID)                          \
 	CAP(TS_REORDER)                           \
 	CAP(HFLIP)                                \
 	CAP(VFLIP)                                \
