@@ -2353,7 +2353,7 @@ static const struct pd_table qcs8300_pd_table[] = {
 };
 
 /* name */
-static const char * const qcs8300_opp_pd_table[] = { "mx", "mmcx", NULL };
+static const char * const qcs8300_opp_pd_table[] = { "mxc", "mmcx", NULL };
 
 /* name, clock id, scaling */
 static const struct clk_table qcs8300_clk_table[] = {
@@ -2512,7 +2512,7 @@ static const struct msm_vidc_platform_data qcs8300_data = {
 	.freq_tbl_size = ARRAY_SIZE(qcs8300_freq_table),
 	.reg_prst_tbl = qcs8300_reg_preset_table,
 	.reg_prst_tbl_size = ARRAY_SIZE(qcs8300_reg_preset_table),
-	.fwname = "./qcom/vpu-3.0/vpu30_4v",
+	.fwname = "./qcom/vpu/vpu30_p4_s6.mbn",
 	.pas_id = 9,
 	.supports_mmrm = 0,
 
