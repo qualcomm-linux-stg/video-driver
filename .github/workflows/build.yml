@@ -21,12 +21,14 @@ jobs:
     steps:
       - name: Clone meta-qcom repo
         run: |
+          set -x
           git clone git@github.com:qualcomm-linux/meta-qcom.git
           cd meta-qcom/ci
       - name: Install kas in meta-qcom/ci
         run: sudo pip3 install kas
       - name: Run kas shell and bitbake
         run: |
+          set -x
           cd meta-qcom/ci
           kas shell qcs9100-ride-sx.yml:qcom-distro.yml
           bitbake qcom-multimedia-proprietary-image
