@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Clone meta-qcom repo
         run: |
-          git clone https://github.com/qualcomm-linux/meta-qcom.git -b master
+          git clone --depth 1 https://github.com/qualcomm-linux/meta-qcom.git -b master
           cd meta-qcom/ci
       - name: Install kas in meta-qcom/ci
         run: sudo pip3 install kas
