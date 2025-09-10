@@ -2419,7 +2419,7 @@ static const struct msm_vidc_platform_data qcm6490_data = {
 #endif
     .pd_tbl = qcm6490_pd_table,
     .pd_tbl_size = ARRAY_SIZE(qcm6490_pd_table),
-    .fwname = "qcom/vpu-2.0/vpu20_1v",
+    .fwname = "./qcom/vpu/vpu20_p1_gen2.mbn",
     .pas_id = 9,
     .supports_mmrm = 0,
 

@@ -79,7 +79,6 @@ static int __load_fw_to_memory(struct platform_device *pdev,
 	int rc = 0;
 	const struct firmware *firmware = NULL;
 	struct msm_vidc_core *core;
-	char firmware_name[MAX_FIRMWARE_NAME_SIZE] = { 0 };
 	struct device_node *node = NULL;
 	struct resource res = { 0 };
 	phys_addr_t phys = 0;
@@ -103,7 +102,6 @@ static int __load_fw_to_memory(struct platform_device *pdev,
 			__func__, dev_name(&pdev->dev));
 		return -EINVAL;
 	}
-	scnprintf(firmware_name, ARRAY_SIZE(firmware_name), "%s.mbn", fw_name);
 
 	pas_id = core->platform->data.pas_id;
 
@@ -123,10 +121,10 @@ static int __load_fw_to_memory(struct platform_device *pdev,
 	phys = res.start;
 	res_size = (size_t)resource_size(&res);
 
-	rc = request_firmware(&firmware, firmware_name, &pdev->dev);
+	rc = request_firmware(&firmware, fw_name, &pdev->dev);
 	if (rc) {
 		d_vpr_e("%s: failed to request fw \"%s\", error %d\n",
-			__func__, firmware_name, rc);
+			__func__, fw_name, rc);
 		goto exit;
 	}
 
@@ -147,25 +145,25 @@ static int __load_fw_to_memory(struct platform_device *pdev,
 
 	/* prevent system suspend during fw_load */
 	pm_stay_awake(pdev->dev.parent);
-	rc = qcom_mdt_load(&pdev->dev, firmware, firmware_name,
-			   pas_id, virt, phys, res_size, NULL);
+	rc = qcom_mdt_load(&pdev->dev, firmware, fw_name, pas_id, virt,
+			   phys, res_size, NULL);
 	pm_relax(pdev->dev.parent);
 	if (rc) {
 		d_vpr_e("%s: error %d loading fw \"%s\"\n",
-			__func__, rc, firmware_name);
+			__func__, rc, fw_name);
 		goto exit;
 	}
 	rc = qcom_scm_pas_auth_and_reset(pas_id);
 	if (rc) {
 		d_vpr_e("%s: error %d authenticating fw \"%s\"\n",
-			__func__, rc, firmware_name);
+			__func__, rc, fw_name);
 		goto exit;
 	}
 
 	memunmap(virt);
 	release_firmware(firmware);
 	d_vpr_h("%s: firmware \"%s\" loaded successfully\n",
-		__func__, firmware_name);
+		__func__, fw_name);
 
 	return pas_id;
 
@@ -180,11 +178,15 @@ exit:
 
 int fw_load(struct msm_vidc_core *core)
 {
+	const char *fwpath = NULL;
 	int rc;
 
+	rc = of_property_read_string_index(core->pdev->dev.of_node, "firmware-name", 0, &fwpath);
+	if (rc)
+		fwpath = core->platform->data.fwname;
+
 	if (!core->resource->fw_cookie) {
-		core->resource->fw_cookie = __load_fw_to_memory(core->pdev,
-								core->platform->data.fwname);
+		core->resource->fw_cookie = __load_fw_to_memory(core->pdev, fwpath);
 		if (core->resource->fw_cookie <= 0) {
 			d_vpr_e("%s: firmware download failed %d\n",
 				__func__, core->resource->fw_cookie);
