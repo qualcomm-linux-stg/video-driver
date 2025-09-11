@@ -12,7 +12,7 @@ jobs:
       - uses: ./github/workflows/action.yml
         with:
           docker_image: "kas_dependencies"
-          kas_file: "meta-qcom/ci/qcom-distro.yml"
+          kas_file: "qcs9100-ride-sx.yml:qcom-distro.yml"
           build_command: "bitbake qcom-multimedia-proprietary-image"
           build_type: "flat_build"
   
