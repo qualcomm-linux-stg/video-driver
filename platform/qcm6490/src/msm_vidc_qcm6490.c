@@ -2281,8 +2281,8 @@ static struct msm_vidc_format_capability format_data_qcm6490 = {
 
 /* name, min_kbps, max_kbps */
 static const struct bw_table qcm6490_bw_table[] = {
-    { "iris-cnoc",  1000, 1000     },
-    { "iris-ddr",   1000, 10000000 }
+	{ "cpu-cfg", 1000, 1000     },
+	{ "video-mem", 1000, 10000000 }
 };
 
 /* name, hw_trigger */
@@ -2291,6 +2291,9 @@ static const struct pd_table qcm6490_pd_table[] = {
     { "venus"   },
     { "vcodec0" },
 };
+
+/*name*/
+static const char * const qcm6490_opp_table[] = { "cx", NULL };
 
 /* name, clock id, scaling */
 static const struct clk_table qcm6490_clk_table[] = {
@@ -2413,10 +2416,8 @@ static const struct msm_vidc_platform_data qcm6490_data = {
     .freq_tbl_size = ARRAY_SIZE(qcm6490_freq_table_sku0),
     .reg_prst_tbl = qcm6490_reg_preset_table,
     .reg_prst_tbl_size = ARRAY_SIZE(qcm6490_reg_preset_table),
-#if 0
     .opp_tbl = qcm6490_opp_table,
     .opp_tbl_size = ARRAY_SIZE(qcm6490_opp_table),
-#endif
     .pd_tbl = qcm6490_pd_table,
     .pd_tbl_size = ARRAY_SIZE(qcm6490_pd_table),
     .fwname = "./qcom/vpu/vpu20_p1_gen2.mbn",
