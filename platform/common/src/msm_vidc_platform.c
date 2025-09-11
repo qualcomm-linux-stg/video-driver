@@ -205,7 +205,7 @@ static const struct msm_vidc_compat_handle compat_handle[] = {
 		.init_iris                  = msm_vidc_init_iris3,
 	},
 	{
-		.compat                     = "qcom,qcm6490-iris-vpu",
+		.compat                     = "qcom,sc7280-venus",
 		.init_platform              = msm_vidc_init_platform_qcm6490,
 		.init_iris                  = msm_vidc_init_iris2,
 	},
