@@ -6,28 +6,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  setup-environment:
+  build:
     runs-on: self-hosted
     steps:
-      - name: Checkout current repo
-        uses: actions/checkout@v3
-      - name: Install kas
-        run: pip3 install kas
-
-  clone_meta_qcom:
-    needs: setup-environment
-    runs-on: self-hosted
-    steps:
-      - name: Clone meta-qcom repo with retry
-        run: git clone https://github.com/qualcomm-linux/meta-qcom.git
-
-      - name: Install kas in meta-qcom/ci
-        run: sudo pip3 install kas
-
-      - name: Run kas shell and bitbake
-        run: |
-          kas shell meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml
-          bitbake qcom-multimedia-proprietary-image
-          kas shell meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml
-          bitbake qcom-multimedia-proprietary-image
-
+      - uses: ./github/workflows/action.yml
+        with:
+          docker_image: "kas_dependencies"
+          kas_file: "meta-qcom/ci/qcom-distro.yml"
+          build_command: "bitbake qcom-multimedia-proprietary-image"
+          build_type: "flat_build"
+  
+  
