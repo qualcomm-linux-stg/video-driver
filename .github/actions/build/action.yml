@@ -29,22 +29,21 @@ runs:
         #!/bin/bash
         set -e
 
-        # touch file_list.txt
         filepath="${{ github.workspace }}/${{ env.MACHINE }}_${{ inputs.build_type }}file_list.txt"
         echo "filepath=${filepath}" >> $GITHUB_ENV
         touch $filepath
 
-        # Define variables
         USER_ID=$(id -u)
         GROUP_ID=$(id -g)
         USER=$(whoami)
         WORKSPACE=${{ github.workspace }}/..
         USER_HOME="/home/$USER"
-        
+
         echo "::group::$(printf '__________ %-100s' 'build' | tr ' ' _)"
+
         docker run \
           --rm \
-          --user $(id -u):$(id -g) \
+          --user ${USER_ID}:${GROUP_ID} \
           -v ${WORKSPACE}:${USER_HOME}/workspace \
           -w ${USER_HOME}/workspace \
           --privileged \
@@ -54,10 +53,27 @@ runs:
             echo 'Cloning meta-qcom...'
             rm -rf meta-qcom
             git clone https://github.com/qualcomm-linux/meta-qcom.git
-            kas shell ${{ inputs.kas_file }} -c '
+
+            echo 'Running initial BitBake build...'
+            if ! kas shell ${{ inputs.kas_file }} -c '
               umask 022
-              # Flat build or generate sdk build
               ${{ inputs.build_command }}
-            '
+            '; then
+              echo 'Initial build failed. Checking for krb5 fetch error...'
+              ERROR_LOG=\$(find build/tmp/work -name \"log.do_fetch.*\" | grep krb5 || true)
+              if [[ -n \"\$ERROR_LOG\" ]]; then
+                echo 'krb5 fetch error detected. Injecting sources...'
+                mkdir -p build/downloads
+                cp sources/krb5-1.21.3.tar build/downloads/
+                cp sources/krb5-1.21.3.tar.gz.done build/downloads/
+
+                echo 'Retrying BitBake build...'
+                bitbake qcom-multimedia-proprietary-image
+              else
+                echo 'Build failed, but not due to krb5 fetch. Exiting.'
+                exit 1
+              fi
+            fi
           "
+
         echo "::endgroup::"
