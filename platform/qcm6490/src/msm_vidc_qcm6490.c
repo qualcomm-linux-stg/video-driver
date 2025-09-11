@@ -2281,8 +2281,8 @@ static struct msm_vidc_format_capability format_data_qcm6490 = {
 
 /* name, min_kbps, max_kbps */
 static const struct bw_table qcm6490_bw_table[] = {
-    { "iris-cnoc",  1000, 1000     },
-    { "iris-ddr",   1000, 10000000 }
+	{ "cpu-cfg", 1000, 1000     },
+	{ "video-mem", 1000, 10000000 }
 };
 
 /* name, hw_trigger */

@@ -42,7 +42,7 @@ const char video_banner[] = "Video-Banner: (" __stringify(VIDEO_COMPILE_BY) "@"
 static inline bool is_video_device(struct device *dev)
 {
 	return !!(of_device_is_compatible(dev->of_node, "qcom,sm8550-vidc") ||
-		of_device_is_compatible(dev->of_node, "qcom,qcm6490-iris-vpu") ||
+		of_device_is_compatible(dev->of_node, "qcom,sc7280-venus") ||
 		of_device_is_compatible(dev->of_node, "qcom,sa8775p-iris") ||
 		of_device_is_compatible(dev->of_node, "qcom,qcs8300-iris"));
 }
@@ -114,7 +114,7 @@ static struct attribute_group msm_vidc_core_attr_group = {
 };
 
 static const struct of_device_id msm_vidc_dt_match[] = {
-	{.compatible = "qcom,qcm6490-iris-vpu"},
+	{.compatible = "qcom,sc7280-venus"},
 	{.compatible = "qcom,sm8550-vidc"},
 	{.compatible = "qcom,sa8775p-iris"},
 	{.compatible = "qcom,qcs8300-iris"},
