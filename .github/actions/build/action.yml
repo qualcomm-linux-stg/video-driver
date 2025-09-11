@@ -52,6 +52,7 @@ runs:
           bash -c "
             set -e
             echo 'Cloning meta-qcom...'
+            rm -rf meta-qcom
             git clone https://github.com/qualcomm-linux/meta-qcom.git
             kas shell meta-qcom/ci/${{ inputs.kas_file }} -c '
               umask 022
