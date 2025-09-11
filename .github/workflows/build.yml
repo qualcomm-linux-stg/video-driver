@@ -2,7 +2,7 @@ name: Environment setup and build
 on:
   push:
     branches:
-      - main
+      - test-workflow
   workflow_dispatch:
 
 jobs:
@@ -18,26 +18,16 @@ jobs:
     needs: setup-environment
     runs-on: self-hosted
     steps:
-      - name: Ensure Git is configured
-        run: |
-          git config --global advice.detachedHead false
-          git config --global credential.helper store
-
       - name: Clone meta-qcom repo with retry
-        run: |
-          for i in {1..3}; do
-            git clone --depth 1 https://github.com/qualcomm-linux/meta-qcom.git -b master && break
-            echo "Retrying clone ($i)..."
-            sleep 10
-          done
-          cd meta-qcom/ci
+        run: git clone https://github.com/qualcomm-linux/meta-qcom.git
 
       - name: Install kas in meta-qcom/ci
         run: sudo pip3 install kas
 
       - name: Run kas shell and bitbake
         run: |
-          cd meta-qcom/ci
-          kas shell qcs9100-ride-sx.yml:qcom-distro.yml
+          kas shell meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml
+          bitbake qcom-multimedia-proprietary-image
+          kas shell meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml
           bitbake qcom-multimedia-proprietary-image
 
