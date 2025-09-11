@@ -63,9 +63,9 @@ runs:
               ERROR_LOG=\$(find build/tmp/work -name \"log.do_fetch.*\" | grep krb5 || true)
               if [[ -n \"\$ERROR_LOG\" ]]; then
                 echo 'krb5 fetch error detected. Injecting sources...'
-                mkdir -p build/downloads
-                cp sources/krb5-1.21.3.tar 1.gz build/downloads/
+
                 cp sources/krb5-1.21.3.tar.gz build/downloads/
+                cp sources/krb5-1.21.3.tar 1.gz build/downloads/
 
                 echo 'Retrying BitBake build...'
                 bitbake qcom-multimedia-proprietary-image
