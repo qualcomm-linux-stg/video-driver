@@ -1,0 +1,62 @@
+name: Build
+description: Build the project using a Docker container
+
+inputs:
+  docker_image:
+    description: Docker image to use for the build job
+    required: true
+
+  kas_file:
+    description: KAS file to use for the build job
+    required: true
+
+  build_command:
+    description: Command to run for the build
+    required: false
+    default: "bitbake core-image-base"
+
+  build_type:
+    description: Type of build to perform (flat_build or sdk_build)
+    required: false
+    default: "flat_build"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build ${{ env.MACHINE }}
+      shell: bash
+      run: |
+        #!/bin/bash
+        set -e
+
+        # touch file_list.txt
+        filepath="${{ github.workspace }}/${{ env.MACHINE }}_${{ inputs.build_type }}file_list.txt"
+        echo "filepath=${filepath}" >> $GITHUB_ENV
+        touch $filepath
+
+        # Define variables
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
+        USER=$(whoami)
+        WORKSPACE=${{ github.workspace }}/..
+        USER_HOME="/home/$USER"
+        
+        echo "::group::$(printf '__________ %-100s' 'build' | tr ' ' _)"
+        docker run \
+          --rm \
+          --user $(id -u):$(id -g) \
+          -v ${WORKSPACE}:${USER_HOME}/workspace \
+          -w ${USER_HOME}/workspace \
+          --privileged \
+          ${{ inputs.docker_image }} \
+          bash -c "
+            set -e
+            echo 'Cloning meta-qcom...'
+            git clone https://github.com/qualcomm-linux/meta-qcom.git
+            kas shell meta-ar/ci/${{ inputs.kas_file }} -c '
+              umask 022
+              # Flat build or generate sdk build
+              ${{ inputs.build_command }}
+            '
+          "
+        echo "::endgroup::"
