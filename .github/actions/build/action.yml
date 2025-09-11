@@ -54,7 +54,7 @@ runs:
             echo 'Cloning meta-qcom...'
             rm -rf meta-qcom
             git clone https://github.com/qualcomm-linux/meta-qcom.git
-            kas shell meta-qcom/ci/${{ inputs.kas_file }} -c '
+            kas shell ${{ inputs.kas_file }} -c '
               umask 022
               # Flat build or generate sdk build
               ${{ inputs.build_command }}
