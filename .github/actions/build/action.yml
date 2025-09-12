@@ -80,6 +80,9 @@ runs:
                 exit 1
               fi
             fi
+
+            echo 'Listing built image files...'
+            ls -lh build/tmp/deploy/images || echo 'No images found.'
           "
 
         echo "::endgroup::"
