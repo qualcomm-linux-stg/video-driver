@@ -26,7 +26,6 @@ runs:
     - name: Build ${{ env.MACHINE }}
       shell: bash
       run: |
-        #!/bin/bash
         set -e
 
         filepath="${{ github.workspace }}/${{ env.MACHINE }}_${{ inputs.build_type }}file_list.txt"
@@ -65,11 +64,17 @@ runs:
               if [[ -n \"\$ERROR_LOG\" ]]; then
                 echo 'krb5 fetch error detected. Injecting sources...'
 
-                cp sources/krb5-1.21.3.tar.gz build/downloads/
-                cp sources/krb5-1.21.3.tar.gz.done build/downloads/
+                mkdir -p build/downloads
 
-                echo 'Retrying BitBake build...'
-                bitbake qcom-multimedia-proprietary-image
+                if [[ -f sources/krb5-1.21.3.tar.gz && -f sources/krb5-1.21.3.tar.gz.done ]]; then
+                  cp sources/krb5-1.21.3.tar.gz build/downloads/
+                  cp sources/krb5-1.21.3.tar.gz.done build/downloads/
+                  echo 'Retrying BitBake build...'
+                  bitbake qcom-multimedia-proprietary-image
+                else
+                  echo 'krb5 source files not found in sources/. Exiting.'
+                  exit 1
+                fi
               else
                 echo 'Build failed, but not due to krb5 fetch. Exiting.'
                 exit 1
