@@ -65,7 +65,7 @@ runs:
                 echo 'krb5 fetch error detected. Injecting sources...'
 
                 cp sources/krb5-1.21.3.tar.gz build/downloads/
-                cp sources/krb5-1.21.3.tar 1.gz build/downloads/
+                cp sources/krb5-1.21.3.tar.gz.done build/downloads/
 
                 echo 'Retrying BitBake build...'
                 bitbake qcom-multimedia-proprietary-image
