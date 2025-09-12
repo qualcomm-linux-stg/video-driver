@@ -45,6 +45,7 @@ runs:
           --rm \
           --user ${USER_ID}:${GROUP_ID} \
           -v ${WORKSPACE}:${USER_HOME}/workspace \
+          -v ${{ github.workspace }}/sources:${USER_HOME}/workspace/sources \
           -w ${USER_HOME}/workspace \
           --privileged \
           ${{ inputs.docker_image }} \
