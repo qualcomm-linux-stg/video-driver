@@ -1,4 +1,6 @@
+---  
 name: Environment setup and build
+
 on:
   push:
     branches:
@@ -10,11 +12,27 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/build
+
+      - name: Build qcs9100-ride-sx
+        uses: ./.github/actions/build
         with:
           docker_image: "kas_dependencies"
           kas_file: "meta-qcom/ci/qcs9100-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"
           build_command: "bitbake qcom-multimedia-proprietary-image"
           build_type: "flat_build"
-  
-  
+
+      - name: Build qcs8300-ride-sx
+        uses: ./.github/actions/build
+        with:
+          docker_image: "kas_dependencies"
+          kas_file: "meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"
+          build_command: "bitbake qcom-multimedia-proprietary-image"
+          build_type: "flat_build"
+
+      - name: Build qcs6490-rb3gen2-core-kit
+        uses: ./.github/actions/build
+        with:
+          docker_image: "kas_dependencies"
+          kas_file: "meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml"
+          build_command: "bitbake qcom-multimedia-proprietary-image"
+          build_type: "flat_build"
