@@ -81,13 +81,5 @@ runs:
 
             echo '📁 Listing built image files...'
             ls -lh build/tmp/deploy/images || echo '⚠️ No images found.'
-
-            echo '🚚 Copying images to GitHub runner target directory...'
-            TARGET_DIR=\"${{ github.workspace }}/target/base/build-qcom-wayland/tmp-glibc/deploy/images\"
-            echo \"📌 Target directory is: \$TARGET_DIR\"
-            mkdir -p \"\$TARGET_DIR\" || {
-              echo \"❌ Failed to create target directory. Check permissions or path validity.\"
-              exit 1
-            }
           "
         echo "::endgroup::"
