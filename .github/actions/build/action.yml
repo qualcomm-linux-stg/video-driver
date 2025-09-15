@@ -83,6 +83,11 @@ runs:
 
             echo 'Listing built image files...'
             ls -lh build/tmp/deploy/images || echo 'No images found.'
+            echo 'Copying images to GitLab runner target directory...'
+            TARGET_DIR=\"/local/mnt/workspace/manigurr/target/base/build-qcom-wayland/tmp-glibc/deploy/images\"
+            mkdir -p \$TARGET_DIR
+            cp -r build/tmp/deploy/images/* \$TARGET_DIR/
+            echo 'Image files copied successfully.'
           "
 
         echo "::endgroup::"
