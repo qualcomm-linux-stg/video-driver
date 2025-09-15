@@ -23,14 +23,10 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Build ${{ env.MACHINE }}
+    - name: Build ${{ inputs.build_type }}
       shell: bash
       run: |
         set -e
-
-        filepath="${{ github.workspace }}/${{ env.MACHINE }}_${{ inputs.build_type }}file_list.txt"
-        echo "filepath=${filepath}" >> $GITHUB_ENV
-        touch $filepath
 
         USER_ID=$(id -u)
         GROUP_ID=$(id -g)
@@ -38,7 +34,7 @@ runs:
         WORKSPACE=${{ github.workspace }}/..
         USER_HOME="/home/$USER"
 
-        echo "::group::$(printf '__________ %-100s' 'build' | tr ' ' _)"
+        echo "::group::$(printf '__________ %-100s' 'Build Process' | tr ' ' _)"
 
         docker run \
           --rm \
@@ -50,53 +46,48 @@ runs:
           ${{ inputs.docker_image }} \
           bash -c "
             set -e
-            echo 'Cloning meta-qcom...'
+
+            echo '🔄 Cloning meta-qcom...'
             rm -rf meta-qcom
             git clone https://github.com/qualcomm-linux/meta-qcom.git
 
-            echo 'Running initial BitBake build...'
+            echo '🚀 Running initial BitBake build...'
             if ! kas shell ${{ inputs.kas_file }} -c '
               umask 022
               ${{ inputs.build_command }}
             '; then
-              echo 'Initial build failed. Checking for krb5 fetch error...'
+              echo '❌ Initial build failed. Checking for krb5 fetch error...'
               ERROR_LOG=\$(find build/tmp/work -name \"log.do_fetch.*\" | grep krb5 || true)
               if [[ -n \"\$ERROR_LOG\" ]]; then
-                echo 'krb5 fetch error detected. Injecting sources...'
-
+                echo '⚠️ krb5 fetch error detected. Injecting sources...'
                 mkdir -p build/downloads
-
                 if [[ -f sources/krb5-1.21.3.tar.gz && -f sources/krb5-1.21.3.tar.gz.done ]]; then
                   cp sources/krb5-1.21.3.tar.gz build/downloads/
                   cp sources/krb5-1.21.3.tar.gz.done build/downloads/
-                  echo 'Retrying BitBake build...'
-                  bitbake qcom-multimedia-proprietary-image
+                  echo '🔁 Retrying BitBake build...'
+                  kas shell ${{ inputs.kas_file }} -c '
+                    umask 022
+                    bitbake qcom-multimedia-proprietary-image
+                  '
                 else
-                  echo 'krb5 source files not found in sources/. Exiting.'
+                  echo '❌ krb5 source files not found in sources/. Exiting.'
                   exit 1
                 fi
               else
-                echo 'Build failed, but not due to krb5 fetch. Exiting.'
+                echo '❌ Build failed, but not due to krb5 fetch. Exiting.'
                 exit 1
               fi
             fi
 
-            echo 'Listing built image files...'
-            ls -lh build/tmp/deploy/images || echo 'No images found.'
             echo '📁 Listing built image files...'
             ls -lh build/tmp/deploy/images || echo '⚠️ No images found.'
-            echo '🚚 Copying images to GitLab runner target directory...'
-            # Debug: Show the value of CI_PROJECT_DIR
-            echo "🔍 CI_PROJECT_DIR is: $CI_PROJECT_DIR"
-            # Set the target directory path
-            TARGET_DIR="$CI_PROJECT_DIR/target/base/build-qcom-wayland/tmp-glibc/deploy/images"
-            # Debug: Show the full target path
-            echo "📌 Target directory is: $TARGET_DIR"
-            # Create the directory
-            mkdir -p "$TARGET_DIR" || {
-              echo "❌ Failed to create target directory. Check permissions or path validity."
+
+            echo '🚚 Copying images to GitHub runner target directory...'
+            TARGET_DIR=\"${{ github.workspace }}/target/base/build-qcom-wayland/tmp-glibc/deploy/images\"
+            echo \"📌 Target directory is: \$TARGET_DIR\"
+            mkdir -p \"\$TARGET_DIR\" || {
+              echo \"❌ Failed to create target directory. Check permissions or path validity.\"
               exit 1
             }
           "
-
         echo "::endgroup::"
