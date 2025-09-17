@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run iris test 
+      - name: compile v4l2_driver
         uses: addnab/docker-run-action@v3
         with:
           image: kas_dependencies
