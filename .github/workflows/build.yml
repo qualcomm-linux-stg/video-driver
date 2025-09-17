@@ -37,3 +37,32 @@ jobs:
           kas_file: "meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml"
           build_command: "bitbake qcom-multimedia-proprietary-image"
           build_type: "flat_build"
+
+      - name: Compile iris_v4l2_test
+        uses: addnab/docker-run-action@v3
+        with:
+          image: kas_dependencies
+          run: |
+            set -x
+            rm -rf v4l-video-test-app
+            git clone https://github.com/quic/v4l-video-test-app.git
+            cd v4l-video-test-app
+            sudo apt update
+            sudo apt upgrade -y
+            sudo apt install -y autoconf automake build-essential cmake git wget yasm
+            sed -i -e 's|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|' \
+                   -e 's|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|' \
+                   CMakeLists.txt
+            cd third-parties
+            sed -i -e 's|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|' \
+                   -e 's|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|' \
+                   aarch64_toolchain.cmake
+            chmod +x prepare_3p_module.sh
+            ./prepare_3p_module.sh
+            cd ..
+            chmod +x build.sh
+            ./build.sh
+            cd build/
+            chmod +x iris_v4l2_test
+            ./iris_v4l2_test
+            du -h iris_v4l2_test
