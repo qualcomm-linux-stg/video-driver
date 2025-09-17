@@ -1,4 +1,5 @@
-name: Run iris_v4l2_test
+---
+name: test_App generation
 on:
   push:
     branches:
