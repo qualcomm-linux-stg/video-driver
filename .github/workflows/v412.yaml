@@ -1,4 +1,4 @@
-ame: Run iris_v4l2_test
+name: Run iris_v4l2_test
 on:
   push:
     branches:
