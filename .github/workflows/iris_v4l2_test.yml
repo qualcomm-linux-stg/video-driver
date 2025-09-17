@@ -18,6 +18,7 @@ jobs:
         with:
           image: kas_dependencies
           run: |
+            rm -rf v4l-video-test-app
             git clone https://github.com/quic/v4l-video-test-app.git
             cd v4l-video-test-app
             sudo apt update
