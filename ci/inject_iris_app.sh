@@ -2,6 +2,7 @@
 set -e
 
 # Source build output path
+ls
 BUILD_PATH="build/tmp/deploy/images"
 
 # Target images directory
