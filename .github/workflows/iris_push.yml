@@ -1,14 +1,15 @@
 name: IRIS App Injection
 
 on:
+  workflow_dispatch:
   push:
     branches: 
-          - test-workflow
-  workflow_dispatch:
+      - test-workflow
 
 jobs:
   inject:
     runs-on: self-hosted
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -16,5 +17,15 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y e2fsprogs
 
-      - name: Run injection script
-        run: sudo bash ci/inject_iris_app.sh
+      - name: Prepare workspace
+        run: |
+          echo "Setting up workspace for injection..."
+          mkdir -p ${{ github.workspace }}/meta-qcom/build/tmp/deploy/images
+
+      - name: Run IRIS injection script
+        shell: bash
+        run: |
+          echo "Running IRIS injection..."
+          sudo bash ci/inject_iris_app.sh \
+            --image-dir ${{ github.workspace }}/meta-qcom/build/tmp/deploy/images \
+            --machine qcs8300-ride-sx
