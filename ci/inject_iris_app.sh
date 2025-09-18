@@ -28,7 +28,7 @@ inject_app() {
 
   sudo mkdir -p $MOUNT_DIR/data/vendor/iris_test_app/input
   sudo mkdir -p $MOUNT_DIR/data/vendor/iris_test_app/output
-  sudo cp bin/iris_v4l2_test $MOUNT_DIR/data/vendor/iris_test_app/
+  sudo cp /local/mnt/workspace/manigurr/iris_v4l2_test $MOUNT_DIR/data/vendor/iris_test_app/
   sudo chmod +x $MOUNT_DIR/data/vendor/iris_test_app/iris_v4l2_test
 
   sudo umount $MOUNT_DIR
