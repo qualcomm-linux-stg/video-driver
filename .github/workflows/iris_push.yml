@@ -1,0 +1,20 @@
+name: IRIS App Injection
+
+on:
+  push:
+    branches: 
+          - test-workflow
+  workflow_dispatch:
+
+jobs:
+  inject:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y e2fsprogs
+
+      - name: Run injection script
+        run: sudo bash ci/inject_iris_app.sh
