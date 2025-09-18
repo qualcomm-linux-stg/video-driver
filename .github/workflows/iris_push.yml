@@ -5,6 +5,7 @@ on:
   push:
     branches: 
       - test-workflow
+  workflow_dispatch:
 
 jobs:
   inject:
