@@ -30,6 +30,8 @@ jobs:
 
       - name: Run IRIS injection for ${{ matrix.machines }}
         run: |
+          ls
+          pwd
           echo "Injecting IRIS app into image for ${{ matrix.machines }}..."
           sudo bash ci/inject_iris_app.sh \
             --image-dir ${{ github.workspace }}/meta-qcom/build/tmp/deploy/images \
