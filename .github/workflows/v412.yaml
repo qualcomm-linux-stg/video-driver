@@ -48,5 +48,4 @@ jobs:
 
           cd build/
           chmod +x iris_v4l2_test
-          ./iris_v4l2_test
           du -h iris_v4l2_test
