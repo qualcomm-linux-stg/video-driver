@@ -18,23 +18,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Run IRIS injection inside Docker
         run: |
-          sudo apt-get update
-          sudo apt-get install -y e2fsprogs
-
-      - name: Prepare workspace
-        run: |
-          echo "Preparing workspace for IRIS injection..."
-          mkdir -p ${{ github.workspace }}/meta-qcom/build/tmp/deploy/images
-
-      - name: Run IRIS injection for ${{ matrix.machines }}
-        run: |
-          ls
-          pwd
           echo "Injecting IRIS app into image for ${{ matrix.machines }}..."
-          sudo bash ci/inject_iris_app.sh \
-            --image-dir ${{ github.workspace }}/meta-qcom/build/tmp/deploy/images \
-            --machine ${{ matrix.machines }}
-
-
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            kas_dependencies \
+            bash -c "apt-get update && apt-get install -y e2fsprogs sudo && \
+              bash ci/inject_iris_app.sh \
+              --image-dir /workspace/meta-qcom/build/tmp/deploy/images \
+              --machine ${{ matrix.machines }}"
