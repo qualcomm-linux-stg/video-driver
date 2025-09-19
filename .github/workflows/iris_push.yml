@@ -3,43 +3,36 @@ name: IRIS App Injection
 on:
   workflow_dispatch:
   push:
-    branches: 
+    branches:
       - test-workflow
 
 jobs:
   inject:
     runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        machines: [qcs9100-ride-sx, qcs8300-ride-sx]
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y e2fsprogs
-
-      - name: Run IRIS injection inside Docker
-        shell: bash
         run: |
-          echo "🚀 Running IRIS injection inside Docker..."
+          sudo apt-get update
+          sudo apt-get install -y e2fsprogs
 
-          USER_ID=$(id -u)
-          GROUP_ID=$(id -g)
-          USER=$(whoami)
-          WORKSPACE=${{ github.workspace }}/..
-          USER_HOME="/home/$USER"
+      - name: Prepare workspace
+        run: |
+          echo "Preparing workspace for IRIS injection..."
+          mkdir -p ${{ github.workspace }}/meta-qcom/build/tmp/deploy/images
 
-          docker run \
-            --rm \
-            --user ${USER_ID}:${GROUP_ID} \
-            -v ${WORKSPACE}:${USER_HOME}/workspace \
-            -w ${USER_HOME}/workspace \
-            --privileged \
-            kas_dependencies \
-            bash -c "
-              set -e
-              echo '🔧 Injecting IRIS App...'
-              bash ci/inject_iris_app.sh \
-                --image-dir meta-qcom/build/tmp/deploy/images/qcs8300-ride-sx \
-                --machine qcs8300-ride-sx
-            "
+      - name: Run IRIS injection for ${{ matrix.machines }}
+        run: |
+          echo "Injecting IRIS app into image for ${{ matrix.machines }}..."
+          sudo bash ci/inject_iris_app.sh \
+            --image-dir ${{ github.workspace }}/meta-qcom/build/tmp/deploy/images \
+            --machine ${{ matrix.machines }}
+
 
