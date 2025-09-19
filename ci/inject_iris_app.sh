@@ -22,4 +22,5 @@ inject_app() {
 
   sudo umount $MOUNT_DIR
   rm -rf $MOUNT_DIR
+  pwd
 }
