@@ -22,30 +22,37 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/images
 
-      - name: Inject IRIS app into rootfs image
+      - name: Copy rootfs image to workspace
         run: |
-          echo "🔧 Starting IRIS injection for ${{ matrix.machines }}..."
+          echo "📦 Copying rootfs image for ${{ matrix.machines }}..."
 
-          IMAGE_DIR=${{ github.workspace }}/build/tmp/deploy/images/${{ matrix.machines }}
-          TARGET_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
-          ROOTFS_NAME=$(ls $IMAGE_DIR | grep "qcom-multimedia-proprietary-image-${{ matrix.machines }}.*rootfs.qcomflash" | head -n 1)
-          ROOTFS_PATH=$IMAGE_DIR/$ROOTFS_NAME
+          SRC_DIR=/local/mnt/workspace/mani/actions-runner/_work/video-driver/build/tmp/deploy/images/${{ matrix.machines }}
+          DEST_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
+
+          ROOTFS_NAME=$(ls $SRC_DIR | grep "qcom-multimedia-proprietary-image-${{ matrix.machines }}.*rootfs.qcomflash" | head -n 1)
+          ROOTFS_PATH=$SRC_DIR/$ROOTFS_NAME
 
           if [[ ! -f "$ROOTFS_PATH" ]]; then
             echo "❌ Rootfs image not found: $ROOTFS_PATH"
             exit 1
           fi
 
-          echo "📦 Copying image to injection workspace..."
-          mkdir -p $TARGET_DIR
-          cp $ROOTFS_PATH $TARGET_DIR/rootfs.img
+          mkdir -p $DEST_DIR
+          cp $ROOTFS_PATH $DEST_DIR/rootfs.img
+
+      - name: Inject IRIS app into rootfs image
+        run: |
+          echo "🔧 Starting IRIS injection for ${{ matrix.machines }}..."
+
+          TARGET_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
+          ROOTFS_IMG=$TARGET_DIR/rootfs.img
 
           echo "🔍 Mounting rootfs.img..."
           mkdir -p ~/system_mount
-          if ! sudo mount -o loop $TARGET_DIR/rootfs.img ~/system_mount; then
+          if ! sudo mount -o loop $ROOTFS_IMG ~/system_mount; then
             echo "⚠️ Mount failed, attempting journal recovery..."
-            sudo e2fsck -f $TARGET_DIR/rootfs.img
-            sudo mount -o loop $TARGET_DIR/rootfs.img ~/system_mount
+            sudo e2fsck -f $ROOTFS_IMG
+            sudo mount -o loop $ROOTFS_IMG ~/system_mount
           fi
 
           echo "📁 Creating IRIS app directories..."
