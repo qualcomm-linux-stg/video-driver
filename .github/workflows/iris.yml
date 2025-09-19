@@ -1,6 +1,91 @@
 ---
-  name: Inject IRIS app
-  uses: ./.github/actions/inject
-  with:
-    machine: ${{ matrix.machines }}
-    image_dir: build/tmp/deploy/images/${{ matrix.machines }}
+name: IRIS App Injection
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test-workflow
+
+jobs:
+  inject:
+    runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        machines: [qcs9100-ride-sx, qcs8300-ride-sx, qcs6490-rb3gen2-core-kit]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create top-level images directory
+        run: |
+          mkdir -p ${{ github.workspace }}/images
+
+      - name: Verify kas_dependencies image exists locally
+        run: |
+          if ! docker image inspect kas_dependencies > /dev/null 2>&1; then
+            echo "❌ kas_dependencies image not found locally."
+            docker images
+            exit 1
+          else
+            echo "✅ kas_dependencies image found locally."
+          fi
+
+      - name: Inject IRIS app into rootfs image
+        run: |
+          echo "🔧 Starting IRIS injection for ${{ matrix.machines }}..."
+
+          IMAGE_DIR=${{ github.workspace }}/build/tmp/deploy/images/${{ matrix.machines }}
+          TARGET_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
+
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -v /local/mnt/workspace/manigurr:/mnt \
+            -w /workspace \
+            --privileged \
+            kas_dependencies \
+            bash -c "
+              set -e
+
+              IMAGE_DIR=/workspace/build/tmp/deploy/images/${{ matrix.machines }}
+              TARGET_DIR=/workspace/images/${{ matrix.machines }}
+              ROOTFS_NAME=\$(ls \$IMAGE_DIR | grep 'qcom-multimedia-proprietary-image-${{ matrix.machines }}.*rootfs.qcomflash' | head -n 1)
+              ROOTFS_PATH=\$IMAGE_DIR/\$ROOTFS_NAME
+
+              if [[ ! -f \"\$ROOTFS_PATH\" ]]; then
+                echo '❌ Rootfs image not found: \$ROOTFS_PATH'
+                exit 1
+              fi
+
+              echo '📦 Copying image to injection workspace...'
+              mkdir -p \$TARGET_DIR
+              cp \$ROOTFS_PATH \$TARGET_DIR/rootfs.img
+
+              echo '🔍 Mounting rootfs.img...'
+              mkdir -p /mnt/system_mount
+              if ! sudo mount -o loop \$TARGET_DIR/rootfs.img /mnt/system_mount; then
+                echo '⚠️ Mount failed, attempting journal recovery...'
+                sudo e2fsck -f \$TARGET_DIR/rootfs.img
+                sudo mount -o loop \$TARGET_DIR/rootfs.img /mnt/system_mount
+              fi
+
+              echo '📁 Creating IRIS app directories...'
+              sudo mkdir -p /mnt/system_mount/data/vendor/iris_test_app/input
+              sudo mkdir -p /mnt/system_mount/data/vendor/iris_test_app/output
+
+              echo '📥 Copying iris_v4l2_test binary...'
+              sudo cp /mnt/iris_v4l2_test /mnt/system_mount/data/vendor/iris_test_app/
+              sudo chmod +x /mnt/system_mount/data/vendor/iris_test_app/iris_v4l2_test
+
+              echo '🔍 Verifying contents...'
+              ls -l /mnt/system_mount/data/vendor/iris_test_app
+
+              echo '📤 Unmounting image...'
+              sudo umount /mnt/system_mount
+              rm -rf /mnt/system_mount
+
+              echo '✅ IRIS injection completed for ${{ matrix.machines }}.'
+            "
+
