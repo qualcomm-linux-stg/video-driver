@@ -1,22 +1,36 @@
 #!/bin/bash
 set -e
 
-# Source build output path
-ls
-cd ..
-ls
-BUILD_PATH="build/tmp/deploy/images"
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image-dir)
+      IMAGE_DIR="$2"
+      shift 2
+      ;;
+    --machine)
+      MACHINE="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      exit 1
+      ;;
+  esac
+done
 
-# Target images directory
+if [[ -z "$IMAGE_DIR" || -z "$MACHINE" ]]; then
+  echo "Usage: $0 --image-dir <path> --machine <name>"
+  exit 1
+fi
+
 TARGET_DIR="images"
+mkdir -p "$TARGET_DIR"
 
-# Create target directory
-mkdir -p $TARGET_DIR
-
-# Copy image folders
-cp -r $BUILD_PATH/qcs8300-ride-sx $TARGET_DIR/
-cp -r $BUILD_PATH/qcs9100-ride-sx $TARGET_DIR/
-cp -r $BUILD_PATH/qcom-multimedia-proprietary-image-qcs8300-ride-sx.rootfs.qcomflash $TARGET_DIR/
+# Copy relevant image folder
+echo "Copying images for $MACHINE..."
+cp -r "$IMAGE_DIR/$MACHINE" "$TARGET_DIR/" || echo "⚠️ Folder $IMAGE_DIR/$MACHINE not found"
+cp -r "$IMAGE_DIR/qcom-multimedia-proprietary-image-$MACHINE.rootfs.qcomflash" "$TARGET_DIR/" || echo "⚠️ Rootfs image not found"
 
 # App injection function
 inject_app() {
@@ -24,8 +38,12 @@ inject_app() {
   ROOTFS="$IMG_DIR/rootfs.img"
   MOUNT_DIR="system_mount"
 
-  echo "Injecting into $ROOTFS"
+  if [[ ! -f "$ROOTFS" ]]; then
+    echo "❌ rootfs.img not found at $ROOTFS"
+    return 1
+  fi
 
+  echo "Injecting into $ROOTFS"
   mkdir -p $MOUNT_DIR
   sudo mount -o loop "$ROOTFS" $MOUNT_DIR
 
@@ -38,7 +56,6 @@ inject_app() {
   rm -rf $MOUNT_DIR
 }
 
-# Inject into all three images
-inject_app "$TARGET_DIR/qcs8300-ride-sx/qcom-multimedia-proprietary-image-qcs8300-ride-sx.rootfs.qcomflash"
-inject_app "$TARGET_DIR/qcs9100-ride-sx/qcom-multimedia-proprietary-image-qcs8300-ride-sx.rootfs.qcomflash"
-inject_app "$TARGET_DIR/qcom-multimedia-proprietary-image-qcs8300-ride-sx.rootfs.qcomflash/qcom-multimedia-proprietary-image-qcs8300-ride-sx.rootfs.qcomflash"
+# Inject into copied images
+inject_app "$TARGET_DIR/$MACHINE"
+inject_app "$TARGET_DIR"
