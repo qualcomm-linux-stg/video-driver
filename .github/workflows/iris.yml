@@ -1,0 +1,6 @@
+---
+  name: Inject IRIS app
+  uses: ./.github/actions/inject
+  with:
+    machine: ${{ matrix.machines }}
+    image_dir: build/tmp/deploy/images/${{ matrix.machines }}
