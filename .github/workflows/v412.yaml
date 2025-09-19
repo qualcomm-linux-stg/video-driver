@@ -23,8 +23,8 @@ jobs:
           cd v4l-video-test-app
           sudo apt update
           sudo apt upgrade -y
-          sudo apt install -y autoconf automake build-essential cmake git wget yasm
-
+          sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
+          sudo apt install -y autoconf automake build-essential cmake git wget yasm gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
           aarch64-linux-gnu-gcc --version
           aarch64-linux-gnu-g++ --version
           which aarch64-linux-gnu-gcc
