@@ -22,23 +22,22 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/images
 
-      - name: Copy rootfs.img to workspace
+      - name: Locate and copy rootfs.img
         run: |
-          echo "📦 Copying rootfs image for ${{ matrix.machines }}..."
+          echo "📦 Searching for rootfs.img for ${{ matrix.machines }}..."
 
           SRC_DIR=/local/mnt/workspace/mani/actions-runner/_work/video-driver/build/tmp/deploy/images/${{ matrix.machines }}
-          SUBDIR=$SRC_DIR/qcom-multimedia-proprietary-image-${{ matrix.machines }}.rootfs.qcomflash
-          ROOTFS_PATH=$SUBDIR/rootfs.img
+          ROOTFS_PATH=$(find "$SRC_DIR" -type f -name "rootfs.img" | head -n 1)
           DEST_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
 
-          if [[ ! -f "$ROOTFS_PATH" ]]; then
-            echo "❌ rootfs.img not found at: $ROOTFS_PATH"
+          if [[ -z "$ROOTFS_PATH" || ! -f "$ROOTFS_PATH" ]]; then
+            echo "❌ rootfs.img not found under: $SRC_DIR"
             exit 1
           fi
 
-          mkdir -p $DEST_DIR
-          cp $ROOTFS_PATH $DEST_DIR/rootfs.img
-          echo "✅ Copied to $DEST_DIR/rootfs.img"
+          mkdir -p "$DEST_DIR"
+          cp "$ROOTFS_PATH" "$DEST_DIR/rootfs.img"
+          echo "✅ Copied from $ROOTFS_PATH to $DEST_DIR/rootfs.img"
 
       - name: Inject IRIS app into rootfs image
         run: |
@@ -49,10 +48,10 @@ jobs:
 
           echo "🔍 Mounting rootfs.img..."
           mkdir -p ~/system_mount
-          if ! sudo mount -o loop $ROOTFS_IMG ~/system_mount; then
+          if ! sudo mount -o loop "$ROOTFS_IMG" ~/system_mount; then
             echo "⚠️ Mount failed, attempting journal recovery..."
-            sudo e2fsck -f $ROOTFS_IMG
-            sudo mount -o loop $ROOTFS_IMG ~/system_mount
+            sudo e2fsck -f "$ROOTFS_IMG"
+            sudo mount -o loop "$ROOTFS_IMG" ~/system_mount
           fi
 
           echo "📁 Creating IRIS app directories..."
