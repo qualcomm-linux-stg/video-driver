@@ -1,4 +1,3 @@
----
 name: Build Images
 
 on:
@@ -13,20 +12,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build_matrix: ${{ fromJson('[
-          {
-            "machine": "qcs9100-ride-sx",
-            "kas_file": "meta-qcom/ci/qcs9100-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"
-          },
-          {
-            "machine": "qcs8300-ride-sx",
-            "kas_file": "meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"
-          },
-          {
-            "machine": "qcs6490-rb3gen2-core-kit",
-            "kas_file": "meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml"
-          }
-        ]') }}
+        build_matrix:
+          - machine: qcs9100-ride-sx
+            kas_file: meta-qcom/ci/qcs9100-ride-sx.yml:meta-qcom/ci/qcom-distro.yml
+          - machine: qcs8300-ride-sx
+            kas_file: meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml
+          - machine: qcs6490-rb3gen2-core-kit
+            kas_file: meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml
 
     steps:
       - uses: actions/checkout@v4
