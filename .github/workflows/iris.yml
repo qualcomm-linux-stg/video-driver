@@ -18,16 +18,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Link external image directory into workspace
-        run: |
-          echo "🔗 Linking external image directory..."
-          ln -s /local/mnt/workspace/manigurr/images/images ${{ github.workspace }}/external_images
-
       - name: Copy all image files to workspace
         run: |
           echo "📦 Copying all image files for ${{ matrix.machines }}..."
 
-          SRC_DIR=${{ github.workspace }}/external_images/${{ matrix.machines }}
+          SRC_DIR=/local/mnt/workspace/manigurr/images/images/${{ matrix.machines }}
           DEST_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
 
           if [[ ! -d "$SRC_DIR" ]]; then
