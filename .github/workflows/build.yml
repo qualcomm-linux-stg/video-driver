@@ -1,11 +1,10 @@
----  
-name: Environment setup and build
+name: Build Images
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - test-workflow
-  workflow_dispatch:
 
 jobs:
   build:
@@ -38,3 +37,9 @@ jobs:
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: "bitbake qcom-multimedia-proprietary-image"
           build_type: "flat_build"
+
+      - name: Upload built image as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: built-${{ matrix.build_matrix.machine }}
+          path: build/tmp/deploy/images/${{ matrix.build_matrix.machine }}
