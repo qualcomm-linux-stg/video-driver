@@ -2,6 +2,9 @@ name: Inject IRIS App
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - test-workflow
 
 jobs:
   inject:
