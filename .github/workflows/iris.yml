@@ -18,26 +18,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create top-level images directory
+      - name: Copy all image files to workspace
         run: |
-          mkdir -p ${{ github.workspace }}/images
+          echo "📦 Copying all image files for ${{ matrix.machines }}..."
 
-      - name: Locate and copy rootfs.img
-        run: |
-          echo "📦 Searching for rootfs.img for ${{ matrix.machines }}..."
-
-          SRC_DIR=/local/mnt/workspace/mani/actions-runner/_work/video-driver/build/tmp/deploy/images/${{ matrix.machines }}
-          ROOTFS_PATH=$(find "$SRC_DIR" -type f -name "rootfs.img" | head -n 1)
+          SRC_DIR=/local/mnt/workspace/manigurr/images/images/${{ matrix.machines }}
           DEST_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
 
-          if [[ -z "$ROOTFS_PATH" || ! -f "$ROOTFS_PATH" ]]; then
-            echo "❌ rootfs.img not found under: $SRC_DIR"
+          if [[ ! -d "$SRC_DIR" ]]; then
+            echo "❌ Source directory not found: $SRC_DIR"
             exit 1
           fi
 
           mkdir -p "$DEST_DIR"
-          cp "$ROOTFS_PATH" "$DEST_DIR/rootfs.img"
-          echo "✅ Copied from $ROOTFS_PATH to $DEST_DIR/rootfs.img"
+          cp -r "$SRC_DIR/"* "$DEST_DIR/"
+          echo "✅ All files copied to $DEST_DIR"
 
       - name: Inject IRIS app into rootfs image
         run: |
@@ -45,6 +40,11 @@ jobs:
 
           TARGET_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
           ROOTFS_IMG=$TARGET_DIR/rootfs.img
+
+          if [[ ! -f "$ROOTFS_IMG" ]]; then
+            echo "❌ rootfs.img not found at: $ROOTFS_IMG"
+            exit 1
+          fi
 
           echo "🔍 Mounting rootfs.img..."
           mkdir -p ~/system_mount
