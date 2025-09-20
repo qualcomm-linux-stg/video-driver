@@ -22,23 +22,23 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/images
 
-      - name: Copy rootfs image to workspace
+      - name: Copy rootfs.img to workspace
         run: |
           echo "📦 Copying rootfs image for ${{ matrix.machines }}..."
 
           SRC_DIR=/local/mnt/workspace/mani/actions-runner/_work/video-driver/build/tmp/deploy/images/${{ matrix.machines }}
+          SUBDIR=$SRC_DIR/qcom-multimedia-proprietary-image-${{ matrix.machines }}.rootfs.qcomflash
+          ROOTFS_PATH=$SUBDIR/rootfs.img
           DEST_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
 
-          ROOTFS_NAME=$(ls $SRC_DIR | grep "qcom-multimedia-proprietary-image-${{ matrix.machines }}.*rootfs.qcomflash" | head -n 1)
-          ROOTFS_PATH=$SRC_DIR/$ROOTFS_NAME
-
           if [[ ! -f "$ROOTFS_PATH" ]]; then
-            echo "❌ Rootfs image not found: $ROOTFS_PATH"
+            echo "❌ rootfs.img not found at: $ROOTFS_PATH"
             exit 1
           fi
 
           mkdir -p $DEST_DIR
           cp $ROOTFS_PATH $DEST_DIR/rootfs.img
+          echo "✅ Copied to $DEST_DIR/rootfs.img"
 
       - name: Inject IRIS app into rootfs image
         run: |
