@@ -18,55 +18,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Link external image directory into workspace
+        run: |
+          ln -s /local/mnt/workspace/manigurr/images/images ${{ github.workspace }}/external_images
+
       - name: Copy all image files to workspace
         run: |
-          echo "📦 Copying all image files for ${{ matrix.machines }}..."
-
-          SRC_DIR=/local/mnt/workspace/manigurr/images/images/${{ matrix.machines }}
-          DEST_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
-
-          if [[ ! -d "$SRC_DIR" ]]; then
-            echo "❌ Source directory not found: $SRC_DIR"
-            exit 1
-          fi
-
-          mkdir -p "$DEST_DIR"
-          cp -r "$SRC_DIR/"* "$DEST_DIR/"
-          echo "✅ All files copied to $DEST_DIR"
-
-      - name: Inject IRIS app into rootfs image
-        run: |
-          echo "🔧 Starting IRIS injection for ${{ matrix.machines }}..."
-
-          TARGET_DIR=${{ github.workspace }}/images/${{ matrix.machines }}
-          ROOTFS_IMG=$TARGET_DIR/rootfs.img
-
-          if [[ ! -f "$ROOTFS_IMG" ]]; then
-            echo "❌ rootfs.img not found at: $ROOTFS_IMG"
-            exit 1
-          fi
-
-          echo "🔍 Mounting rootfs.img..."
-          mkdir -p ~/system_mount
-          if ! sudo mount -o loop "$ROOTFS_IMG" ~/system_mount; then
-            echo "⚠️ Mount failed, attempting journal recovery..."
-            sudo e2fsck -f "$ROOTFS_IMG"
-            sudo mount -o loop "$ROOTFS_IMG" ~/system_mount
-          fi
-
-          echo "📁 Creating IRIS app directories..."
-          sudo mkdir -p ~/system_mount/data/vendor/iris_test_app/input
-          sudo mkdir -p ~/system_mount/data/vendor/iris_test_app/output
-
-          echo "📥 Copying iris_v4l2_test binary..."
-          sudo cp /local/mnt/workspace/manigurr/iris_v4l2_test ~/system_mount/data/vendor/iris_test_app/
-          sudo chmod +x ~/system_mount/data/vendor/iris_test_app/iris_v4l2_test
-
-          echo "🔍 Verifying contents..."
-          ls -l ~/system_mount/data/vendor/iris_test_app
-
-          echo "📤 Unmounting image..."
-          sudo umount ~/system_mount
-          rm -rf ~/system_mount
-
-          echo "✅ IRIS injection completed for ${{ matrix.machines }}."
+          echo "
