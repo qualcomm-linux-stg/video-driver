@@ -3,7 +3,7 @@
         "machine": "qcs9100-ride-sx",
         "kas_file": "meta-qcom/ci/qcs9100-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"
     },
-        "qcs8300-ride-sx": {
+    "qcs8300-ride-sx": {
         "machine": "qcs8300-ride-sx",
         "kas_file": "meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"
     },
