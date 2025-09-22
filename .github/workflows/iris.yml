@@ -56,7 +56,7 @@ jobs:
           rm -rf ~/system_mount
 
       - name: Upload injected image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: injected-${{ matrix.machines }}
           path: ${{ github.workspace }}/images/${{ matrix.machines }}/rootfs.img
