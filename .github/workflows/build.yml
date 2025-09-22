@@ -15,7 +15,7 @@ on:
 
 jobs:
   build:
-     runs-on:
+    runs-on:
       group: GHA-Video-Stg-SelfHosted-RG
       labels: [self-hosted, video-stg-u2404-x64-large-od-ephem]
     strategy:

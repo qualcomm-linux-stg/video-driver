@@ -1,6 +1,6 @@
 ---
 name: pre_merge
-run_name: Pre Merge Workflow
+run-name: Pre Merge Workflow
 on:
   workflow_dispatch:
   push:
