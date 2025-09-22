@@ -80,8 +80,5 @@ runs:
 
             echo '📁 Listing built image files...'
             ls -lh build/tmp/deploy/images || echo '⚠️ No images found.'
-            echo '📦 Copying built images to host workspace...'
-            cp -r build/tmp/deploy/images $USER_HOME/workspace/meta-qcom/build/tmp/deploy/
-
           "
         echo "::endgroup::"
