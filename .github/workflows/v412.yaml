@@ -9,8 +9,9 @@ on:
 
 jobs:
   iris_test:
-    runs-on: self-hosted
-
+     runs-on:
+      group: GHA-Video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2404-arm64-xlrg-od-ephem]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
