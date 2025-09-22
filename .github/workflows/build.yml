@@ -1,11 +1,17 @@
 ---
-name: Build Images
+name: _build
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - test-workflow
+  workflow_call:
+    inputs:
+      docker_image:
+        description: Docker image
+        type: string
+        required: true
+      build_matrix:
+        description: Build matrix for multi target builds
+        type: string
+        required: true
 
 jobs:
   build:
@@ -15,27 +21,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build_matrix:
-          - machine: qcs9100-ride-sx
-            kas_file: meta-qcom/ci/qcs9100-ride-sx.yml:meta-qcom/ci/qcom-distro.yml
-          - machine: qcs8300-ride-sx
-            kas_file: meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml
-          - machine: qcs6490-rb3gen2-core-kit
-            kas_file: meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml
+        build_matrix: ${{ fromJson(inputs.build_matrix) }}
 
     steps:
+      - name: Build docker image
+        id: docker_build
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@test-workflow
+
       - uses: actions/checkout@v4
 
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: ./.github/actions/build
         with:
-          docker_image: "kas_dependencies"
+          docker_image: ${{ steps.docker_build.outputs.image_name }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: "bitbake qcom-multimedia-proprietary-image"
-          build_type: "flat_build"
 
-      - name: Upload built image as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: built-${{ matrix.build_matrix.machine }}
-          path: build/tmp/deploy/images/${{ matrix.build_matrix.machine }}
+      # - name: Upload built image as artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: built-${{ matrix.build_matrix.machine }}
+      #     path: build/tmp/deploy/images/${{ matrix.build_matrix.machine }}
