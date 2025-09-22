@@ -57,7 +57,7 @@ runs:
               ${{ inputs.build_command }}
             '; then
               echo '❌ Initial build failed. Checking for krb5 fetch error...'
-              ERROR_LOG=\$(find build/tmp/work -name \"log.do_fetch.*\" | grep krb5 || true)
+              ERROR_LOG=\$(find ${{ github.workspace }}/build/tmp/work -name \"log.do_fetch.*\" | grep krb5 || true)
               if [[ -n \"\$ERROR_LOG\" ]]; then
                 echo '⚠️ krb5 fetch error detected. Injecting sources...'
                 mkdir -p build/downloads
