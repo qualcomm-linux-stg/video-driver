@@ -60,7 +60,7 @@ jobs:
 
       - name: Upload artifacts to S3
         id: upload-artifacts
-        uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@mtest-workflow
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@test-workflow
         with:
           s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
