@@ -9,12 +9,12 @@ on:
 
 jobs:
   loading:
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@test-workflow
     secrets: inherit
 
   build:
     needs: loading
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/build.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/build.yml@test-workflow
     secrets: inherit
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
