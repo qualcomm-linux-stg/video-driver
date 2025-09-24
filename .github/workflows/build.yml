@@ -36,27 +36,51 @@ jobs:
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: "bitbake qcom-multimedia-proprietary-image"
 
-      - name: Create file list for artifacts upload
+      - name: Prepare .qcomflash files for S3 upload
         run: |
+          set -e
           workspace=${{ github.workspace }}
-          mkdir -p $workspace/artifacts
-          touch $workspace/artifacts/file_list.txt
-
           machine="${{ matrix.build_matrix.machine }}"
-          image_path="$workspace/build/tmp/deploy/images/${machine}/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
+          symlink_path="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
 
-          if [ -f "$image_path" ]; then
-            echo "$image_path" >> $workspace/artifacts/file_list.txt
-          else
-            echo "⚠️ Image not found: $image_path"
+          if [ ! -L "$symlink_path" ]; then
+            echo "❌ Symlink not found: $symlink_path"
+            exit 1
           fi
 
-      - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          resolved_dir=$(readlink -f "$symlink_path")
+
+          if [ ! -d "$resolved_dir" ]; then
+            echo "❌ Resolved .qcomflash directory not found: $resolved_dir"
+            exit 1
+          fi
+
+          mkdir -p "$workspace/artifacts"
+          touch "$workspace/artifacts/file_list.txt"
+
+          echo "🔍 Listing files in resolved directory: $resolved_dir"
+          find "$resolved_dir" -type f -exec realpath {} \; >> "$workspace/artifacts/file_list.txt"
+
+          echo "✅ Files prepared for upload:"
+          cat "$workspace/artifacts/file_list.txt"
+
+      - name: Validate .qcomflash contents
+        run: |
+          set -e
+          workspace=${{ github.workspace }}
+          machine="${{ matrix.build_matrix.machine }}"
+          symlink_path="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
+          resolved_dir=$(readlink -f "$symlink_path")
+
+          echo "📁 Validating contents of $resolved_dir"
+          ls -lh "$resolved_dir"
+
+          if ! find "$resolved_dir" -type f | grep -q .; then
+            echo "❌ No valid files found in .qcomflash directory. Failing build."
+            exit 1
+          fi
+
+          echo "✅ .qcomflash validation passed."
 
       - name: Upload artifacts to S3
         id: upload-artifacts
@@ -65,6 +89,8 @@ jobs:
           s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
+          machine: ${{ matrix.build_matrix.machine }}
+          #upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Clean up
         run: |

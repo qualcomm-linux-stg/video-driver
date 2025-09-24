@@ -1,52 +1,129 @@
----
 name: test_App generation
 
 on:
   pull_request_target:
     branches:
-      - video.qclinux.0.0
+      - test-workflow
   workflow_dispatch:
 
 jobs:
   iris_test:
     runs-on:
       group: GHA-Video-Stg-SelfHosted-RG
-      labels: [self-hosted, video-stg-u2404-arm64-xlrg-od-ephem]
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies and build iris_v4l2_test
+      - name: Build Docker image
+        id: docker_build
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@test-workflow
+
+      - name: Install tools and build iris_v4l2_test inside Docker
         run: |
-          set -x
-          rm -rf v4l-video-test-app
-          git clone https://github.com/quic/v4l-video-test-app.git
-          cd v4l-video-test-app
-          sudo apt update
-          sudo apt upgrade -y
-          sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
-          sudo apt install -y autoconf automake build-essential cmake git wget yasm gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          aarch64-linux-gnu-gcc --version
-          aarch64-linux-gnu-g++ --version
-          which aarch64-linux-gnu-gcc
-          which aarch64-linux-gnu-g++
+          set -e
+          USER_ID=$(id -u)
+          GROUP_ID=$(id -g)
+          docker run \
+            --rm \
+            --user ${USER_ID}:${GROUP_ID} \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            --privileged \
+            ${{ steps.docker_build.outputs.image_name }} \
+            bash -c '
+              set -e
+              echo "🔧 Installing missing build tools..."
+              sudo apt-get update
+              sudo apt-get install -y \
+                cmake \
+                gcc-aarch64-linux-gnu \
+                g++-aarch64-linux-gnu \
+                libc6-dev-arm64-cross \
+                binutils-aarch64-linux-gnu \
+                make \
+                pkg-config \
+                libtool \
+                autoconf \
+                automake \
+                libssl-dev \
+                libcurl4-openssl-dev \
+                git
+              echo "✅ Tools installed successfully."
+              echo "📦 Cloning v4l-video-test-app..."
+              rm -rf v4l-video-test-app
+              git clone https://github.com/quic/v4l-video-test-app.git
+              cd v4l-video-test-app
+              echo "🔧 Patching compiler paths..."
+              sed -i -e "s|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|" \
+                     -e "s|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|" \
+                     CMakeLists.txt
+              cd third-parties
+              sed -i -e "s|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|" \
+                     -e "s|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|" \
+                     aarch64_toolchain.cmake
+              echo "📦 Preparing third-party modules..."
+              chmod +x prepare_3p_module.sh
+              bash -xe ./prepare_3p_module.sh
+              cd ..
+              echo "🔨 Building iris_v4l2_test..."
+              chmod +x build.sh
+              bash -xe ./build.sh
+              echo "✅ Build completed."
+              build_path="$(pwd)/build"
+              echo "📁 Build directory path: $build_path"
+              if [ -d "$build_path" ]; then
+                echo "📊 Disk usage for build directory:"
+                df -h "$build_path"
+              else
+                echo "❌ Build directory not found for disk usage check."
+                exit 1
+              fi
+            '
 
-          sed -i -e 's|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|' \
-                 -e 's|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|' \
-                 CMakeLists.txt
+      - name: Create file list for iris_v4l2_test
+        run: |
+          set -e
+          workspace=${{ github.workspace }}
+          build_path="${workspace}/v4l-video-test-app/build"
+          mkdir -p "$workspace/artifacts"
+          touch "$workspace/artifacts/file_list.txt"
 
-          cd third-parties
-          sed -i -e 's|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|' \
-                 -e 's|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|' \
-                 aarch64_toolchain.cmake
+          if [ -d "$build_path" ]; then
+            find "$build_path" -type f -exec realpath {} \; >> "$workspace/artifacts/file_list.txt"
+            echo "✅ Build files listed for upload."
+          else
+            echo "❌ Build directory not found at $build_path"
+            exit 1
+          fi
 
-          chmod +x prepare_3p_module.sh
-          ./prepare_3p_module.sh
+      - name: Upload iris_v4l2_test build directory to S3
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@test-workflow
+        with:
+          s3_bucket: qli-stg-video-gh-artifacts
+          local_file: ${{ github.workspace }}/artifacts/file_list.txt
+          mode: multi-upload
+          machine: iris_v4l2_test
 
-          cd ..
-          chmod +x build.sh
-          ./build.sh
+      - name: Upload iris_v4l2_test build directory as GitHub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iris_v4l2_test_build
+          path: ${{ github.workspace }}/v4l-video-test-app/build
 
-          cd build/
-          chmod +x iris_v4l2_test
-          du -h iris_v4l2_test
+      - name: Clean up
+        run: |
+          rm -rf ${{ github.workspace }}/artifacts
+          rm -rf ${{ github.workspace }}/v4l-video-test-app
+
+      - name: Update summary
+        if: success() || failure()
+        shell: bash
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            summary=":heavy_check_mark: iris_v4l2_test build succeeded"
+          else
+            summary=":x: iris_v4l2_test build failed"
+          fi
+          echo -e "<details><summary><i>Test App Summary</i></summary>\n${summary}\n</details>" >> $GITHUB_STEP_SUMMARY

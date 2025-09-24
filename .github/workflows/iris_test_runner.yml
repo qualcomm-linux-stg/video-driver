@@ -1,0 +1,50 @@
+name: Fetch and Print iris_v4l2_test files
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test-workflow
+
+jobs:
+  fetch_and_print:
+    runs-on:
+      group: GHA-Video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download iris_v4l2_test files from S3
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@test-workflow
+        with:
+          s3_bucket: qli-stg-video-gh-artifacts
+          mode: download
+          download_file: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/iris_v4l2_test
+          download_location: ${{ github.workspace }}
+          machine: iris_v4l2_test
+
+      - name: List downloaded files
+        run: |
+          echo "📁 Listing contents of downloaded iris_v4l2_test files:"
+          ls -lhR ${{ github.workspace }}/iris_v4l2_test || echo "❌ Directory not found"
+
+      - name: Print file previews
+        run: |
+          echo "📄 Previewing contents of key files:"
+          find ${{ github.workspace }}/iris_v4l2_test -type f | while read file; do
+            echo -e "\n🔹 File: $file"
+            head -n 20 "$file" || echo "❌ Cannot preview $file"
+          done
+
+      - name: Update summary
+        if: success() || failure()
+        shell: bash
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            summary=":heavy_check_mark: iris_v4l2_test files fetched and printed successfully"
+          else
+            summary=":x: Failed to fetch or print iris_v4l2_test files"
+          fi
+          echo -e "<details><summary><i>Fetch Summary</i></summary>\n${summary}\n</details>" >> $GITHUB_STEP_SUMMARY

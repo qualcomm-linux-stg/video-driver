@@ -14,7 +14,7 @@ inputs:
     required: false
     default: ''
   download_location:
-    description: file download location
+    description: File download location
     required: false
     default: .
   mode:
@@ -25,6 +25,9 @@ inputs:
     description: Upload location
     required: false
     default: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
+  machine:
+    description: Target machine name
+    required: true
 
 outputs:
   presigned_url:
@@ -42,65 +45,67 @@ runs:
       shell: bash
       env:
         UPLOAD_LOCATION: ${{ inputs.upload_location }}
+        MACHINE: ${{ inputs.machine }}
       run: |
-        echo "::group::$(printf '__________ %-100s' 'Process' | tr ' ' _)"
+        echo "::group::Uploading files to S3"
         case "${{ inputs.mode }}" in
           multi-upload)
-            echo "Uploading files to S3 bucket..."
+            if [ ! -s "${{ inputs.local_file }}" ]; then
+              echo "❌ File list is empty. No files to upload."
+              exit 1
+            fi
+
+            echo "📄 Contents of file list:"
+            cat "${{ inputs.local_file }}"
+
             first_line=true
-            # Start the JSON object
             echo "{" > ${{ github.workspace }}/presigned_urls.json
+
             while IFS= read -r file; do
-              if [ -f "$file" ]; then
-                echo "Uploading $file..."
-                aws s3 cp "$file" s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/
-                echo "Uploaded $file to s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}"
-                echo "Creating Pre-signed URL for $file..."
-                filename=$(basename "$file")
-                presigned_url=$(aws s3 presign s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/$filename --expires-in 259200)
+              resolved_file=$(readlink -f "$file")
+              if [ -f "$resolved_file" ]; then
+                filename=$(basename "$resolved_file")
+                echo "📤 Uploading $filename..."
+                aws s3 cp "$resolved_file" s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/"$filename"
+                presigned_url=$(aws s3 presign s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/"$filename" --expires-in 259200)
+
                 if [ "$first_line" = true ]; then
                   first_line=false
                 else
                   echo "," >> ${{ github.workspace }}/presigned_urls.json
                 fi
-                # Append the pre-signed URL to the file
-                echo " \"${file}\": \"${presigned_url}\"" >> ${{ github.workspace }}/presigned_urls.json
-                echo "Pre-signed URL for $file: $presigned_url"
+
+                echo "  \"${filename}\": \"${presigned_url}\"" >> ${{ github.workspace }}/presigned_urls.json
+                echo "✅ Pre-signed URL for $filename: $presigned_url"
               else
-                echo "Warning: $file does not exist or is not a regular file."
+                echo "⚠️ Skipping: $file is not a regular file or not accessible."
               fi
             done < "${{ inputs.local_file }}"
-            # Close the JSON object
+
             echo "}" >> ${{ github.workspace }}/presigned_urls.json
             ;;
           single-upload)
-            echo "Uploading single file to S3 bucket..."
-            aws s3 cp "${{ inputs.local_file }}" s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/
-            echo "Uploaded ${{ inputs.local_file }} to s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}"
-            echo "Creating Pre-signed URL for ${{ inputs.local_file }}..."
-            presigned_url=$(aws s3 presign s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/${{ inputs.local_file }} --expires-in 259200)
+            resolved_file=$(readlink -f "${{ inputs.local_file }}")
+            filename=$(basename "$resolved_file")
+            aws s3 cp "$resolved_file" s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/"$filename"
+            presigned_url=$(aws s3 presign s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/"$filename" --expires-in 259200)
             echo "presigned_url=${presigned_url}" >> "$GITHUB_OUTPUT"
             ;;
           download)
-            #Download The required file from s3
-            echo "Downloading files from S3 bucket..."
-            location=${{ inputs.download_location }}
-            download_dir=$(realpath "$location")
-            echo "Downloading ${{ inputs.download_file }} at ==> ${download_dir}"
+            download_dir=$(realpath "${{ inputs.download_location }}")
             aws s3 cp s3://${{ inputs.s3_bucket }}/${{ inputs.download_file }} "$download_dir"
-            echo "Downloaded ${{ inputs.download_file }} to $download_dir"
             ;;
           *)
-            echo "Invalid mode. Use 'upload' or 'download'."
+            echo "Invalid mode. Use 'upload', 'multi-upload', or 'download'."
             exit 1
             ;;
         esac
         echo "::endgroup::"
 
-    - name: Upload artifacts
+    - name: Upload presigned URL manifest
       if: ${{ inputs.mode == 'multi-upload' }}
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.machine }}presigned_urls.json
+        name: ${{ inputs.machine }}-presigned_urls.json
         path: ${{ github.workspace }}/presigned_urls.json
         retention-days: 3
