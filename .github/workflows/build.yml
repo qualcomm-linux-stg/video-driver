@@ -6,10 +6,7 @@ on:
       build_matrix:
         description: Build matrix for multi-target builds
         type: string
-        required: true
-  push:
-    branches:
-      - test-workflow    
+        required: true    
 
 jobs:
   build:
