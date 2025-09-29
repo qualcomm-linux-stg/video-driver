@@ -5,7 +5,7 @@ on:
     inputs:
       build_matrix:
         description: JSON string of machine matrix
-        required: true
+        required: false
         type: string
 
   push:
@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build_matrix: ${{ fromJson(inputs.build_matrix) }}
+        build_matrix: ${{ fromJson(inputs.build_matrix || '[{"machine":"sdxle","kas_file":"kas-sdxle.yml"},{"machine":"sdxprairie","kas_file":"kas-sdxprairie.yml"}]') }}
 
     env:
       S3_BUCKET: qli-stg-video-gh-artifacts
@@ -75,7 +75,7 @@ jobs:
       - name: Inject image and run test
         run: |
           echo "⚙️ Injecting image for ${{ matrix.build_matrix.machine }}..."
-          ./inject_tool --image ${{ github.workspace }}/retrieved_images/boot.img  # Replace with actual image file
+          ./inject_tool --image ${{ github.workspace }}/retrieved_images/boot.img  # Replace with actual image file if needed
           echo "🧪 Running iris_v4l2_test..."
           ${{ github.workspace }}/retrieved_test_app/iris_v4l2_test --run-all
 
