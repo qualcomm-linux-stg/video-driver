@@ -7,7 +7,14 @@ on:
         description: JSON string of machine matrix
         required: false
         type: string
+      s3_run_id:
+        description: S3 run ID folder (e.g., 18077083816-1)
+        required: true
+        type: string
 
+  repository_dispatch:
+    types: [trigger-retrieve-inject]
+    
   push:
     branches:
       - test-workflow
@@ -20,10 +27,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build_matrix: ${{ fromJson(inputs.build_matrix || '[{"machine":"qcs9100-ride-sx","kas_file":"meta-qcom/ci/qcs9100-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"},{"machine":"qcs8300-ride-sx","kas_file":"meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"},{"machine":"qcs6490-rb3gen2-core-kit","kas_file":"meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml"}]') }}
+        build_matrix: ${{ fromJson(inputs.build_matrix || github.event.client_payload.build_matrix) }}
 
     env:
       S3_BUCKET: qli-stg-video-gh-artifacts
+      S3_RUN_ID: ${{ inputs.s3_run_id || github.event.client_payload.s3_run_id }}
 
     steps:
       - name: Checkout repository
@@ -34,7 +42,7 @@ jobs:
         with:
           s3_bucket: ${{ env.S3_BUCKET }}
           mode: download
-          download_file: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/file_list.txt
+          download_file: qualcomm-linux-stg/video-driver/${{ env.S3_RUN_ID }}/file_list.txt
           download_location: ${{ github.workspace }}/artifacts
           machine: ${{ matrix.build_matrix.machine }}
 
@@ -43,7 +51,7 @@ jobs:
           mkdir -p ${{ github.workspace }}/retrieved_images
           while IFS= read -r file; do
             filename=$(basename "$file")
-            aws s3 cp s3://${{ env.S3_BUCKET }}/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/"$filename" ${{ github.workspace }}/retrieved_images/
+            aws s3 cp s3://${{ env.S3_BUCKET }}/qualcomm-linux-stg/video-driver/${{ env.S3_RUN_ID }}/"$filename" ${{ github.workspace }}/retrieved_images/
           done < ${{ github.workspace }}/artifacts/file_list.txt
 
       - name: Download iris_v4l2_test binary from S3
@@ -51,41 +59,49 @@ jobs:
         with:
           s3_bucket: ${{ env.S3_BUCKET }}
           mode: download
-          download_file: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/iris_v4l2_test
+          download_file: qualcomm-linux-stg/video-driver/${{ env.S3_RUN_ID }}/iris_v4l2_test
           download_location: ${{ github.workspace }}/retrieved_test_app
           machine: iris_v4l2_test
 
-      - name: Validate downloads
+      - name: Inject iris_v4l2_test into rootfs image
         run: |
-          echo "📁 Validating retrieved image files:"
-          ls -lh ${{ github.workspace }}/retrieved_images
-          echo "📁 Validating retrieved test app files:"
-          ls -lh ${{ github.workspace }}/retrieved_test_app
+          set -e
+          ROOTFS_IMG=$(find ${{ github.workspace }}/retrieved_images -name '*rootfs.img' | head -n 1)
+          IRIS_BINARY="${{ github.workspace }}/retrieved_test_app/iris_v4l2_test"
 
-          if [ ! "$(ls -A ${{ github.workspace }}/retrieved_images)" ]; then
-            echo "❌ No image files found. Aborting."
+          if [ ! -f "$ROOTFS_IMG" ]; then
+            echo "❌ rootfs.img not found. Aborting."
             exit 1
           fi
-          if [ ! "$(ls -A ${{ github.workspace }}/retrieved_test_app)" ]; then
-            echo "❌ No test app files found. Aborting."
+          if [ ! -f "$IRIS_BINARY" ]; then
+            echo "❌ iris_v4l2_test binary not found. Aborting."
             exit 1
           fi
-          echo "✅ All required files retrieved successfully."
 
-      - name: Inject image and run test
-        run: |
-          echo "⚙️ Injecting image for ${{ matrix.build_matrix.machine }}..."
-          ./inject_tool --image ${{ github.workspace }}/retrieved_images/boot.img  # Replace with actual image file if needed
-          echo "🧪 Running iris_v4l2_test..."
-          ${{ github.workspace }}/retrieved_test_app/iris_v4l2_test --run-all
+          echo "🔧 Mounting rootfs image..."
+          mkdir -p ~/system_mount
+          if ! sudo mount -o loop "$ROOTFS_IMG" ~/system_mount; then
+            echo "⚠️ Mount failed, attempting journal recovery..."
+            sudo e2fsck -f "$ROOTFS_IMG"
+            sudo mount -o loop "$ROOTFS_IMG" ~/system_mount
+          fi
+
+          echo "📦 Injecting iris_v4l2_test..."
+          sudo mkdir -p ~/system_mount/data/vendor/iris_test_app/input
+          sudo mkdir -p ~/system_mount/data/vendor/iris_test_app/output
+          sudo cp "$IRIS_BINARY" ~/system_mount/data/vendor/iris_test_app/
+          sudo chmod +x ~/system_mount/data/vendor/iris_test_app/iris_v4l2_test
+
+          echo "🧹 Unmounting and cleaning up..."
+          sudo umount ~/system_mount
+          rm -rf ~/system_mount
 
       - name: Update summary
         if: success() || failure()
-        shell: bash
         run: |
           if [ "${{ job.status }}" == "success" ]; then
-            summary=":heavy_check_mark: Injection and test succeeded for ${{ matrix.build_matrix.machine }}"
+            summary="✅ Injection completed for ${{ matrix.build_matrix.machine }}"
           else
-            summary=":x: Injection or test failed for ${{ matrix.build_matrix.machine }}"
+            summary="❌ Injection failed for ${{ matrix.build_matrix.machine }}"
           fi
           echo -e "<details><summary><i>Injection Summary</i></summary>\n${summary}\n</details>" >> $GITHUB_STEP_SUMMARY
