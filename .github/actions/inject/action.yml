@@ -34,8 +34,9 @@ runs:
 
             echo '🔍 Mounting rootfs.img...'
             mkdir -p /tmp/rootfs
-            if ! sudo mount -o loop $TARGET_DIR/rootfs.img /tmp/rootfs; then
+            if ! sudo mount $TARGET_DIR/rootfs.img /tmp/rootfs; then
               echo '⚠️ Mount failed, attempting journal recovery...'
+              exit 1
             fi
 
             echo '📁 Creating IRIS app directories...'

@@ -19,8 +19,8 @@ runs:
         docker run \
           --rm \
           --user ${USER_ID}:${GROUP_ID} \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
+          -v ${{ github.workspace }}/..:${{ github.workspace }}/.. \
+          -w ${{ github.workspace }} \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c '
@@ -63,6 +63,7 @@ runs:
             bash -xe ./build.sh
             echo "✅ Build completed."
             build_path="$(pwd)/build"
+            ls -la "$build_path"
             echo "📁 Build directory path: $build_path"
             if [ -d "$build_path" ]; then
               echo "📊 Disk usage for build directory:"
