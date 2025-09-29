@@ -41,6 +41,8 @@ jobs:
           docker_image: ${{ steps.docker_build.outputs.image_name }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: "bitbake qcom-multimedia-proprietary-image"
+        env:
+          machine: ${{ matrix.build_matrix.amchine }}
 
       - name: Generate Iris test app
         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@test-workflow

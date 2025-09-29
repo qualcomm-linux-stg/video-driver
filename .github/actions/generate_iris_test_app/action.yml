@@ -6,6 +6,7 @@ runs:
   using: 'composite'
   steps:
     - name: Install tools and build iris_v4l2_test inside Docker
+      shell: bash
       run: |
         set -e
         USER_ID=$(id -u)
