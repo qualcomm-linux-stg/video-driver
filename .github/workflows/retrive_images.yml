@@ -1,0 +1,91 @@
+name: Retrieve and Inject
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_matrix:
+        description: JSON string of machine matrix
+        required: true
+        type: string
+
+  push:
+    branches:
+      - test-workflow
+
+jobs:
+  inject:
+    runs-on:
+      group: GHA-Video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
+    strategy:
+      fail-fast: false
+      matrix:
+        build_matrix: ${{ fromJson(inputs.build_matrix) }}
+
+    env:
+      S3_BUCKET: qli-stg-video-gh-artifacts
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download .qcomflash manifest from S3
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@test-workflow
+        with:
+          s3_bucket: ${{ env.S3_BUCKET }}
+          mode: download
+          download_file: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/file_list.txt
+          download_location: ${{ github.workspace }}/artifacts
+          machine: ${{ matrix.build_matrix.machine }}
+
+      - name: Download all .qcomflash image files from S3
+        run: |
+          mkdir -p ${{ github.workspace }}/retrieved_images
+          while IFS= read -r file; do
+            filename=$(basename "$file")
+            aws s3 cp s3://${{ env.S3_BUCKET }}/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/"$filename" ${{ github.workspace }}/retrieved_images/
+          done < ${{ github.workspace }}/artifacts/file_list.txt
+
+      - name: Download iris_v4l2_test binary from S3
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@test-workflow
+        with:
+          s3_bucket: ${{ env.S3_BUCKET }}
+          mode: download
+          download_file: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/iris_v4l2_test
+          download_location: ${{ github.workspace }}/retrieved_test_app
+          machine: iris_v4l2_test
+
+      - name: Validate downloads
+        run: |
+          echo "📁 Validating retrieved image files:"
+          ls -lh ${{ github.workspace }}/retrieved_images
+          echo "📁 Validating retrieved test app files:"
+          ls -lh ${{ github.workspace }}/retrieved_test_app
+
+          if [ ! "$(ls -A ${{ github.workspace }}/retrieved_images)" ]; then
+            echo "❌ No image files found. Aborting."
+            exit 1
+          fi
+          if [ ! "$(ls -A ${{ github.workspace }}/retrieved_test_app)" ]; then
+            echo "❌ No test app files found. Aborting."
+            exit 1
+          fi
+          echo "✅ All required files retrieved successfully."
+
+      - name: Inject image and run test
+        run: |
+          echo "⚙️ Injecting image for ${{ matrix.build_matrix.machine }}..."
+          ./inject_tool --image ${{ github.workspace }}/retrieved_images/boot.img  # Replace with actual image file
+          echo "🧪 Running iris_v4l2_test..."
+          ${{ github.workspace }}/retrieved_test_app/iris_v4l2_test --run-all
+
+      - name: Update summary
+        if: success() || failure()
+        shell: bash
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            summary=":heavy_check_mark: Injection and test succeeded for ${{ matrix.build_matrix.machine }}"
+          else
+            summary=":x: Injection or test failed for ${{ matrix.build_matrix.machine }}"
+          fi
+          echo -e "<details><summary><i>Injection Summary</i></summary>\n${summary}\n</details>" >> $GITHUB_STEP_SUMMARY
