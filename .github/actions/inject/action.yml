@@ -21,8 +21,8 @@ runs:
       shell: bash
       run: |
         docker run --rm \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
+          -v ${{ github.workspace }}/..:${{ github.workspace }}/.. \
+          -w ${{ github.workspace }} \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
@@ -30,11 +30,10 @@ runs:
             workspace=${{ github.workspace }}
             machine="${{ matrix.build_matrix.machine }}"
             IMAGE_DIR="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
-            TARGET_DIR=/workspace/images/${{ inputs.machine }}
 
             echo '🔍 Mounting rootfs.img...'
             mkdir -p /tmp/rootfs
-            if ! sudo mount $TARGET_DIR/rootfs.img /tmp/rootfs; then
+            if ! sudo mount $IMAGE_DIR/rootfs.img /tmp/rootfs; then
               echo '⚠️ Mount failed, attempting journal recovery...'
               exit 1
             fi
