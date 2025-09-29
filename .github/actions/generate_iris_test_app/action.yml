@@ -2,6 +2,11 @@
 name: Build
 description: Build the project using a Docker container
 
+inputs:
+  docker_image:
+    description: Docker image name
+    required: true
+
 runs:
   using: 'composite'
   steps:
@@ -17,7 +22,7 @@ runs:
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           --privileged \
-          ${{ steps.docker_build.outputs.image_name }} \
+          ${{ inputs.docker_image }} \
           bash -c '
             set -e
             echo "🔧 Installing missing build tools..."

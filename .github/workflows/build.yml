@@ -46,6 +46,8 @@ jobs:
 
       - name: Generate Iris test app
         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@test-workflow
+        with:
+          docker_image: ${{ steps.docker_build.outputs.image_name }}
 
       - name: Inject Iris test app to rootfs
         uses: qualcomm-linux-stg/video-driver/.github/actions/inject@test-workflow
