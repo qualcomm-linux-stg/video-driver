@@ -1,18 +1,16 @@
----
 name: _build
 
 on:
   workflow_call:
     inputs:
-      build_matrix:
-        required: true
-        type: string
       docker_image:
-        required: true
+        description: Docker image
         type: string
-    secrets:
-      inherit: true
-
+        required: true
+      build_matrix:
+        description: Build matrix for multi target builds
+        type: string
+        required: true
 
 jobs:
   build:
@@ -24,16 +22,18 @@ jobs:
       matrix:
         build_matrix: ${{ fromJson(inputs.build_matrix) }}
 
-    env:
-      S3_BUCKET: qli-stg-video-gh-artifacts
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Build docker image
         id: docker_build
         uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@test-workflow
+
+      - name: Sync codebase
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@test-workflow
+        with:
+          event_name: ${{ github.event_name }}
+          pr_ref: ${{ github.event.pull_request.head.ref }}
+          pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
+          base_ref: ${{ github.ref_name }}
 
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@test-workflow
@@ -42,33 +42,38 @@ jobs:
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: "bitbake qcom-multimedia-proprietary-image"
 
+      - name: Generate Iris test app
+        uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@test-workflow
+
+      - name: Inject Iris test app to rootfs
+        uses: qualcomm-linux-stg/video-driver/.github/actions/inject@test-workflow
+        with:
+          docker_image: ${{ steps.docker_build.outputs.image_name }}
+          machine: ${{ matrix.build_matrix.machine }}
+
       - name: Prepare .qcomflash files for S3 upload
         run: |
           set -e
           workspace=${{ github.workspace }}
           machine="${{ matrix.build_matrix.machine }}"
           symlink_path="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
-
           if [ ! -L "$symlink_path" ]; then
             echo "❌ Symlink not found: $symlink_path"
             exit 1
           fi
-
           resolved_dir=$(readlink -f "$symlink_path")
-
           if [ ! -d "$resolved_dir" ]; then
             echo "❌ Resolved .qcomflash directory not found: $resolved_dir"
             exit 1
           fi
-
           mkdir -p "$workspace/artifacts"
+          touch "$workspace/artifacts/tar_list.txt"
           touch "$workspace/artifacts/file_list.txt"
-
           echo "🔍 Listing files in resolved directory: $resolved_dir"
-          find "$resolved_dir" -type f -exec realpath {} \; >> "$workspace/artifacts/file_list.txt"
-
+          tar -cJf "$workspace/artifacts/${machine}_qcomflash_payload.tar.gz" -T "$workspace/artifacts/tar_list.txt"
+          echo "$workspace/artifacts/${machine}_qcomflash_payload.tar.gz" >> "$workspace/artifacts/file_list.txt"
           echo "✅ Files prepared for upload:"
-          cat "$workspace/artifacts/file_list.txt"
+          cat "$workspace/artifacts/tar_list.txt"
 
       - name: Validate .qcomflash contents
         run: |
@@ -77,45 +82,37 @@ jobs:
           machine="${{ matrix.build_matrix.machine }}"
           symlink_path="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
           resolved_dir=$(readlink -f "$symlink_path")
-
           echo "📁 Validating contents of $resolved_dir"
           ls -lh "$resolved_dir"
-
           if ! find "$resolved_dir" -type f | grep -q .; then
             echo "❌ No valid files found in .qcomflash directory. Failing build."
             exit 1
           fi
-
           echo "✅ .qcomflash validation passed."
 
       - name: Upload artifacts to S3
         id: upload-artifacts
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@test-workflow
         with:
-          s3_bucket: ${{ env.S3_BUCKET }}
+          s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
+        env:
           machine: ${{ matrix.build_matrix.machine }}
-
-      - name: Trigger Retrieve and Inject
-        if: success()
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          event-type: trigger-retrieve-inject
-          client-payload: >-
-            {
-              "s3_run_id": "${{ github.run_id }}-${{ github.run_attempt }}",
-              "build_matrix": [
-                {
-                  "machine": "${{ matrix.build_matrix.machine }}",
-                  "kas_file": "${{ matrix.build_matrix.kas_file }}"
-                }
-              ]
-            }
 
       - name: Clean up
         run: |
           rm -rf ${{ github.workspace }}/artifacts
           rm -rf ${{ github.workspace }}/build
+          rm -f ${{ github.workspace }}/modules.tar.xz
+
+      - name: Update summary
+        if: success() || failure()
+        shell: bash
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            summary=":heavy_check_mark: Build Success for ${{ matrix.build_matrix.machine }}"
+          else
+            summary=":x: Build Failed for ${{ matrix.build_matrix.machine }}"
+          fi
+          echo -e "<details><summary><i>Build Summary</i></summary>\n${summary}\n</details>" >> $GITHUB_STEP_SUMMARY

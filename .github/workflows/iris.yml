@@ -15,14 +15,6 @@ jobs:
         machines: [qcs9100-ride-sx, qcs8300-ride-sx, qcs6490-rb3gen2-core-kit]
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download built image
-        uses: actions/download-artifact@v3
-        with:
-          name: built-${{ matrix.machines }}
-          path: ${{ github.workspace }}/images/${{ matrix.machines }}
-
       - name: Inject IRIS app into rootfs image
         run: |
           ROOTFS_IMG=${{ github.workspace }}/images/${{ matrix.machines }}/rootfs.img
