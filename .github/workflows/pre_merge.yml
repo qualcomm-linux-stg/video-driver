@@ -10,12 +10,12 @@ on:
 jobs:
   loading:
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@test-workflow
-    secrets: inherit
+    #secrets: inherit
 
   build:
     needs: loading
     uses: qualcomm-linux-stg/video-driver/.github/workflows/build.yml@test-workflow
-    secrets: inherit
+    #secrets: inherit
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: video-image:ver.1.0
