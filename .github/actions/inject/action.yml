@@ -33,25 +33,25 @@ runs:
             TARGET_DIR=/workspace/images/${{ inputs.machine }}
 
             echo '🔍 Mounting rootfs.img...'
-            mkdir -p /mnt/system_mount
-            if ! sudo mount -o loop \$TARGET_DIR/rootfs.img /mnt/system_mount; then
+            mkdir -p /tmp/rootfs
+            if ! sudo mount -o loop \$TARGET_DIR/rootfs.img /tmp/rootfs; then
               echo '⚠️ Mount failed, attempting journal recovery...'
             fi
 
             echo '📁 Creating IRIS app directories...'
-            sudo mkdir -p /mnt/system_mount/data/vendor/iris_test_app/input
-            sudo mkdir -p /mnt/system_mount/data/vendor/iris_test_app/output
+            sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
+            sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
 
             echo '📥 Copying iris_v4l2_test binary...'
-            sudo cp ${{ github.workspace }}/v4l-video-test-app/build/iris_v4l2_test /mnt/system_mount/data/vendor/iris_test_app/
-            sudo chmod +x /mnt/system_mount/data/vendor/iris_test_app/iris_v4l2_test
-
+            sudo cp ${{ github.workspace }}/v4l-video-test-app/build/iris_v4l2_test /tmp/rootfs/data/vendor/iris_test_app/
+            sudo chmod +x /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test
+            sync
             echo '🔍 Verifying contents...'
-            ls -l /mnt/system_mount/data/vendor/iris_test_app
+            ls -l /tmp/rootfs/data/vendor/iris_test_app
 
             echo '📤 Unmounting image...'
-            sudo umount /mnt/system_mount
-            rm -rf /mnt/system_mount
+            sudo umount /tmp/rootfs
+            rm -rf /tmp/rootfs
 
             echo '✅ IRIS injection completed for ${{ inputs.machine }}.'
           "
