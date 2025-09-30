@@ -31,7 +31,7 @@ runs:
             MACHINE="${{ inputs.machine }}"
  
             echo '🌍 Setting environment variables...'
-            export IMAGE_DIR=${WORKSPACE}/build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
+            IMAGE_DIR=${WORKSPACE}/build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
  
             echo '📦 Checking for rootfs.img...'
             ls -larth $IMAGE_DIR
