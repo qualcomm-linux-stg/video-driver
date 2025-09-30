@@ -35,23 +35,14 @@ jobs:
           pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
           base_ref: ${{ github.ref_name }}
 
-      # - name: Build ${{ matrix.build_matrix.machine }}
-      #   uses: qualcomm-linux-stg/video-driver/.github/actions/build@test-workflow
-      #   with:
-      #     docker_image: ${{ steps.docker_build.outputs.image_name }}
-      #     kas_file: ${{ matrix.build_matrix.kas_file }}
-      #     build_command: "bitbake qcom-multimedia-proprietary-image"
-      #   env:
-      #     machine: ${{ matrix.build_matrix.amchine }}
-
-      - name: Get Build
-        run: |
-          workspace=${{ github.workspace }}
-          machine="${{ matrix.build_matrix.machine }}"
-          symlink_path="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
-          mkdir -p $symlink_path
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/18077083816-1/ $symlink_path --recursive
-          ls -larth $symlink_path
+      - name: Build ${{ matrix.build_matrix.machine }}
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@test-workflow
+        with:
+          docker_image: ${{ steps.docker_build.outputs.image_name }}
+          kas_file: ${{ matrix.build_matrix.kas_file }}
+          build_command: "bitbake qcom-multimedia-proprietary-image"
+        env:
+          machine: ${{ matrix.build_matrix.amchine }}
 
       - name: Generate Iris test app
         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@test-workflow
