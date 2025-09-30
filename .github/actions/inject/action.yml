@@ -32,8 +32,9 @@ runs:
             IMAGE_DIR="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
 
             echo '🔍 Mounting rootfs.img...'
+            cd $workspace
             mkdir -p /tmp/rootfs
-            if ! sudo mount $IMAGE_DIR/rootfs.img /tmp/rootfs; then
+            if ! sudo mount rootfs.img /tmp/rootfs; then
               echo '⚠️ Mount failed, attempting journal recovery...'
               exit 1
             fi
