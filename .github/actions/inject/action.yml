@@ -39,11 +39,10 @@ runs:
  
             echo '📦 Checking for rootfs.img...'
             cd $WORKSPACE
+            ls -larth
             mkdir -p /tmp/rootfs
 
-            echo '🔍 Setting up loop device manually...'
-            LOOP_DEV=$(sudo losetup -f)
-            sudo losetup $LOOP_DEV "$WORKSPACE/rootfs.img"
+            sudo mount rootfs.img /tmp/rootfs
 
             echo '📂 Mounting rootfs.img...'
             sudo mount $LOOP_DEV /tmp/rootfs
@@ -52,13 +51,13 @@ runs:
             sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
             sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
  
-            echo '📥 Copying iris_v4l2_test binary...'
-            sudo cp \"\$WORKSPACE/v4l-video-test-app/build/iris_v4l2_test\" /tmp/rootfs/data/vendor/iris_test_app/
-            sudo chmod +x /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test
-            sync
+            # echo '📥 Copying iris_v4l2_test binary...'
+            # sudo cp \"\$WORKSPACE/v4l-video-test-app/build/iris_v4l2_test\" /tmp/rootfs/data/vendor/iris_test_app/
+            # sudo chmod +x /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test
+            # sync
  
-            echo '🔍 Verifying contents...'
-            ls -l /tmp/rootfs/data/vendor/iris_test_app
+            # echo '🔍 Verifying contents...'
+            # ls -l /tmp/rootfs/data/vendor/iris_test_app
  
             echo '📤 Unmounting image and releasing loop device...'
             sudo umount /tmp/rootfs
