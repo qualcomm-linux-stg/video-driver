@@ -39,14 +39,14 @@ runs:
  
             echo '📦 Checking for rootfs.img...'
             cd $WORKSPACE
-            if [ ! -f \"\$WORKSPACE/rootfs.img\" ]; then
-              echo \"❌ rootfs.img not found at \$IMAGE_DIR\"
-              exit 1
-            fi
-
             mkdir -p /tmp/rootfs
- 
-            sudo mount \"\$WORKSPACE/rootfs.img\" /tmp/rootfs
+
+            echo '🔍 Setting up loop device manually...'
+            LOOP_DEV=$(sudo losetup -f)
+            sudo losetup $LOOP_DEV "$WORKSPACE/rootfs.img"
+
+            echo '📂 Mounting rootfs.img...'
+            sudo mount $LOOP_DEV /tmp/rootfs
  
             echo '📁 Creating IRIS app directories...'
             sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
