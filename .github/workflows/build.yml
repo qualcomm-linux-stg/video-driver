@@ -51,6 +51,7 @@ jobs:
           symlink_path="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
           mkdir -p $symlink_path
           aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/18077083816-1/ $symlink_path --recursive
+          ls -larth $symlink_path
 
       - name: Generate Iris test app
         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@test-workflow

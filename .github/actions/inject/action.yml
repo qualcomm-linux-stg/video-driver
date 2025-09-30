@@ -23,15 +23,15 @@ runs:
         docker run --rm \
           -v $PWD:/workspace \
           -w /workspace \
-          -e "WORKSPACE=${{ github.workspace }}" \
-          -e "MACHINE=${{ inputs.machine }}" \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
             set -eux
+            WORKSPACE="${{ github.workspace }}"
+            MACHINE="${{ inputs.machine }}"
  
             echo '🌍 Setting environment variables...'
-            export IMAGE_DIR=$WORKSPACE/build/tmp/deploy/images/$MACHINE/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
+            export IMAGE_DIR=${WORKSPACE}/build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
  
             echo '📦 Checking for rootfs.img...'
             ls -larth $IMAGE_DIR
