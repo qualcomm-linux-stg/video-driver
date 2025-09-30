@@ -20,7 +20,10 @@ runs:
     - name: Run IRIS injection in Docker
       shell: bash
       run: |
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
         docker run --rm \
+          --user ${USER_ID}:${GROUP_ID} \
           -v $PWD:/workspace \
           -w /workspace \
           --privileged \
