@@ -22,9 +22,8 @@ runs:
       run: |
         USER_ID=$(id -u)
         GROUP_ID=$(id -g)
-        WORKSPACE="${{ github.workspace }}"
         MACHINE="${{ inputs.machine }}"
-        image_dir=${WORKSPACE}/build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
+        image_dir=/build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
 
         docker run --rm \
           --user ${USER_ID}:${GROUP_ID} \
