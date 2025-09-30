@@ -21,24 +21,19 @@ runs:
       shell: bash
       run: |
         docker run --rm \
-          -v ${{ github.workspace }}/..:${{ github.workspace }}/.. \
-          -w ${{ github.workspace }} \
+          -v $PWD:/workspace \
+          -w /workspace \
           -e "WORKSPACE=${{ github.workspace }}" \
           -e "MACHINE=${{ inputs.machine }}" \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
-            set -e
- 
-            echo '🔧 Installing required tools...'
-            sudo apt-get update
-            sudo apt-get install -y util-linux e2fsprogs sudo coreutils bash
+            set -eux
  
             echo '🌍 Setting environment variables...'
-            export IMAGE_DIR=\$WORKSPACE/build/tmp/deploy/images/\$MACHINE/qcom-multimedia-proprietary-image-\${MACHINE}.rootfs.qcomflash
+            export IMAGE_DIR=$WORKSPACE/build/tmp/deploy/images/$MACHINE/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
  
             echo '📦 Checking for rootfs.img...'
-            cd $WORKSPACE
             ls -larth
             mkdir -p /tmp/rootfs
 
