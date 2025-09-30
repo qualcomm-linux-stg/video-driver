@@ -53,8 +53,6 @@ runs:
  
             echo '📤 Unmounting image and releasing loop device...'
             sudo umount /tmp/rootfs
-            sudo losetup -d \"\$LOOP_DEV\"
-            rm -rf /tmp/rootfs
  
             echo \"✅ IRIS injection completed for \$MACHINE.\"
           "
