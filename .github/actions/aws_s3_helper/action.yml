@@ -23,7 +23,8 @@ inputs:
     default: single-upload
   upload_location:
     description: Upload location
-    required: true
+    required: false
+    default: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ env.machine }}/${{ github.run_id }}-${{ github.run_attempt }}
 
 outputs:
   presigned_url:
@@ -41,6 +42,7 @@ runs:
       shell: bash
       env:
         UPLOAD_LOCATION: ${{ inputs.upload_location }}
+        MACHINE: ${{ inputs.machine }}
       run: |
         echo "::group::Uploading files to S3"
         case "${{ inputs.mode }}" in

@@ -73,25 +73,26 @@ jobs:
             echo "❌ Resolved .qcomflash directory not found: $resolved_dir"
             exit 1
           fi
-
+          cd $resolved_dir
+          ls -larth
           mkdir -p "$workspace/artifacts"
           touch "$workspace/artifacts/file_list.txt"
           touch "$workspace/artifacts/tar_list.txt"
 
           echo "🔍 Listing files in resolved directory: $resolved_dir"
-          find "$resolved_dir" -type f -exec realpath {} \; | tee "$workspace/artifacts/tar_list.txt" >> "$workspace/artifacts/file_list.txt"
+          find "$resolved_dir" -type f -exec realpath {} \; > "$workspace/artifacts/tar_list.txt"
 
           if [ ! -s "$workspace/artifacts/tar_list.txt" ]; then
             echo "⚠️ No files found to archive. Skipping tarball creation."
             exit 1
           fi
 
-          tarball="$workspace/artifacts/${machine}_qcomflash_payload.tar.gz"
+          tarball=${machine}_qcomflash_payload.tar.gz"
           tar -cJf "$tarball" -T "$workspace/artifacts/tar_list.txt"
-          echo "$tarball" >> "$workspace/artifacts/file_list.txt"
+          mv "$tarball" ${{ github.workspace }}
+          echo "${{ github.workspace }}/$tarball" >> "$workspace/artifacts/file_list.txt"
 
           echo "✅ Tarball created: $tarball"
-          ls -lh "$tarball"
 
       - name: Upload artifacts to S3
         id: upload-artifacts
@@ -100,7 +101,6 @@ jobs:
           s3_bucket: qli-prd-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
-          upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.build_matrix.machine }}
         env:
           machine: ${{ matrix.build_matrix.machine }}
 
@@ -120,4 +120,3 @@ jobs:
             summary=":x: Build Failed for ${{ matrix.build_matrix.machine }}"
           fi
           echo -e "<details><summary><i>Build Summary</i></summary>\n${summary}\n</details>" >> $GITHUB_STEP_SUMMARY
-
