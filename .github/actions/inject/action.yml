@@ -29,7 +29,7 @@ runs:
           --user ${USER_ID}:${GROUP_ID} \
           -v $PWD:/workspace \
           -w /workspace \
-          -e "IMAGE_DIR=$image_dir"
+          -e "IMAGE_DIR=$image_dir" \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
