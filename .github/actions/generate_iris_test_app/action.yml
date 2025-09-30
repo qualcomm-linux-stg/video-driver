@@ -19,8 +19,8 @@ runs:
         docker run \
           --rm \
           --user ${USER_ID}:${GROUP_ID} \
-          -v ${{ github.workspace }}/..:${{ github.workspace }}/.. \
-          -w ${{ github.workspace }} \
+          -v $PWD:/workspace \
+          -w /workspace \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c '
