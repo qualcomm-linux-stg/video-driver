@@ -1,6 +1,6 @@
 name: IRIS Injection
 description: Inject IRIS app into rootfs image
-
+ 
 inputs:
   machine:
     description: Target machine name
@@ -8,7 +8,7 @@ inputs:
   docker_image:
     description: Docker image name
     required: true
-
+ 
 runs:
   using: "composite"
   steps:
@@ -16,43 +16,61 @@ runs:
       shell: bash
       run: |
         mkdir -p ${{ github.workspace }}/images
-
+ 
     - name: Run IRIS injection in Docker
       shell: bash
       run: |
         docker run --rm \
           -v ${{ github.workspace }}/..:${{ github.workspace }}/.. \
           -w ${{ github.workspace }} \
+          -e "WORKSPACE=${{ github.workspace }}" \
+          -e "MACHINE=${{ inputs.machine }}" \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
             set -e
-            workspace=${{ github.workspace }}
-            machine="${{ matrix.build_matrix.machine }}"
-            IMAGE_DIR="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
-
-            echo '🔍 Mounting rootfs.img...'
-            cd $workspace
-            mkdir -p /tmp/rootfs
-            if ! sudo mount rootfs.img /tmp/rootfs; then
-              echo '⚠️ Mount failed, attempting journal recovery...'
+ 
+            echo '🔧 Installing required tools...'
+            sudo apt-get update
+            sudo apt-get install -y util-linux e2fsprogs sudo coreutils bash
+ 
+            echo '🌍 Setting environment variables...'
+            export IMAGE_DIR=\$WORKSPACE/build/tmp/deploy/images/\$MACHINE/qcom-multimedia-proprietary-image-\${MACHINE}.rootfs.qcomflash
+ 
+            echo '📦 Checking for rootfs.img...'
+            cd $WORKSPACE
+            if [ ! -f \"\$WORKSPACE/rootfs.img\" ]; then
+              echo \"❌ rootfs.img not found at \$IMAGE_DIR\"
               exit 1
             fi
-
+ 
+            echo '🌀 Setting up loop device...'
+            LOOP_DEV=\$(sudo losetup --show -f \"\$WORKSPACE/rootfs.img\")
+ 
+            echo \"🔍 Mounting rootfs.img using \$LOOP_DEV...\"
+            mkdir -p /tmp/rootfs
+            if ! sudo mount \"\$LOOP_DEV\" /tmp/rootfs; then
+              echo '⚠️ Mount failed. Cleaning up loop device...'
+              sudo losetup -d \"\$LOOP_DEV\"
+              exit 1
+            fi
+ 
             echo '📁 Creating IRIS app directories...'
             sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
             sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
-
+ 
             echo '📥 Copying iris_v4l2_test binary...'
-            sudo cp ${{ github.workspace }}/v4l-video-test-app/build/iris_v4l2_test /tmp/rootfs/data/vendor/iris_test_app/
+            sudo cp \"\$WORKSPACE/v4l-video-test-app/build/iris_v4l2_test\" /tmp/rootfs/data/vendor/iris_test_app/
             sudo chmod +x /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test
             sync
+ 
             echo '🔍 Verifying contents...'
             ls -l /tmp/rootfs/data/vendor/iris_test_app
-
-            echo '📤 Unmounting image...'
+ 
+            echo '📤 Unmounting image and releasing loop device...'
             sudo umount /tmp/rootfs
+            sudo losetup -d \"\$LOOP_DEV\"
             rm -rf /tmp/rootfs
-
-            echo '✅ IRIS injection completed for ${{ inputs.machine }}.'
+ 
+            echo \"✅ IRIS injection completed for \$MACHINE.\"
           "
