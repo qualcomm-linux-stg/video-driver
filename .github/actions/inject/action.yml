@@ -22,19 +22,19 @@ runs:
       run: |
         USER_ID=$(id -u)
         GROUP_ID=$(id -g)
+        WORKSPACE="${{ github.workspace }}"
+        MACHINE="${{ inputs.machine }}"
+        image_dir=${WORKSPACE}/build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
+
         docker run --rm \
           --user ${USER_ID}:${GROUP_ID} \
           -v $PWD:/workspace \
           -w /workspace \
+          -e "IMAGE_DIR=$image_dir"
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
             set -eux
-            WORKSPACE="${{ github.workspace }}"
-            MACHINE="${{ inputs.machine }}"
- 
-            echo '🌍 Setting environment variables...'
-            IMAGE_DIR=${WORKSPACE}/build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
  
             echo '📦 Checking for rootfs.img...'
             ls -larth $IMAGE_DIR
