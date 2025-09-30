@@ -33,12 +33,12 @@ runs:
           -e "IMAGE_DIR=$image_dir" \
           --privileged \
           ${{ inputs.docker_image }} \
-          bash -c "
+          bash -c '
             set -eux
  
             echo '📦 Checking for rootfs.img...'
-            ls -larth $IMAGE_DIR
             cd $IMAGE_DIR
+            ls -larth
             mkdir -p /tmp/rootfs
 
             sudo mount rootfs.img /tmp/rootfs
@@ -59,4 +59,4 @@ runs:
             sudo umount /tmp/rootfs
  
             echo \"✅ IRIS injection completed for \$MACHINE.\"
-          "
+          '
