@@ -23,7 +23,8 @@ runs:
         USER_ID=$(id -u)
         GROUP_ID=$(id -g)
         MACHINE="${{ inputs.machine }}"
-        image_dir=build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash
+        image_dir="build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash"
+        echo "$image_dir"
 
         docker run --rm \
           --user ${USER_ID}:${GROUP_ID} \
