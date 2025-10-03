@@ -1,6 +1,6 @@
 name: IRIS Injection
 description: Inject IRIS app into rootfs image
-
+ 
 inputs:
   machine:
     description: Target machine name
@@ -8,111 +8,55 @@ inputs:
   docker_image:
     description: Docker image name
     required: true
-  user_id:
-    description: Host user ID
-    required: true
-  group_id:
-    description: Host group ID
-    required: true
-  workspace:
-    description: Host workspace path
-    required: true
-  user_home:
-    description: Container user home path
-    required: true
-
+ 
 runs:
   using: "composite"
   steps:
+    - name: Create top-level images directory
+      shell: bash
+      run: |
+        mkdir -p ${{ github.workspace }}/images
+ 
     - name: Run IRIS injection in Docker
       shell: bash
       run: |
-        set -eux
-
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
         MACHINE="${{ inputs.machine }}"
-        IMAGE_DIR="build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash"
-        echo "📁 Image directory: $IMAGE_DIR"
+        image_dir="build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash"
+        echo "$image_dir"
 
-        docker run \
-          --rm \
-          --user ${{ inputs.user_id }}:${{ inputs.group_id }} \
-          -v ${{ inputs.workspace }}:/workspace \
+        docker run --rm \
+          --user ${USER_ID}:${GROUP_ID} \
+          -v $PWD:/workspace \
           -w /workspace \
+          -e "IMAGE_DIR=$image_dir" \
           --privileged \
           ${{ inputs.docker_image }} \
-          bash -c "
+          bash -c '
             set -eux
-
-            echo '📦 Installing required packages...'
-            if command -v apt-get &> /dev/null; then
-              sudo apt-get update
-              sudo apt-get install -y e2fsprogs util-linux coreutils sudo bash mount bc build-essential git uuid-dev
-            elif command -v apk &> /dev/null; then
-              sudo apk add --no-cache e2fsprogs util-linux coreutils sudo bash mount bc build-base git libuuid
-            else
-              echo '❌ Unsupported base image. Cannot install dependencies.'
-              exit 1
-            fi
-
-            echo '📁 Verifying image directory...'
-            cd /workspace/$IMAGE_DIR
-            pwd
-            ls -l
-
+ 
             echo '📦 Checking for rootfs.img...'
-            if [ ! -f rootfs.img ]; then
-              echo '❌ rootfs.img not found in $IMAGE_DIR'
-              exit 1
-            fi
-
-            echo '🔍 Checking e2fsck version...'
-            E2FSCK_VERSION=\$(e2fsck -V 2>&1 | grep -oP 'e2fsck \\K[0-9]+\\.[0-9]+')
-            REQUIRED_VERSION='1.47'
-
-            if (( \$(echo \"\$E2FSCK_VERSION < \$REQUIRED_VERSION\" | bc -l) )); then
-              echo '⬆️ Building e2fsprogs from source...'
-              git clone https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
-              cd e2fsprogs
-              git checkout v1.47.0
-              mkdir build && cd build
-              ../configure
-              make -j\$(nproc)
-              sudo make install
-              cd ../..
-            fi
-
-            echo '🔧 Running e2fsck to repair rootfs.img...'
-            sudo e2fsck -fy /workspace/$IMAGE_DIR/rootfs.img
-
-            echo '🔗 Setting up loop device...'
-            if ! LOOP_DEV=\$(sudo losetup -f --show /workspace/$IMAGE_DIR/rootfs.img); then
-              echo '❌ losetup failed. Check if rootfs.img is accessible and loop devices are available.'
-              exit 1
-            fi
-
-            echo '📂 Mounting rootfs.img to /tmp/rootfs...'
+            cd $IMAGE_DIR
+            ls -larth
             mkdir -p /tmp/rootfs
-            sudo mount \$LOOP_DEV /tmp/rootfs
 
-            echo '📥 Injecting IRIS app...'
-            mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
-            mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
-            cp /workspace/v4l-video-test-app/build/iris_v4l2_test /tmp/rootfs/data/vendor/iris_test_app/
-            chmod +x /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test
+            sudo mount rootfs.img /tmp/rootfs
+ 
+            echo '📁 Creating IRIS app directories...'
+            sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
+            sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
+ 
+            echo '📥 Copying iris_v4l2_test binary...'
+            sudo cp "$WORKSPACE/v4l-video-test-app/build/iris_v4l2_test" /tmp/rootfs/data/vendor/iris_test_app/
+            sudo chmod +x /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test
             sync
-
-            if [ ! -x /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test ]; then
-              echo '❌ IRIS binary injection failed.'
-              exit 1
-            fi
-
-            echo '📁 Contents of IRIS app directory:'
+ 
+            echo '🔍 Verifying contents...'
             ls -l /tmp/rootfs/data/vendor/iris_test_app
-
-            echo '📤 Unmounting and cleaning up...'
+ 
+            echo '📤 Unmounting image and releasing loop device...'
             sudo umount /tmp/rootfs
-            sudo losetup -d \$LOOP_DEV
-            ls -l /workspace/$IMAGE_DIR/rootfs.img
-
-            echo '✅ IRIS injection completed for $MACHINE.'
-          "
+ 
+            echo \"✅ IRIS injection completed for \$MACHINE.\"
+          '
