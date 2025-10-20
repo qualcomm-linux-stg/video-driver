@@ -8,13 +8,8 @@ ifneq ($(KBUILD_EXTRA_CONFIGS),)
 include $(KBUILD_EXTRA_CONFIGS)
 endif
 
-# List of all camera-kernel headers
-video_include_dirs := $(shell dirname `find $(VIDEO_KERNEL_ROOT) -name '*.h'` | uniq)
-
 # Include Kernel headers
-LINUXINCLUDE +=                                 \
-    -I$(KERNEL_ROOT)                            \
-    $(addprefix -I,$(video_include_dirs))         \
+ccflags-m +=                                 \
     -I$(VIDEO_KERNEL_ROOT)/vidc/inc \
     -I$(VIDEO_KERNEL_ROOT)/variant/common/inc \
     -I$(VIDEO_KERNEL_ROOT)/variant/iris2/inc \
@@ -24,9 +19,7 @@ LINUXINCLUDE +=                                 \
     -I$(VIDEO_KERNEL_ROOT)/platform/sm8550/inc \
     -I$(VIDEO_KERNEL_ROOT)/platform/sa8775p/inc \
     -I$(VIDEO_KERNEL_ROOT)/platform/qcs8300/inc \
-    -I$(VIDEO_KERNEL_ROOT)/include/uapi/vidc/media \
     -I$(VIDEO_KERNEL_ROOT)/include/uapi/vidc/ \
-    -I$(VIDEO_KERNEL_ROOT)/
 
 # After creating lists, add content of 'ccflags-m' variable to 'ccflags-y' one.
 ccflags-y += ${ccflags-m}
