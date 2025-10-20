@@ -1,5 +1,11 @@
-name: Build Docker Image
-description: Build Docker Image Action
+89name: Build kmake-video Docker image
+description: Build Docker image using Dockerfile from qualcomm-linux-stg/kmake-image
+
+inputs:
+  image:
+    description: The Docker image to build and push
+    required: true
+    default: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
 
 outputs:
   image_name:
@@ -9,12 +15,20 @@ outputs:
 runs:
   using: "composite"
   steps:
-    # Checkout ar-image repository to get the Dockerfile
-    - name: Checkout ar-image repo for Dockerfile
+    # Checkout Dockerfile from qualcomm-linux/kmake-image repo
+    - name: Checkout Dockerfile from kmake-image repo
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        repository: Audioreach/ar-image
+        repository: qualcomm-linux/kmake-image
+        path: kmake-image
+
+    # Checkout current repo to use as build context
+    - name: Checkout current repo
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        path: workspace
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -29,17 +43,17 @@ runs:
         echo "uid=$uid" >> "$GITHUB_OUTPUT"
         echo "gid=$gid" >> "$GITHUB_OUTPUT"
         echo "user=$user" >> "$GITHUB_OUTPUT"
-        echo "Running as user: $user (UID: $uid, GID: $gid)"
 
     - name: Build Docker Image
       id: build
       uses: docker/build-push-action@v6
       with:
-        context: .
+        context: ./kmake-image
+        file: ./kmake-image/Dockerfile
         push: false
         load: true
-        tags: video-image:ver.1.0
-        build-args: |
+        tags: kmake-video-image:ver.1.0
+        build-args: |    
           "USER=${{ steps.pre-build.outputs.user }}"
           "UID=${{ steps.pre-build.outputs.uid }}"
           "GID=${{ steps.pre-build.outputs.gid }}"
@@ -50,5 +64,5 @@ runs:
       id: post-build
       shell: bash
       run: |
-        echo "Docker image video-image:ver.1.0 built successfully."
-        echo "image_name=video-image:ver.1.0" >> "$GITHUB_OUTPUT"
+        echo "Docker image kmake-video-image:ver.1.0  built successfully."
+        echo  "image_name=kmake-video-image:ver.1.0" >> "$GITHUB_OUTPUT"

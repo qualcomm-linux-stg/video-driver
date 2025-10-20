@@ -17,7 +17,7 @@ runs:
         script: |
           const fs = require('fs');
           const path = require('path');
-          const machine = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.json');
+          const machine = path.join(process.env.GITHUB_WORKSPACE, 'video-driver', 'ci', 'MACHINES.json');
           let ubuntuConfig;
           try {
             if (!fs.existsSync(machine)) {
