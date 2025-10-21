@@ -1,49 +1,31 @@
----
-name: Sync Action
-description: Checks out the correct code depending on event and repo context.
+name: Sync Codebase
+description: |
+  Clones kernel and video-driver repositories.
 
 inputs:
-  event_name:
-    description: Event type that triggered the workflow (e.g., pull_request_target, push, workflow_call)
+  workspace_path:
+    description: Path to workspace directory
     required: true
-  pr_ref:
-    description: PR branch ref (e.g., feature/my-feature)
+  kernel_branch:
+    description: Kernel branch to checkout
     required: false
-  pr_repo:
-    description: PR repo full name (e.g., org/repo or user/repo)
-    required: false
-  base_ref:
-    description: Base branch ref (e.g., master)
-    required: false
+    default: origin/qcom-next
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
-    - name: Checkout PR code (pull_request_target)
-      if: ${{ (inputs.event_name == 'pull_request_target' || inputs.event_name == 'workflow_call') && inputs.pr_ref != '' && inputs.pr_repo != '' }}
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        ref: ${{ inputs.pr_ref }}
-        repository: ${{ inputs.pr_repo }}
+    - name: Clone kernel
+      shell: bash
+      run: |
+        mkdir -p ${{ inputs.workspace_path }}
+        cd ${{ inputs.workspace_path }}
+        git clone https://github.com/qualcomm-linux/kernel.git
+        cd kernel
+        git checkout ${{ inputs.kernel_branch }}
 
-    - name: Checkout master (push)
-      if: ${{ (inputs.event_name == 'push' || inputs.event_name == 'workflow_call') && inputs.base_ref != '' }}
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        ref: ${{ inputs.base_ref }}
+    - name: Clone video-driver
+      shell: bash
+      run: |
+        cd ${{ inputs.workspace_path }}
+        git clone https://github.com/qualcomm-linux/video-driver.git
 
-    - name: Checkout current repo and ref (Fallback)
-      if: ${{ (inputs.event_name == 'push' || inputs.event_name == 'workflow_call') && (inputs.base_ref == '' || inputs.pr_repo == '') }}
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        ref: ${{ github.ref }}
-
-    - name: Checkout for workflow_dispatch
-      if: ${{ inputs.event_name == 'workflow_dispatch' }}
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        ref: ${{ inputs.base_ref }}

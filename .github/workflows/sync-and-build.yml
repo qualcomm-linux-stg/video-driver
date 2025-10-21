@@ -1,0 +1,31 @@
+name: Sync and Build
+on:
+  push:
+    branches:
+      - workflow_2
+  workflow_dispatch:
+jobs:
+  sync-and-build:
+    runs-on: 
+      group: GHA-video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@workflow_2
+        with:
+          image: ghcr.io/manigurr/kmake-video-image:ver.1.0
+
+      - name: Sync codebase
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_2
+        with:
+          workspace_path: /home/runner/workspace
+
+      - name: Build workspace
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@workflow_2
+        with:
+          docker_image: ghcr.io/manigurr/kmake-video-image:ver.1.0
+          workspace_path: /home/runner/workspace
