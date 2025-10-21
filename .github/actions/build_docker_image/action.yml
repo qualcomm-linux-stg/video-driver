@@ -49,7 +49,7 @@ runs:
       uses: docker/build-push-action@v6
       with:
         context: .
-        #file: kmake-image/Dockerfile
+        file: Dockerfile
         push: false
         load: true
         tags: kmake-video-image:ver.1.0
