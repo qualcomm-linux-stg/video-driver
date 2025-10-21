@@ -21,7 +21,7 @@ runs:
       with:
         fetch-depth: 0
         repository: qualcomm-linux/kmake-image
-        path: kmake-image
+        #path: kmake-image
 
     # Checkout current repo to use as build context
     - name: Checkout current repo
@@ -48,10 +48,10 @@ runs:
       id: build
       uses: docker/build-push-action@v6
       with:
-        context: workspace
+        context: .
         file: kmake-image/Dockerfile
         push: true
-        tags: ${{ inputs.image }}
+        tags: kmake-video-image:ver.1.0
         build-args: |
           "USER=${{ steps.pre-build.outputs.user }}"
           "UID=${{ steps.pre-build.outputs.uid }}"
@@ -63,5 +63,5 @@ runs:
       id: post-build
       shell: bash
       run: |
-        echo "Docker image ${{ inputs.image }} built successfully."
-        echo "image_name=${{ inputs.image }}" >> "$GITHUB_OUTPUT"
+        echo "Docker image  built successfully."
+        echo " image " >> "$GITHUB_OUTPUT"
