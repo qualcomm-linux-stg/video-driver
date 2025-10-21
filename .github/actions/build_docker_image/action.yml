@@ -1,4 +1,4 @@
-9name: Build kmake-video Docker image
+89name: Build kmake-video Docker image
 description: Build Docker image using Dockerfile from qualcomm-linux/kmake-image
 
 inputs:
@@ -53,7 +53,8 @@ runs:
         push: false
         load: true
         tags: kmake-video-image:ver.1.0
-        build-args: |        "USER=${{ steps.pre-build.outputs.user }}"
+        build-args: |    
+          "USER=${{ steps.pre-build.outputs.user }}"
           "UID=${{ steps.pre-build.outputs.uid }}"
           "GID=${{ steps.pre-build.outputs.gid }}"
         cache-from: type=gha
