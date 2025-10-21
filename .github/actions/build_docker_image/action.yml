@@ -50,11 +50,10 @@ runs:
       with:
         context: ./kmake-image
         file: ./kmake-image/Dockerfile
-        push: true
-        #load: true
+        push: false
+        load: true
         tags: kmake-video-image:ver.1.0
-        build-args: |
-          "USER=${{ steps.pre-build.outputs.user }}"
+        build-args: |        "USER=${{ steps.pre-build.outputs.user }}"
           "UID=${{ steps.pre-build.outputs.uid }}"
           "GID=${{ steps.pre-build.outputs.gid }}"
         cache-from: type=gha
