@@ -50,8 +50,8 @@ runs:
       with:
         context: ./kmake-image
         file: ./kmake-image/Dockerfile
-        push: false
-        load: true
+        push: true
+        #load: true
         tags: kmake-video-image:ver.1.0
         build-args: |
           "USER=${{ steps.pre-build.outputs.user }}"
