@@ -3083,7 +3083,7 @@ int msm_vidc_vb2_buffer_done(struct msm_vidc_inst *inst,
 	return 0;
 }
 
-int msm_vidc_v4l2_fh_init(struct msm_vidc_inst *inst)
+int msm_vidc_v4l2_fh_init(struct msm_vidc_inst *inst, struct file *filp)
 {
 	int rc = 0;
 	int index;
@@ -3106,9 +3106,22 @@ int msm_vidc_v4l2_fh_init(struct msm_vidc_inst *inst)
 
 	v4l2_fh_init(&inst->fh, &core->vdev[index].vdev);
 	inst->fh.ctrl_handler = &inst->ctrl_handler;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+	v4l2_fh_add(&inst->fh, filp);
+#else
 	v4l2_fh_add(&inst->fh);
+#endif
 
 	return rc;
+}
+
+void msm_vidc_v4l2_fh_del(struct msm_vidc_inst *inst, struct file *filp)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
+	v4l2_fh_del(&inst->fh, filp);
+#else
+	v4l2_fh_del(&inst->fh);
+#endif
 }
 
 int msm_vidc_v4l2_fh_deinit(struct msm_vidc_inst *inst)
@@ -3121,7 +3134,6 @@ int msm_vidc_v4l2_fh_deinit(struct msm_vidc_inst *inst)
 		return 0;
 	}
 
-	v4l2_fh_del(&inst->fh);
 	inst->fh.ctrl_handler = NULL;
 	v4l2_fh_exit(&inst->fh);
 
@@ -4645,6 +4657,7 @@ static void msm_vidc_close_helper(struct kref *kref)
 	 */
 	inst_lock(inst, __func__);
 	msm_vidc_vb2_queue_deinit(inst);
+	/* v4l2_fh_del() happened in .close */
 	msm_vidc_v4l2_fh_deinit(inst);
 	inst_unlock(inst, __func__);
 	destroy_workqueue(inst->workq);
