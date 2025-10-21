@@ -22,10 +22,10 @@ jobs:
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_2
         with:
-          workspace_path: /home/runner/workspace
+          workspace_path: ${{ github.workspace }}
 
       - name: Build workspace
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@workflow_2
         with:
           docker_image: ghcr.io/manigurr/kmake-video-image:ver.1.0
-          workspace_path: /home/runner/workspace
+          workspace_path: ${{ github.workspace }}
