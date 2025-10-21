@@ -21,7 +21,7 @@ runs:
       with:
         fetch-depth: 0
         repository: qualcomm-linux/kmake-image
-        #path: kmake-image
+        path:  kmake-image
 
     # Checkout current repo to use as build context
     - name: Checkout current repo
@@ -49,8 +49,9 @@ runs:
       uses: docker/build-push-action@v6
       with:
         context: .
-        file: kmake-image/Dockerfile
-        push: true
+        #file: kmake-image/Dockerfile
+        push: false
+        load: true
         tags: kmake-video-image:ver.1.0
         build-args: |
           "USER=${{ steps.pre-build.outputs.user }}"
