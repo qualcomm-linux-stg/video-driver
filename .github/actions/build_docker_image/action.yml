@@ -64,5 +64,5 @@ runs:
       id: post-build
       shell: bash
       run: |
-        echo "Docker image  built successfully."
-        echo " image " >> "$GITHUB_OUTPUT"
+        echo "Docker image kmake-video-image:ver.1.0  built successfully."
+        echo  "image_name=kmake-video-image:ver.1.0" >> "$GITHUB_OUTPUT"
