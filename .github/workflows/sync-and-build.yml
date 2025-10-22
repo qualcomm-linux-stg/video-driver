@@ -17,7 +17,7 @@ jobs:
       - name: Build Docker image
         uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@workflow_2
         with:
-          image: ghcr.io/manigurr/kmake-video-image:ver.1.0
+          image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
 
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_2
@@ -27,5 +27,24 @@ jobs:
       - name: Build workspace
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@workflow_2
         with:
-          docker_image: ghcr.io/manigurr/kmake-video-image:ver.1.0
+          docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
           workspace_path: ${{ github.workspace }}
+
+      - name: Generate Iris test app
+        uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@workflow_2
+        with:
+          docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
+      
+      - name: Download firmware file from s3
+        shell: bash
+        run: |
+          mkdir -p ${{ github.workspace }}/downloads
+          echo "📥 Syncing files from S3 path: s3://qli-prd-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
+          aws s3 sync s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/ ${{ github.workspace }}/downloads
+          echo "✅ Download complete."
+      - name: Print downloaded firmware files
+        run: |
+          echo "📦 Files downloaded from S3:"
+          ls -lh ${{ github.workspace }}/downloads
+
+        
