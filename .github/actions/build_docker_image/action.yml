@@ -1,11 +1,11 @@
 89name: Build kmake-video Docker image
-description: Build Docker image using Dockerfile from qualcomm-linux/kmake-image
+description: Build Docker image using Dockerfile from qualcomm-linux-stg/kmake-image
 
 inputs:
   image:
     description: The Docker image to build and push
     required: true
-    default: ghcr.io/manigurr/kmake-video-image:ver.1.0
+    default: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
 
 outputs:
   image_name:
