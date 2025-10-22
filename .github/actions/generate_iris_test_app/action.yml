@@ -26,8 +26,8 @@ runs:
           bash -c '
             set -e
             echo "🔧 Installing missing build tools..."
-            sudo apt-get update
-            sudo apt-get install -y \
+            apt-get update
+            apt-get install -y \
               cmake \
               gcc-aarch64-linux-gnu \
               g++-aarch64-linux-gnu \
