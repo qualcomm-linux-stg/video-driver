@@ -47,6 +47,18 @@ jobs:
         with:
           docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
 
+      - name: Print full workspace contents
+        run: |
+          echo "📂 Full workspace contents:"
+          find ${{ github.workspace }} -type f -exec ls -lh {} \;
+      - name: Download latest initramfs images
+        run: |
+          BASE_URL="https://quic-yocto-fileserver-1029608027416.us-central1.run.app/qualcomm-linux/meta-qcom/18703085540-1/qcom-distro/qcom-armv8a/"
+          latest_run=$(curl -s $BASE_URL | grep -oP '(?<=href=")[^"/]+/' | sort | tail -n 1)
+          echo "Latest run folder: $latest_run"
+          wget "${BASE_URL}${latest_run}initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio"
+          wget "${BASE_URL}${latest_run}initramfs-kerneltest-full-image-qcom-armv8a.cpio"
+
       - name: Download firmware file from s3
         shell: bash
         run: |
@@ -54,7 +66,4 @@ jobs:
           echo "📥 Syncing files from S3 path: s3://qli-prd-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
           aws s3 sync s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/ ${{ github.workspace }}/downloads
           echo "✅ Download complete."
-
-      - name: Print downloaded firmware files
-        run: |
-          ls -lh ${{ github.workspace }}/downloads
+      
