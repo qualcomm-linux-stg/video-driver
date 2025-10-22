@@ -68,11 +68,31 @@ jobs:
           cp video-driver/iris_vpu.ko kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
 
           # Copy iris_v4l2_test into the updates directory
-          cp video-test-app/build/iris_v4l2_test kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
+          cp v4l-video-test-app/build/iris_v4l2_test kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
 
           # Print contents of the updates directory
           echo "📂 Contents of updates directory:"
           ls -lh kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
+      
+      - name: Create compressed kernel ramdisk archives for all machines
+        run: |
+            # Define target folders
+            for machine in qcs9100-ride-r3 qcs8300-ride qcs6490-rb3gen2; do
+            echo "📁 Creating archive for $machine"
+
+            # Create the machine-specific directory
+            mkdir -p "$machine"
+
+            # Generate the compressed cpio archive
+            cd kobj/tar-install
+            find lib/modules | cpio -o -H newc -R +0:+0 | gzip -9 > "../../$machine/local-kernel-ramdisk.cpio.gz"
+            cd - > /dev/null
+
+            # Confirm the archive was created
+            echo "📦 Archive for $machine:"
+            ls -lh "$machine/local-kernel-ramdisk.cpio.gz"
+            done
+
       
       - name: Download latest initramfs images
         run: |
