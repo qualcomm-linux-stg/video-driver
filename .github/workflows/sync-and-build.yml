@@ -1,4 +1,5 @@
 name: Sync and Build
+
 on:
   push:
     branches:
@@ -18,11 +19,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build Docker image
         uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@workflow_2
         with:
           image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
-        
 
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_2
@@ -39,7 +46,7 @@ jobs:
         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@workflow_2
         with:
           docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
-      
+
       - name: Download firmware file from s3
         shell: bash
         run: |
@@ -47,9 +54,7 @@ jobs:
           echo "📥 Syncing files from S3 path: s3://qli-prd-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
           aws s3 sync s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/ ${{ github.workspace }}/downloads
           echo "✅ Download complete."
+
       - name: Print downloaded firmware files
         run: |
-          #echo "📦 Files downloaded from S3:"
           ls -lh ${{ github.workspace }}/downloads
-
-        
