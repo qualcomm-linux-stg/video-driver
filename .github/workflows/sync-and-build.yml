@@ -44,7 +44,7 @@ jobs:
           echo "✅ Download complete."
       - name: Print downloaded firmware files
         run: |
-          echo "📦 Files downloaded from S3:"
+          #echo "📦 Files downloaded from S3:"
           ls -lh ${{ github.workspace }}/downloads
 
         
