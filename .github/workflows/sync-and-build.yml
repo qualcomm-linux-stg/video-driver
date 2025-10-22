@@ -4,6 +4,10 @@ on:
     branches:
       - workflow_2
   workflow_dispatch:
+
+permissions:
+  packages: read
+
 jobs:
   sync-and-build:
     runs-on: 
@@ -18,6 +22,7 @@ jobs:
         uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@workflow_2
         with:
           image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
+        
 
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_2
