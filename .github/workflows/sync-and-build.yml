@@ -108,7 +108,6 @@ jobs:
         run: |
           mkdir -p ${{ github.workspace }}/downloads
           echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/linux-stg/video-driver/artifacts/initramfs/"
-    
           aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
           aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
           aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
@@ -139,13 +138,13 @@ jobs:
           cp firmware-qcs9100-ride-sx.cpio ../qcs9100-ride-sx/
           cp kerneltest.cpio ../qcs9100-ride-sx/
 
-          cp firmware-qcs8300-ride-sx.cpio ../qcs8300-ride/
-          cp kerneltest.cpio ../qcs8300-ride/
+          cp firmware-qcs8300-ride-sx.cpio ../qcs8300-ride-sx/
+          cp kerneltest.cpio ../qcs8300-ride-sx/
 
           cp firmware-qcs6490-rb3gen2.cpio ../qcs6490-rb3gen2/
           cp kerneltest.cpio ../qcs6490-rb3gen2/
 
-          echo "✅ Files copied to target directories."
+          echo "✅ Files copied t
 
       - name: 🔀 Merge and repackage initramfs for each machine
         shell: bash
