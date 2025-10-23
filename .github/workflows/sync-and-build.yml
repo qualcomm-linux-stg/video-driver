@@ -147,17 +147,73 @@ jobs:
 
           echo "✅ Files copied to target directories."
 
-      - name: 📁 Print contents of each target directory
+      - name: 🔀 Merge and repackage initramfs for each machine
         shell: bash
         run: |
-          echo "📁 qcs9100-ride-r3:"
-          ls -lh ${{ github.workspace }}/qcs9100-ride-r3
+          for machine in qcs9100-ride-r3 qcs8300-ride qcs6490-rb3gen2; do
+            echo "🔧 Processing $machine"
 
-          echo "📁 qcs8300-ride:"
-          ls -lh ${{ github.workspace }}/qcs8300-ride
+            cd ${{ github.workspace }}/$machine
 
-          echo "📁 qcs6490-rb3gen2:"
-          ls -lh ${{ github.workspace }}/qcs6490-rb3gen2
+            # Decompress local-kernel-ramdisk
+            mv local-kernel-ramdisk.cpio.gz local-kernel-ramdisk.cpio.gz.bak
+            gunzip -c local-kernel-ramdisk.cpio.gz.bak > local-kernel-ramdisk.cpio
+
+            # Determine firmware file name
+            firmware_file=""
+            if [[ "$machine" == "qcs9100-ride-r3" ]]; then
+              firmware_file="firmware-sa8775.cpio"
+            elif [[ "$machine" == "qcs8300-ride" ]]; then
+              firmware_file="firmware-qcs8300.cpio"
+            elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
+              firmware_file="firmware-rb3gen2.cpio"
+            fi
+
+            # Copy firmware and kerneltest from downloads
+            cp ${{ github.workspace }}/downloads/$firmware_file .
+            cp ${{ github.workspace }}/downloads/kerneltest.cpio .
+
+            # Merge all components
+            cat kerneltest.cpio local-kernel-ramdisk.cpio $firmware_file > ${machine}-merged.cpio
+            gzip -9 ${machine}-merged.cpio
+
+            # Create temp workspace to clean up archive
+            mkdir -p temp_merge
+            cd temp_merge
+            cpio -id < ../kerneltest.cpio
+            cpio -id < ../local-kernel-ramdisk.cpio
+            cpio -id < ../$firmware_file
+            cd ..
+
+            # Remove old merged archive
+            rm ${machine}-merged.cpio.gz
+
+            # Repackage clean archive
+            cd temp_merge
+            find . | cpio -o -H newc > ../${machine}-merged.cpio
+            cd ..
+            gzip -9 ${machine}-merged.cpio
+
+            # Cleanup
+            rm -rf temp_merge local-kernel-ramdisk.cpio kerneltest.cpio $firmware_file
+            echo "✅ Final archive: ${machine}-merged.cpio.gz"
+            ls -lh ${machine}-merged.cpio.gz
+
+            cd ${{ github.workspace }}
+          done
+      
+      - name: 📂 List files in each machine directory
+        shell: bash
+        run: |
+          for machine in qcs9100-ride-r3 qcs8300-ride qcs6490-rb3gen2; do
+            echo "📁 Contents of $machine:"
+            ls -lh ${{ github.workspace }}/$machine
+            echo ""
+          done
+
+
+
+
 
 
     
