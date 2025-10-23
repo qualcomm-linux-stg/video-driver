@@ -144,7 +144,7 @@ jobs:
           cp firmware-qcs6490-rb3gen2.cpio ../qcs6490-rb3gen2/
           cp kerneltest.cpio ../qcs6490-rb3gen2/
 
-          echo "✅ Files copied t
+          echo "✅ Files copied to target directories."
 
       - name: 🔀 Merge and repackage initramfs for each machine
         shell: bash
@@ -165,7 +165,7 @@ jobs:
             elif [[ "$machine" == "qcs8300-ride-sx" ]]; then
               firmware_file="firmware-qcs8300-ride-sx.cpio"
             elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
-              firmware_file="firmware-qcs6490-rb3gen2"
+              firmware_file="firmware-qcs6490-rb3gen2.cpio"
             fi
 
             # Copy firmware and kerneltest from downloads
