@@ -250,15 +250,12 @@ jobs:
 
       #       echo "✅ Boot image created: $machine/${machine}-boot.img"
       #     done
-      
       - name: 🧱 Build boot.img for each machine using Docker
         shell: bash
         run: |
           machines=(qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2)
-
           for machine in "${machines[@]}"; do
             echo "🚀 Building boot.img for $machine"
-
             # Set DTB filename based on machine
             case "$machine" in
               qcs9100-ride-sx) dtb="qcs9100-ride.dtb" ;;
@@ -266,9 +263,8 @@ jobs:
               qcs6490-rb3gen2) dtb="qcs6490-rb3gen2.dtb" ;;
               *) echo "❌ Unknown machine: $machine"; exit 1 ;;
             esac
-
             # Run mkbootimg inside Docker container directly
-            docker run -it --rm \
+            docker run --rm \
               --user "$(id -u):$(id -g)" \
               --workdir "$PWD" \
               -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
@@ -282,12 +278,9 @@ jobs:
                 --base 0x80000000 \
                 --pagesize 2048 \
                 --output "$machine/${machine}-boot.img"
-
             echo "✅ Boot image created: $machine/${machine}-boot.img"
           done
-
-
-
+          
       # - name: 🧱 Create boot.img for each machine
       #   shell: bash
       #   run: |
