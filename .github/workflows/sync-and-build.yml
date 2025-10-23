@@ -244,10 +244,10 @@ jobs:
         shell: bash
         run: |
           for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-          echo "📁 Final contents of $machine:"
-          ls -lh ${{ github.workspace }}/$machine
-          echo ""
-        done
+           echo "📁 Final contents of $machine:"
+           ls -lh ${{ github.workspace }}/$machine
+           echo ""
+          done
 
 
 
