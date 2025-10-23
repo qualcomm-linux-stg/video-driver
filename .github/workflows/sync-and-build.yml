@@ -109,39 +109,41 @@ jobs:
           mkdir -p ${{ github.workspace }}/downloads
           echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/linux-stg/video-driver/artifacts/initramfs/"
     
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio ${{ github.workspace }}/downloads/
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio ${{ github.workspace }}/downloads/
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio ${{ github.workspace }}/downloads/
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
           echo "✅ All initramfs files downloaded to: ${{ github.workspace }}/downloads"
 
-      - name: 📦 Extract meta-qcom ramdisk  tar files
+
+      - name: 📦 Decompress ramdisk files and rename .cpio.gz files
         shell: bash
         run: |
           cd ${{ github.workspace }}/downloads
-          echo "📂 Extracting tar files..."
-          tar -xvf initramfs-firmware-qcs8300-ride-image-qcom-armv8a.tar
-          tar -xvf initramfs-firmware-rb3gen2-image-qcom-armv8a.tar
-          tar -xvf initramfs-firmware-sa8775p-ride-image-qcom-armv8a.tar
-          tar -xvf initramfs-kerneltest-full-image-qcom-armv8a.tar
+          echo "📂 Decompressing and renaming .cpio.gz files..."
 
-          echo "✅ Extraction complete."
+          gunzip -c initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz > firmware-qcs8300.cpio
+          gunzip -c initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz > firmware-rb3gen2.cpio
+          gunzip -c initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz > firmware-sa8775.cpio
+          gunzip -c initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz > kerneltest.cpio
 
-      - name: 🗂️ Organize initramfs files into target directories
+          echo "✅ Decompression complete."
+
+      - name: 🗂️ Organize decompressed files into target directories
         shell: bash
         run: |
           cd ${{ github.workspace }}/downloads
 
           mkdir -p ../qcs9100-ride-r3 ../qcs8300-ride ../qcs6490-rb3gen2
 
-          cp initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio ../qcs9100-ride-r3/
-          cp initramfs-kerneltest-full-image-qcom-armv8a.cpio ../qcs9100-ride-r3/
+          cp firmware-sa8775.cpio ../qcs9100-ride-r3/
+          cp kerneltest.cpio ../qcs9100-ride-r3/
 
-          cp initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio ../qcs8300-ride/
-          cp initramfs-kerneltest-full-image-qcom-armv8a.cpio ../qcs8300-ride/
+          cp firmware-qcs8300.cpio ../qcs8300-ride/
+          cp kerneltest.cpio ../qcs8300-ride/
 
-          cp initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio ../qcs6490-rb3gen2/
-          cp initramfs-kerneltest-full-image-qcom-armv8a.cpio ../qcs6490-rb3gen2/
+          cp firmware-rb3gen2.cpio ../qcs6490-rb3gen2/
+          cp kerneltest.cpio ../qcs6490-rb3gen2/
 
           echo "✅ Files copied to target directories."
 
@@ -157,5 +159,7 @@ jobs:
           echo "📁 qcs6490-rb3gen2:"
           ls -lh ${{ github.workspace }}/qcs6490-rb3gen2
 
+
+    
 
 
