@@ -210,34 +210,76 @@ jobs:
             echo ""
           done
 
-      - name: 🧱 Create boot.img for each machine
+      - name: 🧱 Build boot.img for each machine
         shell: bash
         run: |
-          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+          # Define Docker alias for kmake-image-run
+          alias kmake-image-run='docker run -it --rm \
+            --user $(id -u):$(id -g) \
+            --workdir="$PWD" \
+            -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+            kmake-video-image:ver.1.0'
+
+          # Optional alias for make inside container
+          alias kmake='kmake-image-run make'
+
+          # List of target machines
+          machines=(qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2)
+
+          for machine in "${machines[@]}"; do
             echo "🚀 Building boot.img for $machine"
 
-            # Set DTB path based on machine
-            dtb=""
-            if [[ "$machine" == "qcs9100-ride-sx" ]]; then
-              dtb="qcs9100-ride.dtb"
-            elif [[ "$machine" == "qcs8300-ride-sx" ]]; then
-              dtb="qcs8300-ride.dtb"
-            elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
-              dtb="qcs6490-rb3gen2.dtb"
-            fi
+            # Set DTB filename based on machine
+            case "$machine" in
+              qcs9100-ride-sx) dtb="qcs9100-ride.dtb" ;;
+              qcs8300-ride-sx) dtb="qcs8300-ride.dtb" ;;
+              qcs6490-rb3gen2) dtb="qcs6490-rb3gen2.dtb" ;;
+              *) echo "❌ Unknown machine: $machine"; exit 1 ;;
+            esac
 
+            # Run mkbootimg inside Docker container
             kmake-image-run mkbootimg \
               --header_version 2 \
-              --ramdisk $machine/${machine}-merged.cpio.gz \
-              --kernel kobj/arch/arm64/boot/Image \
-              --dtb kobj/arch/arm64/boot/dts/qcom/$dtb \
+              --ramdisk "$machine/${machine}-merged.cpio.gz" \
+              --kernel "kobj/arch/arm64/boot/Image" \
+              --dtb "kobj/arch/arm64/boot/dts/qcom/$dtb" \
               --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
               --base 0x80000000 \
               --pagesize 2048 \
-              --output $machine/${machine}-boot.img
+              --output "$machine/${machine}-boot.img"
 
             echo "✅ Boot image created: $machine/${machine}-boot.img"
-          done    
+          done
+
+
+      # - name: 🧱 Create boot.img for each machine
+      #   shell: bash
+      #   run: |
+      #     for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+      #       echo "🚀 Building boot.img for $machine"
+
+      #       # Set DTB path based on machine
+      #       dtb=""
+      #       if [[ "$machine" == "qcs9100-ride-sx" ]]; then
+      #         dtb="qcs9100-ride.dtb"
+      #       elif [[ "$machine" == "qcs8300-ride-sx" ]]; then
+      #         dtb="qcs8300-ride.dtb"
+      #       elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
+      #         dtb="qcs6490-rb3gen2.dtb"
+      #       fi
+
+      #       kmake-image-run mkbootimg \
+      #         --header_version 2 \
+      #         --ramdisk $machine/${machine}-merged.cpio.gz \
+      #         --kernel kobj/arch/arm64/boot/Image \
+      #         --dtb kobj/arch/arm64/boot/dts/qcom/$dtb \
+      #         --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
+      #         --base 0x80000000 \
+      #         --pagesize 2048 \
+      #         --output $machine/${machine}-boot.img
+
+      #       echo "✅ Boot image created: $machine/${machine}-boot.img"
+      #     done    
             
       - name:  Final contents of each machine directory
         shell: bash
@@ -280,6 +322,19 @@ jobs:
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
+
+
+      - name: 📦 Upload boot payloads as GitHub artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot_payloads
+          path: |
+            ${{ github.workspace }}/qcs9100-ride-sx/qcs9100-ride-sx-boot.img
+            ${{ github.workspace }}/qcs8300-ride-sx/qcs8300-ride-sx-boot.img
+            ${{ github.workspace }}/qcs6490-rb3gen2/qcs6490-rb3gen2-boot.img
+            ${{ github.workspace }}/artifacts/*.tar.gz
+          retention-days: 7
+    
 
 
 
