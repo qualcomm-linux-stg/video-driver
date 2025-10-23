@@ -86,7 +86,7 @@ jobs:
       - name: Create compressed kernel ramdisk archives for all machines
         run: |
             # Define target folders
-            for machine in qcs9100-ride-r3 qcs8300-ride qcs6490-rb3gen2; do
+            for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
             echo "📁 Creating archive for $machine"
 
             # Create the machine-specific directory
@@ -122,9 +122,9 @@ jobs:
           cd ${{ github.workspace }}/downloads
           echo "📂 Decompressing and renaming .cpio.gz files..."
 
-          gunzip -c initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz > firmware-qcs8300.cpio
-          gunzip -c initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz > firmware-rb3gen2.cpio
-          gunzip -c initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz > firmware-sa8775.cpio
+          gunzip -c initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz > firmware-qcs8300-ride-sx.cpio
+          gunzip -c initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz > firmware-qcs6490-rb3gen2.cpio
+          gunzip -c initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz > firmware-qcs9100-ride-sx.cpio
           gunzip -c initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz > kerneltest.cpio
 
           echo "✅ Decompression complete."
@@ -134,15 +134,15 @@ jobs:
         run: |
           cd ${{ github.workspace }}/downloads
 
-          mkdir -p ../qcs9100-ride-r3 ../qcs8300-ride ../qcs6490-rb3gen2
+          mkdir -p ../qcs9100-ride-sx ../qcs8300-ride-sx ../qcs6490-rb3gen2
 
-          cp firmware-sa8775.cpio ../qcs9100-ride-r3/
+          cp firmware-qcs9100-ride-sx.cpio ../qcs9100-ride-r3/
           cp kerneltest.cpio ../qcs9100-ride-r3/
 
-          cp firmware-qcs8300.cpio ../qcs8300-ride/
+          cp firmware-qcs8300-ride-sx.cpio ../qcs8300-ride/
           cp kerneltest.cpio ../qcs8300-ride/
 
-          cp firmware-rb3gen2.cpio ../qcs6490-rb3gen2/
+          cp firmware-qcs6490-rb3gen2.cpio ../qcs6490-rb3gen2/
           cp kerneltest.cpio ../qcs6490-rb3gen2/
 
           echo "✅ Files copied to target directories."
@@ -150,7 +150,7 @@ jobs:
       - name: 🔀 Merge and repackage initramfs for each machine
         shell: bash
         run: |
-          for machine in qcs9100-ride-r3 qcs8300-ride qcs6490-rb3gen2; do
+          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
             echo "🔧 Processing $machine"
 
             cd ${{ github.workspace }}/$machine
@@ -161,12 +161,12 @@ jobs:
 
             # Determine firmware file name
             firmware_file=""
-            if [[ "$machine" == "qcs9100-ride-r3" ]]; then
-              firmware_file="firmware-sa8775.cpio"
-            elif [[ "$machine" == "qcs8300-ride" ]]; then
-              firmware_file="firmware-qcs8300.cpio"
+            if [[ "$machine" == "qcs9100-ride-sx" ]]; then
+              firmware_file="firmware-qcs9100-ride-sx.cpio"
+            elif [[ "$machine" == "qcs8300-ride-sx" ]]; then
+              firmware_file="firmware-qcs8300-ride-sx.cpio"
             elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
-              firmware_file="firmware-rb3gen2.cpio"
+              firmware_file="firmware-qcs6490-rb3gen2"
             fi
 
             # Copy firmware and kerneltest from downloads
@@ -205,11 +205,50 @@ jobs:
       - name: 📂 List files in each machine directory
         shell: bash
         run: |
-          for machine in qcs9100-ride-r3 qcs8300-ride qcs6490-rb3gen2; do
+          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
             echo "📁 Contents of $machine:"
             ls -lh ${{ github.workspace }}/$machine
             echo ""
           done
+
+      - name: 🧱 Create boot.img for each machine
+        shell: bash
+        run: |
+          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+            echo "🚀 Building boot.img for $machine"
+
+            # Set DTB path based on machine
+            dtb=""
+            if [[ "$machine" == "qcs9100-ride-sx" ]]; then
+              dtb="qcs9100-ride.dtb"
+            elif [[ "$machine" == "qcs8300-ride-sx" ]]; then
+              dtb="qcs8300-ride.dtb"
+            elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
+              dtb="qcs6490-rb3gen2.dtb"
+            fi
+
+            kmake-image-run mkbootimg \
+              --header_version 2 \
+              --ramdisk $machine/${machine}-merged.cpio.gz \
+              --kernel kobj/arch/arm64/boot/Image \
+              --dtb kobj/arch/arm64/boot/dts/qcom/$dtb \
+              --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
+              --base 0x80000000 \
+              --pagesize 2048 \
+              --output $machine/${machine}-boot.img
+
+            echo "✅ Boot image created: $machine/${machine}-boot.img"
+          done    
+            
+      - name:  Final contents of each machine directory
+        shell: bash
+        run: |
+          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+          echo "📁 Final contents of $machine:"
+          ls -lh ${{ github.workspace }}/$machine
+          echo ""
+        done
+
 
 
 
