@@ -57,7 +57,13 @@ jobs:
           echo "📍 Current workspace directory:"
           pwd
         
-      
+      - name: Download firmware file from s3
+        shell: bash
+        run: |
+          mkdir -p ${{ github.workspace }}/downloads
+          echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
+          aws s3 sync s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/ ${{ github.workspace }}/downloads
+          echo "✅ Download complete."
 
       - name: Copy driver and test app to target directories and list contents
         run: |
@@ -70,9 +76,12 @@ jobs:
           # Copy iris_v4l2_test into the updates directory
           cp v4l-video-test-app/build/iris_v4l2_test kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
 
+          cp downloads/vpu20_1v.mbn kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
+
           # Print contents of the updates directory
           echo "📂 Contents of updates directory:"
           ls -lh kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
+
       
       - name: Create compressed kernel ramdisk archives for all machines
         run: |
@@ -94,19 +103,59 @@ jobs:
             done
 
       
-      - name: Download latest initramfs images
-        run: |
-          BASE_URL="https://quic-yocto-fileserver-1029608027416.us-central1.run.app/qualcomm-linux/meta-qcom/18703085540-1/qcom-distro/qcom-armv8a/"
-          latest_run=$(curl -s $BASE_URL | grep -oP '(?<=href=")[^"/]+/' | sort | tail -n 1)
-          echo "Latest run folder: $latest_run"
-          wget "${BASE_URL}${latest_run}initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio"
-          wget "${BASE_URL}${latest_run}initramfs-kerneltest-full-image-qcom-armv8a.cpio"
-
-      - name: Download firmware file from s3
+      - name: Download meta-qcom stable initramfs artifacts from S3
         shell: bash
         run: |
           mkdir -p ${{ github.workspace }}/downloads
-          echo "📥 Syncing files from S3 path: s3://qli-prd-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
-          aws s3 sync s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/ ${{ github.workspace }}/downloads
-          echo "✅ Download complete."
-      
+          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/linux-stg/video-driver/artifacts/initramfs/"
+    
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio ${{ github.workspace }}/downloads/
+          echo "✅ All initramfs files downloaded to: ${{ github.workspace }}/downloads"
+
+      - name: 📦 Extract meta-qcom ramdisk  tar files
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/downloads
+          echo "📂 Extracting tar files..."
+          tar -xvf initramfs-firmware-qcs8300-ride-image-qcom-armv8a.tar
+          tar -xvf initramfs-firmware-rb3gen2-image-qcom-armv8a.tar
+          tar -xvf initramfs-firmware-sa8775p-ride-image-qcom-armv8a.tar
+          tar -xvf initramfs-kerneltest-full-image-qcom-armv8a.tar
+
+          echo "✅ Extraction complete."
+
+      - name: 🗂️ Organize initramfs files into target directories
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/downloads
+
+          mkdir -p ../qcs9100-ride-r3 ../qcs8300-ride ../qcs6490-rb3gen2
+
+          cp initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio ../qcs9100-ride-r3/
+          cp initramfs-kerneltest-full-image-qcom-armv8a.cpio ../qcs9100-ride-r3/
+
+          cp initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio ../qcs8300-ride/
+          cp initramfs-kerneltest-full-image-qcom-armv8a.cpio ../qcs8300-ride/
+
+          cp initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio ../qcs6490-rb3gen2/
+          cp initramfs-kerneltest-full-image-qcom-armv8a.cpio ../qcs6490-rb3gen2/
+
+          echo "✅ Files copied to target directories."
+
+      - name: 📁 Print contents of each target directory
+        shell: bash
+        run: |
+          echo "📁 qcs9100-ride-r3:"
+          ls -lh ${{ github.workspace }}/qcs9100-ride-r3
+
+          echo "📁 qcs8300-ride:"
+          ls -lh ${{ github.workspace }}/qcs8300-ride
+
+          echo "📁 qcs6490-rb3gen2:"
+          ls -lh ${{ github.workspace }}/qcs6490-rb3gen2
+
+
+
