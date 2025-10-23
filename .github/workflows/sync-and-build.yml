@@ -136,8 +136,8 @@ jobs:
 
           mkdir -p ../qcs9100-ride-sx ../qcs8300-ride-sx ../qcs6490-rb3gen2
 
-          cp firmware-qcs9100-ride-sx.cpio ../qcs9100-ride-r3/
-          cp kerneltest.cpio ../qcs9100-ride-r3/
+          cp firmware-qcs9100-ride-sx.cpio ../qcs9100-ride-sx/
+          cp kerneltest.cpio ../qcs9100-ride-sx/
 
           cp firmware-qcs8300-ride-sx.cpio ../qcs8300-ride/
           cp kerneltest.cpio ../qcs8300-ride/
@@ -244,14 +244,43 @@ jobs:
         shell: bash
         run: |
           for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-           echo "📁 Final contents of $machine:"
+           echo " 📁 Final contents of $machine:"
            ls -lh ${{ github.workspace }}/$machine
            echo ""
           done
 
 
+      - name: 📦 Package boot.img for the s3 upload
+        shell: bash
+        run: |
+          set -e
+          workspace=${{ github.workspace }}
+          mkdir -p "$workspace/artifacts"
+          touch "$workspace/artifacts/file_list.txt"
 
+          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+            echo "📦 Creating tarball for $machine"
 
+            bootimg_path="$workspace/$machine/${machine}-boot.img"
+            if [ ! -f "$bootimg_path" ]; then
+              echo "❌ Missing boot.img for $machine"
+              exit 1
+            fi
+
+            tarball="${machine}_boot_payload.tar.gz"
+            tar -czf "$workspace/$tarball" -C "$workspace/$machine" "${machine}-boot.img"
+            echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
+
+            echo "✅ Tarball created: $tarball"
+          done
+      
+      - name: 🚀 Upload all boot.img to S3
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
+        with:
+          s3_bucket: qli-stg-video-gh-artifacts
+          local_file: ${{ github.workspace }}/artifacts/file_list.txt
+          mode: multi-upload
+          upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
 
 
 
