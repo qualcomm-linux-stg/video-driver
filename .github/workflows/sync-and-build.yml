@@ -210,20 +210,50 @@ jobs:
             echo ""
           done
 
-      - name: 🧱 Build boot.img for each machine
+      # - name: 🧱 Build boot.img for each machine
+      #   shell: bash
+      #   run: |
+      #     # Define Docker alias for kmake-image-run
+      #     alias kmake-image-run='docker run -it --rm \
+      #       --user $(id -u):$(id -g) \
+      #       --workdir="$PWD" \
+      #       -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+      #       kmake-video-image:ver.1.0'
+
+      #     # Optional alias for make inside container
+      #     alias kmake='kmake-image-run make'
+
+      #     # List of target machines
+      #     machines=(qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2)
+
+      #     for machine in "${machines[@]}"; do
+      #       echo "🚀 Building boot.img for $machine"
+
+      #       # Set DTB filename based on machine
+      #       case "$machine" in
+      #         qcs9100-ride-sx) dtb="qcs9100-ride.dtb" ;;
+      #         qcs8300-ride-sx) dtb="qcs8300-ride.dtb" ;;
+      #         qcs6490-rb3gen2) dtb="qcs6490-rb3gen2.dtb" ;;
+      #         *) echo "❌ Unknown machine: $machine"; exit 1 ;;
+      #       esac
+
+      #       # Run mkbootimg inside Docker container
+      #       kmake-image-run mkbootimg \
+      #         --header_version 2 \
+      #         --ramdisk "$machine/${machine}-merged.cpio.gz" \
+      #         --kernel "kobj/arch/arm64/boot/Image" \
+      #         --dtb "kobj/arch/arm64/boot/dts/qcom/$dtb" \
+      #         --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
+      #         --base 0x80000000 \
+      #         --pagesize 2048 \
+      #         --output "$machine/${machine}-boot.img"
+
+      #       echo "✅ Boot image created: $machine/${machine}-boot.img"
+      #     done
+      
+      - name: 🧱 Build boot.img for each machine using Docker
         shell: bash
         run: |
-          # Define Docker alias for kmake-image-run
-          alias kmake-image-run='docker run -it --rm \
-            --user $(id -u):$(id -g) \
-            --workdir="$PWD" \
-            -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
-            kmake-video-image:ver.1.0'
-
-          # Optional alias for make inside container
-          alias kmake='kmake-image-run make'
-
-          # List of target machines
           machines=(qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2)
 
           for machine in "${machines[@]}"; do
@@ -237,19 +267,25 @@ jobs:
               *) echo "❌ Unknown machine: $machine"; exit 1 ;;
             esac
 
-            # Run mkbootimg inside Docker container
-            kmake-image-run mkbootimg \
-              --header_version 2 \
-              --ramdisk "$machine/${machine}-merged.cpio.gz" \
-              --kernel "kobj/arch/arm64/boot/Image" \
-              --dtb "kobj/arch/arm64/boot/dts/qcom/$dtb" \
-              --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
-              --base 0x80000000 \
-              --pagesize 2048 \
-              --output "$machine/${machine}-boot.img"
+            # Run mkbootimg inside Docker container directly
+            docker run -it --rm \
+              --user "$(id -u):$(id -g)" \
+              --workdir "$PWD" \
+              -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+              kmake-video-image:ver.1.0 \
+              mkbootimg \
+                --header_version 2 \
+                --ramdisk "$machine/${machine}-merged.cpio.gz" \
+                --kernel "kobj/arch/arm64/boot/Image" \
+                --dtb "kobj/arch/arm64/boot/dts/qcom/$dtb" \
+                --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
+                --base 0x80000000 \
+                --pagesize 2048 \
+                --output "$machine/${machine}-boot.img"
 
             echo "✅ Boot image created: $machine/${machine}-boot.img"
           done
+
 
 
       # - name: 🧱 Create boot.img for each machine
