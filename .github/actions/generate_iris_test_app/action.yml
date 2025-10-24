@@ -7,7 +7,7 @@ inputs:
     required: true
 
 runs:
-  using: 'composite'
+  using: composite
   steps:
     - name: Install tools and build iris_v4l2_test inside Docker
       shell: bash
@@ -86,3 +86,4 @@ EOF
               exit 1
             fi
           '
+
