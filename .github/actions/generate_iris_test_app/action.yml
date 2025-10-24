@@ -37,11 +37,11 @@ runs:
             apt-get install -y --no-install-recommends \
               cmake \
               gcc-aarch64-linux-gnu \
-              g++-aarch64-linux-gnu \
+              g++-cross-aarch64 \
               libc6-dev-arm64-cross \
               binutils-aarch64-linux-gnu \
               make \
-              pkg-config \
+              pkg-config-aarch64-linux-gnu \
               libtool \
               autoconf \
               automake \
