@@ -25,21 +25,26 @@ runs:
           bash -c '
             set -e
             echo "🔧 Patching APT sources for arm64..."
-            # Remove duplicate sources and patch arm64 sources to use ports.ubuntu.com
             rm -f /etc/apt/sources.list.d/*.sources
             sed -i "s|http://archive.ubuntu.com/ubuntu|http://ports.ubuntu.com/ubuntu-ports|g" /etc/apt/sources.list
             awk "!seen[\$0]++" /etc/apt/sources.list > /tmp/sources.list && mv /tmp/sources.list /etc/apt/sources.list
+
+            echo "🔧 Enabling universe and multiverse repositories..."
+            apt-get update
+            apt-get install -y software-properties-common
+            add-apt-repository universe
+            add-apt-repository multiverse
             apt-get update
 
             echo "🔧 Installing missing build tools..."
-            apt-get install -y \
+            apt-get install -y --no-install-recommends \
               cmake \
               gcc-aarch64-linux-gnu \
-              g++-aarch64-linux-gnu \
+              g++-10-aarch64-linux-gnu \
               libc6-dev-arm64-cross \
               binutils-aarch64-linux-gnu \
               make \
-              pkg-config \
+              pkgconf \
               libtool \
               autoconf \
               automake \
