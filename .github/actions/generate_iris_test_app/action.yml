@@ -18,14 +18,20 @@ runs:
         GROUP_ID=$(id -g)
         docker run \
           --rm \
-          -v $PWD:/workspace \
+          -v "$PWD:/workspace" \
           -w /workspace \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c '
             set -e
-            echo "🔧 Installing missing build tools..."
+            echo "🔧 Patching APT sources for arm64..."
+            # Remove duplicate sources and patch arm64 sources to use ports.ubuntu.com
+            rm -f /etc/apt/sources.list.d/*.sources
+            sed -i "s|http://archive.ubuntu.com/ubuntu|http://ports.ubuntu.com/ubuntu-ports|g" /etc/apt/sources.list
+            awk "!seen[\$0]++" /etc/apt/sources.list > /tmp/sources.list && mv /tmp/sources.list /etc/apt/sources.list
             apt-get update
+
+            echo "🔧 Installing missing build tools..."
             apt-get install -y \
               cmake \
               gcc-aarch64-linux-gnu \
@@ -39,12 +45,14 @@ runs:
               automake \
               libssl-dev \
               libcurl4-openssl-dev \
-              git
+              git || { echo "❌ apt-get install failed"; exit 1; }
+
             echo "✅ Tools installed successfully."
             echo "📦 Cloning v4l-video-test-app..."
             rm -rf v4l-video-test-app
             git clone https://github.com/quic/v4l-video-test-app.git
             cd v4l-video-test-app
+
             echo "🔧 Patching compiler paths..."
             sed -i -e "s|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|" \
                     -e "s|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|" \
@@ -53,13 +61,16 @@ runs:
             sed -i -e "s|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|" \
                     -e "s|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|" \
                     aarch64_toolchain.cmake
+
             echo "📦 Preparing third-party modules..."
             chmod +x prepare_3p_module.sh
             bash -xe ./prepare_3p_module.sh
+
             cd ..
             echo "🔨 Building iris_v4l2_test..."
             chmod +x build.sh
             bash -xe ./build.sh
+
             echo "✅ Build completed."
             build_path="$(pwd)/build"
             ls -la "$build_path"
