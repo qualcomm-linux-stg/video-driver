@@ -24,19 +24,18 @@ runs:
           ${{ inputs.docker_image }} \
           bash -c '
             set -e
-            echo "🔧 Patching APT sources for arm64..."
-            rm -f /etc/apt/sources.list.d/*.sources
-            sed -i "s|http://archive.ubuntu.com/ubuntu|http://ports.ubuntu.com/ubuntu-ports|g" /etc/apt/sources.list
-            awk "!seen[\$0]++" /etc/apt/sources.list > /tmp/sources.list && mv /tmp/sources.list /etc/apt/sources.list
+            echo "🔧 Overwriting APT sources for arm64..."
+            cat <<EOF > /etc/apt/sources.list
+            deb http://ports.ubuntu.com/ubuntu-ports focal main restricted universe multiverse
+            deb http://ports.ubuntu.com/ubuntu-ports focal-updates main restricted universe multiverse
+            deb http://ports.ubuntu.com/ubuntu-ports focal-security main restricted universe multiverse
+            EOF
 
-            echo "🔧 Enabling universe and multiverse repositories..."
-            apt-get update
-            apt-get install -y software-properties-common
-            add-apt-repository universe
-            add-apt-repository multiverse
+            echo "🔄 Refreshing package index..."
+            apt-get clean
             apt-get update
 
-            echo "🔧 Installing missing build tools..."
+            echo "🔧 Installing build tools..."
             apt-get install -y --no-install-recommends \
               cmake \
               gcc-aarch64-linux-gnu \
