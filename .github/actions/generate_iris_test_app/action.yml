@@ -37,16 +37,15 @@ runs:
             apt-get install -y --no-install-recommends \
               cmake \
               gcc-aarch64-linux-gnu \
-              g++-cross-aarch64 \
               libc6-dev-arm64-cross \
               binutils-aarch64-linux-gnu \
               make \
-              pkg-config-aarch64-linux-gnu \
+              pkg-config \
               libtool \
               autoconf \
               automake \
               libssl-dev \
-              libcurl4-gnutls-dev \
+              libcurl4-openssl-dev \
               git || { echo "❌ apt-get install failed"; exit 1; }
 
             echo "✅ Tools installed successfully."
