@@ -1,0 +1,36 @@
+name: pre_merge
+description: |
+  Orchestrates pre-merge CI for the video-driver repository without a matrix
+  in the caller workflow. Builds and tests using reusable workflows.
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'development'
+  workflow_dispatch:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches:
+      - 'main'
+      - 'development'
+    paths-ignore:
+      - '.github/**'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@workflow_2
+    secrets: inherit
+    with:
+      docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
+
+  test:
+    needs: build
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
+    secrets: inherit
+    with:
+      docker_image: kmake-video-image:ver.1.0
