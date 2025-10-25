@@ -348,6 +348,14 @@ jobs:
             echo "✅ Tarball created: $tarball"
           done
       
+      # - name: 🚀 Upload all boot.img to S3
+      #   uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
+      #   with:
+      #     s3_bucket: qli-stg-video-gh-artifacts
+      #     local_file: ${{ github.workspace }}/artifacts/file_list.txt
+      #     mode: multi-upload
+      #     upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: 🚀 Upload all boot.img to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
         with:
@@ -356,7 +364,7 @@ jobs:
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
 
-
+          
       - name: 📦 Upload boot payloads as GitHub artifacts
         uses: actions/upload-artifact@v4
         with:
