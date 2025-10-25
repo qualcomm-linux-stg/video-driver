@@ -1,0 +1,74 @@
+name: Lava Job Render (Boot.img Only)
+description: |
+  Prepares LAVA job definition using only the boot.img artifact URL for each machine.
+
+inputs:
+  docker_image:
+    description: Docker image
+    required: true
+    default: kmake-video-image:ver.1.0
+
+runs:
+  using: "composite"
+  steps:
+    - name: Extract boot.img URL from presigned_urls.json
+      id: process_urls
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const p = require('path');
+          const filePath = p.join(process.env.GITHUB_WORKSPACE, `presigned_urls_${process.env.MACHINE}.json`);
+          if (!fs.existsSync(filePath)) {
+            core.setFailed(`File not found: ${filePath}`);
+            return;
+          }
+          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          const machine = process.env.MACHINE;
+          const tarballName = `${machine}_boot_payload.tar.gz`;
+          let bootimg_url = null;
+          for (const [path, url] of Object.entries(data)) {
+            if (path.endsWith(tarballName)) {
+              bootimg_url = url;
+              break;
+            }
+          }
+          if (!bootimg_url) {
+            core.setFailed(`boot.img tarball URL not found for ${machine}`);
+            return;
+          }
+          core.setOutput('bootimg_url', bootimg_url);
+
+    - name: Create metadata.json (boot.img only)
+      shell: bash
+      run: |
+        cd ../job_render
+        echo "{\"artifacts\": {\"bootimg\": \"${{ steps.process_urls.outputs.bootimg_url }}\", \"machine\": \"${{ env.MACHINE }}\"}}" > data/metadata.json
+
+    - name: Upload metadata.json to S3
+      uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
+      with:
+        local_file: ../job_render/data/metadata.json
+        s3_bucket: qli-stg-video-gh-artifacts
+        mode: single-upload
+
+    - name: Create cloudData.json (boot.img only)
+      shell: bash
+      run: |
+        cd ../job_render
+        metadata_url="${{ steps.upload_metadata.outputs.presigned_url }}"
+        echo "{\"artifacts\": {\"metadata\": \"${metadata_url}\", \"bootimg\": \"${{ steps.process_urls.outputs.bootimg_url }}\"}}" > data/cloudData.json
+
+    - name: Generate LAVA job definition (boot.img only)
+      shell: bash
+      run: |
+        cd ../job_render
+        mkdir -p renders
+        docker run -i --rm \
+          --user "$(id -u):$(id -g)" \
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e TARGET="${{ env.LAVA_NAME }}" \
+          -e TARGET_DTB="${{ env.MACHINE }}" \
+          ${{ inputs.docker_image }} \
+          python3 lava_Job_definition_generator.py --localjson ./data/cloudData.json --video-driver

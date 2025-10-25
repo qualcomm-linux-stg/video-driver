@@ -1,0 +1,102 @@
+name: LAVA Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker_image:
+        description: Docker image to use for LAVA job rendering
+        required: true
+        default: kmake-video-image:ver.1.0
+
+jobs:
+  test:
+    runs-on:
+      group: GHA-video-Stg-SelfHosted-RG
+      labels: [ self-hosted, video-stg-u2204-x64-large-od-ephem ]
+    strategy:
+      fail-fast: false
+      matrix:
+        machine: [qcs9100-ride-sx, qcs8300-ride-sx, qcs6490-rb3gen2]
+    env:
+      MACHINE: ${{ matrix.machine }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download presigned_urls for ${{ matrix.machine }}
+        uses: actions/download-artifact@v4
+        with:
+          name: presigned_urls_${{ matrix.machine }}.json
+          path: ${{ github.workspace }}
+
+      - name: Clone lava job render scripts
+        run: git clone https://github.com/qualcomm-linux/job_render ../job_render
+
+      - name: Set LAVA_NAME for ${{ matrix.machine }}
+        id: set_lava_name
+        run: |
+          case "${{ matrix.machine }}" in
+            qcs9100-ride-sx) echo "LAVA_NAME=qcs9100-ride-lava" >> $GITHUB_OUTPUT ;;
+            qcs8300-ride-sx) echo "LAVA_NAME=qcs8300-ride-lava" >> $GITHUB_OUTPUT ;;
+            qcs6490-rb3gen2) echo "LAVA_NAME=qcs6490-rb3gen2-lava" >> $GITHUB_OUTPUT ;;
+            *) echo "Unknown machine"; exit 1 ;;
+          esac
+
+      - name: Render LAVA job definition (boot.img only)
+        uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@workflow_2
+        with:
+          docker_image: ${{ github.event.inputs.docker_image }}
+        env:
+          MACHINE: ${{ matrix.machine }}
+          LAVA_NAME: ${{ steps.set_lava_name.outputs.LAVA_NAME }}
+
+      - name: Submit LAVA job
+        id: submit_job
+        run: |
+          cd ../job_render
+          job_id=$(docker run -i --rm --workdir="$PWD" -v "$(dirname $PWD)":"$(dirname $PWD)" ${{ github.event.inputs.docker_image }} sh -c "lavacli identities add --token ${{ secrets.LAVA_OSS_TOKEN }} --uri https://lava-oss.qualcomm.com/RPC2 --username ${{ secrets.LAVA_OSS_USER }} production && lavacli -i production jobs submit ./renders/lava_job_definition.yaml")
+          job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
+          echo "job_id=$job_id" >> $GITHUB_OUTPUT
+          echo "job_url=$job_url" >> $GITHUB_OUTPUT
+          echo "Lava Job: $job_url"
+          echo "JOB_ID=$job_id" >> $GITHUB_ENV
+
+      - name: Check LAVA job results
+        id: check_job
+        run: |
+          STATE=""
+          while [ "$STATE" != "Finished" ]; do
+            state=$(docker run -i --rm --workdir="$PWD" -v "$(dirname $PWD)":"$(dirname $PWD)" ${{ github.event.inputs.docker_image }} sh -c "lavacli identities add --token ${{ secrets.LAVA_OSS_TOKEN }} --uri https://lava-oss.qualcomm.com/RPC2 --username ${{ secrets.LAVA_OSS_USER }} production && lavacli -i production jobs show $JOB_ID" | grep state)
+            STATE=$(echo "$state" | cut -d':' -f2 | sed 's/^ *//;s/ *$//')
+            echo "Current status: $STATE"
+            sleep 30
+          done
+          health=$(docker run -i --rm --workdir="$PWD" -v "$(dirname $PWD)":"$(dirname $PWD)" ${{ github.event.inputs.docker_image }} sh -c "lavacli identities add --token ${{ secrets.LAVA_OSS_TOKEN }} --uri https://lava-oss.qualcomm.com/RPC2 --username ${{ secrets.LAVA_OSS_USER }} production && lavacli -i production jobs show $JOB_ID" | grep Health)
+          HEALTH=$(echo "$health" | cut -d':' -f2 | sed 's/^ *//;s/ *$//')
+          if [[ "$HEALTH" == "Complete" ]]; then
+            echo "Lava job passed."
+            summary=":heavy_check_mark: Lava job passed."
+            echo "summary=$summary" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "Lava job failed."
+            summary=":x: Lava job failed."
+            echo "summary=$summary" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Update summary
+        if: always()
+        shell: bash
+        run: |
+          status="${{ steps.check_job.outputs.summary }}"
+          job_url="${{ steps.submit_job.outputs.job_url }}"
+          job_id="${{ steps.submit_job.outputs.job_id }}"
+          SUMMARY="
+          <details><summary><i>${status}</i></summary>
+          <br>
+          JOB ID: <a href=\"${job_url}\">${job_id}</a>
+          </details>
+          "
+          echo -e "$SUMMARY" >> $GITHUB_STEP_SUMMARY
