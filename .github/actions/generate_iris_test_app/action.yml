@@ -5,6 +5,9 @@ inputs:
   docker_image:
     description: Docker image name
     required: true
+  workspace_path:
+    description: Path to workspace
+    required: true
 
 runs:
   using: "composite"
@@ -17,8 +20,8 @@ runs:
         GROUP_ID=$(id -g)
         docker run \
           --rm \
-          -v "$PWD:/workspace" \
-          -w /workspace \
+          -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
+          -w "${{ inputs.workspace_path }}" \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c '

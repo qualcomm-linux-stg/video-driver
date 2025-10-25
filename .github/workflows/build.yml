@@ -60,6 +60,7 @@ jobs:
         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@format
         with:
           docker_image: ${{ inputs.docker_image }}
+          workspace_path: ${{ github.workspace }}
 
       # 6. Print workspace contents
       - name: Print full workspace contents
