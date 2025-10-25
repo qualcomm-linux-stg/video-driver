@@ -63,7 +63,7 @@ jobs:
           mkdir -p ${{ github.workspace }}/downloads
           echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
           aws s3 sync s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/ ${{ github.workspace }}/downloads
-          echo "✅ Download complete."
+          echo "✅ Download complete"
 
       - name: Copy driver and test app to target directories and list contents
         run: |
