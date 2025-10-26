@@ -13,6 +13,7 @@ on:
         required: true
       LAVA_OSS_TOKEN:
         required: true
+
 permissions:
   contents: read
   packages: read
@@ -28,10 +29,21 @@ jobs:
         machine: [qcs9100-ride-sx, qcs8300-ride-sx, qcs6490-rb3gen2]
     env:
       MACHINE: ${{ matrix.machine }}
+      DOCKER_IMAGE: ${{ inputs.docker_image }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Debug docker image
+        run: echo "docker_image='${{ inputs.docker_image }}'"
 
       - name: Download presigned_urls.json (single file)
         uses: actions/download-artifact@v4
@@ -76,7 +88,7 @@ jobs:
           LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
         run: |
           cd ../job_render
-          job_id=$(docker run -i --rm --workdir="$PWD" -v "$(dirname "$PWD")":"$(dirname "$PWD")" ${{ inputs.docker_image }} sh -c "lavacli identities add --token ${LAVA_OSS_TOKEN} --uri https://lava-oss.qualcomm.com/RPC2 --username ${LAVA_OSS_USER} production && lavacli -i production jobs submit ./renders/lava_job_definition.yaml")
+          job_id=$(docker run -i --rm --workdir="$PWD" -v "$(dirname "$PWD")":"$(dirname "$PWD")" "$DOCKER_IMAGE" sh -c "lavacli identities add --token ${LAVA_OSS_TOKEN} --uri https://lava-oss.qualcomm.com/RPC2 --username ${LAVA_OSS_USER} production && lavacli -i production jobs submit ./renders/lava_job_definition.yaml")
           job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
           echo "job_id=$job_id" >> $GITHUB_OUTPUT
           echo "job_url=$job_url" >> $GITHUB_OUTPUT
@@ -91,12 +103,12 @@ jobs:
         run: |
           STATE=""
           while [ "$STATE" != "Finished" ]; do
-            state=$(docker run -i --rm --workdir="$PWD" -v "$(dirname "$PWD")":"$(dirname "$PWD")" ${{ inputs.docker_image }} sh -c "lavacli identities add --token ${LAVA_OSS_TOKEN} --uri https://lava-oss.qualcomm.com/RPC2 --username ${LAVA_OSS_USER} production && lavacli -i production jobs show $JOB_ID" | grep state)
+            state=$(docker run -i --rm --workdir="$PWD" -v "$(dirname "$PWD")":"$(dirname "$PWD")" "$DOCKER_IMAGE" sh -c "lavacli identities add --token ${LAVA_OSS_TOKEN} --uri https://lava-oss.qualcomm.com/RPC2 --username ${LAVA_OSS_USER} production && lavacli -i production jobs show $JOB_ID" | grep state)
             STATE=$(echo "$state" | cut -d':' -f2 | sed 's/^ *//;s/ *$//')
             echo "Current status: $STATE"
             sleep 30
           done
-          health=$(docker run -i --rm --workdir="$PWD" -v "$(dirname "$PWD")":"$(dirname "$PWD")" ${{ inputs.docker_image }} sh -c "lavacli identities add --token ${LAVA_OSS_TOKEN} --uri https://lava-oss.qualcomm.com/RPC2 --username ${LAVA_OSS_USER} production && lavacli -i production jobs show $JOB_ID" | grep Health)
+          health=$(docker run -i --rm --workdir="$PWD" -v "$(dirname "$PWD")":"$(dirname "$PWD")" "$DOCKER_IMAGE" sh -c "lavacli identities add --token ${LAVA_OSS_TOKEN} --uri https://lava-oss.qualcomm.com/RPC2 --username ${LAVA_OSS_USER} production && lavacli -i production jobs show $JOB_ID" | grep Health)
           HEALTH=$(echo "$health" | cut -d':' -f2 | sed 's/^ *//;s/ *$//')
           if [[ "$HEALTH" == "Complete" ]]; then
             echo "Lava job passed."
