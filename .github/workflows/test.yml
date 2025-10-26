@@ -7,12 +7,15 @@ on:
         description: Docker image
         type: string
         required: false
-        default: kmake-video-image:ver.1.0
+        default: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
     secrets:
       LAVA_OSS_USER:
         required: true
       LAVA_OSS_TOKEN:
         required: true
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   test:
