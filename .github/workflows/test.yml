@@ -42,9 +42,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Debug docker image
-        run: echo "docker_image='${{ inputs.docker_image }}'"
-
       - name: Download presigned_urls.json (single file)
         uses: actions/download-artifact@v4
         with:
