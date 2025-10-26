@@ -59,7 +59,7 @@ jobs:
       - name: Download presigned_urls.json artifact
         uses: actions/download-artifact@v4
         with:
-          name: presigned_urls
+          name: presigned_urls.json
           path: presigned_urls
 
       - name: Normalize manifest path
@@ -68,7 +68,7 @@ jobs:
           set -euo pipefail
           src="$(ls -1 presigned_urls/* 2>/dev/null | head -n1 || true)"
           if [[ -z "$src" ]]; then
-            echo "No files under presigned_urls/" >&2
+            echo "No files under presigned_urls/ — are Sync and Build and LAVA Test in the same workflow run?" >&2
             exit 1
           fi
           cp "$src" "$GITHUB_WORKSPACE/presigned_urls.json"
@@ -140,7 +140,7 @@ jobs:
                 --out job_status.json
             status="$(jq -r '.status' job_status.json)"
             echo "Attempt $i: $status"
-            if [[ "$status" == "PASS" || "$status" == "FAIL" || "$status" == "Complete" ]]; then
+            if [[ "$status" == "PASS" || "$status == "FAIL" || "$status" == "Complete" ]]; then
               break
             fi
             sleep 30
