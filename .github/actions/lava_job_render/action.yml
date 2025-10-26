@@ -1,80 +1,103 @@
 name: Lava Job Render (Boot.img Only)
-description: |
-  Prepares LAVA job definition using only the boot.img artifact URL for each machine.
+description: Prepare LAVA job definition using the boot.img URL for the selected MACHINE.
 
 inputs:
   docker_image:
-    description: Docker image
+    description: Docker image to use for rendering/submission tooling
     required: true
     default: kmake-video-image:ver.1.0
+  s3_bucket:
+    description: S3 bucket for metadata upload
+    required: false
+    default: qli-stg-video-gh-artifacts
 
 runs:
   using: "composite"
   steps:
-    - name: Extract boot.img URL from presigned_urls.json
+    - name: Locate presigned_urls.json
+      id: locate_manifest
+      shell: bash
+      run: |
+        set -euo pipefail
+        ws="${GITHUB_WORKSPACE}"
+        candidates=(
+          "$ws/presigned_urls.json"
+          "$ws/presigned_urls.json/presigned_urls.json"
+          "$ws/-presigned_urls.json"
+          "$ws/-presigned_urls.json/presigned_urls.json"
+          "$ws/-presigned_urls.json/-presigned_urls.json"
+        )
+        manifest=""
+        for c in "${candidates[@]}"; do
+          if [ -f "$c" ]; then manifest="$c"; break; fi
+        done
+        if [ -z "$manifest" ]; then
+          echo "presigned_urls.json not found. Checked:"
+          printf ' - %s\n' "${candidates[@]}"
+          exit 1
+        fi
+        echo "MANIFEST_PATH=$manifest" >> "$GITHUB_ENV"
+        echo "Manifest: $manifest"
+
+    - name: Extract boot.img URL from manifest
       id: process_urls
       uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
-          const p = require('path');
-          const core = require('@actions/core');
-
-          const candidates = [
-            p.join(process.env.GITHUB_WORKSPACE, 'presigned_urls.json'),
-            p.join(process.env.GITHUB_WORKSPACE, 'presigned_urls.json', 'presigned_urls.json'),
-          ];
-
-          let filePath = null;
-          for (const c of candidates) {
-            if (fs.existsSync(c)) { filePath = c; break; }
-          }
-          if (!filePath) {
-            core.setFailed(`presigned_urls.json not found in: ${candidates.join(', ')}`);
+          const manifest = process.env.MANIFEST_PATH;
+          if (!manifest || !fs.existsSync(manifest)) {
+            core.setFailed(`Manifest not found at ${manifest || '(unset)'}`);
             return;
           }
-
-          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          const data = JSON.parse(fs.readFileSync(manifest, 'utf-8'));
           const machine = process.env.MACHINE;
           const tarballName = `${machine}_boot_payload.tar.gz`;
 
-          let bootimg_url = null;
-          for (const [path, url] of Object.entries(data)) {
-            if (path.endsWith(tarballName)) {
-              bootimg_url = url;
-              break;
+          // Prefer exact key, fallback to suffix match
+          let bootimg_url = data[tarballName] ?? null;
+          if (!bootimg_url) {
+            for (const [k, v] of Object.entries(data)) {
+              if (k.endsWith(tarballName)) { bootimg_url = v; break; }
             }
           }
           if (!bootimg_url) {
-            core.setFailed(`boot.img tarball URL not found for ${machine} (looking for suffix: ${tarballName})`);
+            core.setFailed(`boot.img tarball URL not found for ${machine} (expected key or suffix: ${tarballName})`);
             return;
           }
-          core.setOutput('bootimg_url', bootimg_url);
+          core.setOutput('bootimg_url', bootimg_url)
 
     - name: Create metadata.json (boot.img only)
       shell: bash
       run: |
+        set -euo pipefail
         mkdir -p ../job_render/data
         echo "{\"artifacts\": {\"bootimg\": \"${{ steps.process_urls.outputs.bootimg_url }}\", \"machine\": \"${MACHINE}\"}}" > ../job_render/data/metadata.json
+        echo "Wrote ../job_render/data/metadata.json"
 
     - name: Upload metadata.json to S3
       id: upload_metadata
       uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
       with:
+        s3_bucket: ${{ inputs.s3_bucket }}
         local_file: ../job_render/data/metadata.json
-        s3_bucket: qli-stg-video-gh-artifacts
         mode: single-upload
+        # Required by your helper; keeps the same convention as your build step
+        upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
 
     - name: Create cloudData.json (boot.img only)
       shell: bash
       run: |
+        set -euo pipefail
         mkdir -p ../job_render/data
         metadata_url="${{ steps.upload_metadata.outputs.presigned_url }}"
         echo "{\"artifacts\": {\"metadata\": \"${metadata_url}\", \"bootimg\": \"${{ steps.process_urls.outputs.bootimg_url }}\"}}" > ../job_render/data/cloudData.json
+        echo "Wrote ../job_render/data/cloudData.json"
 
-    - name: Generate LAVA job definition (boot.img only)
+    - name: Generate LAVA job definition
       shell: bash
       run: |
+        set -euo pipefail
         cd ../job_render
         mkdir -p renders
         docker run -i --rm \
@@ -85,3 +108,4 @@ runs:
           -e TARGET_DTB="${MACHINE}" \
           ${{ inputs.docker_image }} \
           python3 lava_Job_definition_generator.py --localjson ./data/cloudData.json --video-driver
+        echo "Rendered: ./renders/lava_job_definition.yaml"
