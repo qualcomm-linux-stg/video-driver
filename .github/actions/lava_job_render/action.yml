@@ -5,7 +5,7 @@ inputs:
   docker_image:
     description: Docker image to use for rendering/submission tooling
     required: true
-    default: kmake-video-image:ver.1.0
+    default: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
   s3_bucket:
     description: S3 bucket for metadata upload
     required: false
