@@ -29,8 +29,14 @@ jobs:
       MACHINE: ${{ matrix.machine }}
 
     steps:
-      - name: Checkout
+      - name: Checkout current repo
         uses: actions/checkout@v4
+
+      - name: Checkout job_render (public)
+        uses: actions/checkout@v4
+        with:
+          repository: qualcomm-linux/job_render
+          path: job_render
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -62,24 +68,17 @@ jobs:
           name: presigned_urls.json
           path: presigned_urls
 
-      - name: Normalize manifest path
+      - name: Stage manifest
         shell: bash
         run: |
           set -euo pipefail
           src="$(ls -1 presigned_urls/* 2>/dev/null | head -n1 || true)"
           if [[ -z "$src" ]]; then
-            echo "No files under presigned_urls/ — are Sync and Build and LAVA Test in the same workflow run?" >&2
+            echo "No files under presigned_urls/ — ensure this workflow runs in the same run as the build." >&2
             exit 1
           fi
           cp "$src" "$GITHUB_WORKSPACE/presigned_urls.json"
           echo "Manifest at $GITHUB_WORKSPACE/presigned_urls.json"
-
-      - name: Clone job_render repository
-        uses: actions/checkout@v4
-        with:
-          repository: qualcomm-linux-stg/job_render
-          path: job_render
-          ref: workflow_2
 
       - name: Set LAVA_NAME
         shell: bash
@@ -95,6 +94,7 @@ jobs:
           echo "Set LAVA_NAME=$lava"
 
       - name: Render job using composite
+        id: render
         uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@workflow_2
         with:
           docker_image: ${{ inputs.docker_image }}
@@ -103,7 +103,29 @@ jobs:
           MACHINE: ${{ env.MACHINE }}
           LAVA_NAME: ${{ env.LAVA_NAME }}
 
-      - name: Submit LAVA job
+      - name: Locate rendered job definition (YAML or JSON)
+        id: locate_def
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$GITHUB_WORKSPACE/job_render"
+          yaml="$work/renders/lava_job_definition.yaml"
+          json="$work/renders/${MACHINE}.json"
+          if [[ -s "$yaml" ]]; then
+            echo "path=$yaml" >> "$GITHUB_OUTPUT"
+            echo "fmt=YAML" >> "$GITHUB_OUTPUT"
+            echo "Using YAML: $yaml"
+          elif [[ -s "$json" ]]; then
+            echo "path=$json" >> "$GITHUB_OUTPUT"
+            echo "fmt=JSON" >> "$GITHUB_OUTPUT"
+            echo "Using JSON: $json"
+          else
+            echo "No job definition found. Contents of $work/renders:" >&2
+            ls -l "$work/renders" || true
+            exit 1
+          fi
+
+      - name: Submit LAVA job via lavacli
         id: submit
         env:
           LAVA_USER: ${{ secrets.LAVA_OSS_USER }}
@@ -111,41 +133,77 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd job_render
-          def="renders/${MACHINE}.json"
-          test -f "$def"
-          echo "Submitting job $def"
-          docker run --rm -i "$DOCKER_IMAGE" \
-            python3 lava_Job_submitter.py \
-              --definition "$def" \
-              --out job_submission.json
-          job_id="$(jq -r '.job_id' job_submission.json)"
-          job_url="$(jq -r '.job_url' job_submission.json)"
+          work="$GITHUB_WORKSPACE/job_render"
+          def="${{ steps.locate_def.outputs.path }}"
+          echo "Submitting: $def"
+          job_id=$(docker run -i --rm \
+            -e LAVA_USER -e LAVA_TOKEN \
+            -v "$work":"$work" -w "$work" \
+            "$DOCKER_IMAGE" sh -c '\
+              set -e; \
+              lavacli identities add --token "$LAVA_TOKEN" --uri https://lava-oss.qualcomm.com/RPC2 --username "$LAVA_USER" production >/dev/null 2>&1 || true; \
+              lavacli -i production jobs submit "$def" \
+            ')
+          job_id="$(echo -n "$job_id" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if [[ -z "$job_id" ]]; then
+            echo "lavacli did not return a job id"
+            exit 1
+          fi
+          job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
           echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
           echo "job_url=$job_url" >> "$GITHUB_OUTPUT"
           echo "Submitted: $job_url"
 
-      - name: Poll LAVA job status
+      - name: Poll LAVA job status (lavacli)
         id: poll
         shell: bash
+        continue-on-error: true
         run: |
           set -euo pipefail
-          cd job_render
           job_id="${{ steps.submit.outputs.job_id }}"
+          if [[ -z "$job_id" || "$job_id" == "null" ]]; then
+            echo "No job_id from submit step."
+            echo "status=UNKNOWN" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "Polling job $job_id"
+          STATE=""
           for i in {1..60}; do
-            docker run --rm -i "$DOCKER_IMAGE" \
-              python3 lava_Job_status.py \
-                --job "$job_id" \
-                --out job_status.json
-            status="$(jq -r '.status' job_status.json)"
-            echo "Attempt $i: $status"
-            if [[ "$status" == "PASS" || "$status == "FAIL" || "$status" == "Complete" ]]; then
+            out=$(docker run -i --rm \
+              -e LAVA_USER="${{ secrets.LAVA_OSS_USER }}" \
+              -e LAVA_TOKEN="${{ secrets.LAVA_OSS_TOKEN }}" \
+              "$DOCKER_IMAGE" sh -c '\
+                lavacli identities add --token "$LAVA_TOKEN" --uri https://lava-oss.qualcomm.com/RPC2 --username "$LAVA_USER" production >/dev/null 2>&1 || true; \
+                lavacli -i production jobs show '"$job_id"' \
+              ')
+            state_line=$(echo "$out" | grep -i '^state' || true)
+            STATE=$(echo "$state_line" | cut -d':' -f2- | sed 's/^ *//;s/ *$//')
+            echo "Attempt $i: state=$STATE"
+            if [[ "$STATE" == "Finished" ]]; then
               break
             fi
             sleep 30
           done
-          echo "status=$status" >> "$GITHUB_OUTPUT"
+          HEALTH="UNKNOWN"
+          if [[ "$STATE" == "Finished" ]]; then
+            health_line=$(docker run -i --rm \
+              -e LAVA_USER="${{ secrets.LAVA_OSS_USER }}" \
+              -e LAVA_TOKEN="${{ secrets.LAVA_OSS_TOKEN }}" \
+              "$DOCKER_IMAGE" sh -c '\
+                lavacli identities add --token "$LAVA_TOKEN" --uri https://lava-oss.qualcomm.com/RPC2 --username "$LAVA_USER" production >/dev/null 2>&1 || true; \
+                lavacli -i production jobs show '"$job_id"' \
+              ' | grep -i '^Health' || true)
+            HEALTH=$(echo "$health_line" | cut -d':' -f2- | sed 's/^ *//;s/ *$//')
+            echo "Final Health: $HEALTH"
+          fi
+          # Map to a single status output
+          if [[ "$HEALTH" == "Complete" ]]; then
+            echo "status=PASS" >> "$GITHUB_OUTPUT"
+          elif [[ "$STATE" != "Finished" ]]; then
+            echo "status=UNKNOWN" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=FAIL" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Update summary and result
         if: always()
@@ -155,6 +213,9 @@ jobs:
           echo "Machine: ${MACHINE}" >> "$GITHUB_STEP_SUMMARY"
           echo "Job: ${{ steps.submit.outputs.job_url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Status: ${st}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -z "$st" ]]; then
+            echo "LAVA job status unknown (empty)."; exit 1
+          fi
           if [[ "$st" != "PASS" ]]; then
             echo "LAVA job did not pass"; exit 1
           fi
