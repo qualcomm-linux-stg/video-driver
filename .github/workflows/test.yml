@@ -20,7 +20,9 @@ permissions:
 
 jobs:
   lava-test:
-    runs-on: self-hosted
+    runs-on: 
+      group: GHA-video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
     strategy:
       fail-fast: false
       matrix:
