@@ -35,7 +35,7 @@ jobs:
           pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
           base_ref: ${{ github.ref_name }}
 
-      # 2. Clone kernel and video-driver sources
+      # 2. Clone kernel sources
       - name: Clone kernel sources
         uses: actions/checkout@v5
         with:
@@ -48,7 +48,7 @@ jobs:
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
-          image: kmake-image:ver.1.0
+          image: ${{ inputs.docker_image }}
 
       # 4. Build workspace
       - name: Build workspace
@@ -232,13 +232,3 @@ jobs:
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
-
-      # 19. Upload boot payload as GitHub artifact
-      - name: Upload boot payload as GitHub artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: boot_payload_${{ matrix.machine.machine }}
-          path: |
-            ${{ github.workspace }}/${{ matrix.machine.machine }}/${{ matrix.machine.machine }}-boot.img
-            ${{ github.workspace }}/artifacts/*.tar.gz
-          retention-days: 7
