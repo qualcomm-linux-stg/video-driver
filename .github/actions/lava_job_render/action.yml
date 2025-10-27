@@ -57,24 +57,36 @@ runs:
           }
           core.setOutput('bootimg_url', bootimg_url);
 
+    - name: Set job_render path
+      shell: bash
+      run: |
+        set -euo pipefail
+        JR="$GITHUB_WORKSPACE/job_render"
+        if [[ ! -d "$JR" ]]; then
+          echo "job_render repo not found at $JR" >&2
+          exit 1
+        fi
+        echo "JR=$JR" >> "$GITHUB_ENV"
+        echo "Using job_render at: $JR"
+
     - name: Create metadata.json
       shell: bash
       run: |
         set -euo pipefail
-        mkdir -p ../job_render/data
-        cat > ../job_render/data/metadata.json << 'EOF'
+        mkdir -p "$JR/data"
+        cat > "$JR/data/metadata.json" << 'EOF'
         {
           "schema": 1
         }
         EOF
-        echo "Wrote ../job_render/data/metadata.json"
+        echo "Wrote $JR/data/metadata.json"
 
     - name: Upload metadata to S3
       id: upload_meta
       uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
       with:
         s3_bucket: ${{ inputs.s3_bucket }}
-        local_file: ../job_render/data/metadata.json
+        local_file: ${{ env.JR }}/data/metadata.json
         mode: single-upload
         upload_location: qualcomm-linux-stg/video-driver/${{ github.run_id }}-${{ github.run_attempt }}
         download_location: .
@@ -83,16 +95,16 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        mkdir -p ../job_render/data
+        mkdir -p "$JR/data"
         meta_url="${{ steps.upload_meta.outputs.presigned_url }}"
-        cat > ../job_render/data/cloudData.json << EOF
+        cat > "$JR/data/cloudData.json" << EOF
         {
           "metadata_url": "${meta_url}",
           "bootimg_url": "${{ steps.process_urls.outputs.bootimg_url }}",
           "machine": "${MACHINE}"
         }
         EOF
-        echo "Wrote ../job_render/data/cloudData.json"
+        echo "Wrote $JR/data/cloudData.json"
 
     - name: Normalize renderer image
       shell: bash
@@ -109,14 +121,25 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        cd ../job_render
-        mkdir -p renders
+        mkdir -p "$JR/renders"
         echo "Generating with image: $EFFECTIVE_IMAGE"
         docker run -i --rm \
           --user "$(id -u):$(id -g)" \
-          --workdir="$PWD" \
-          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          --workdir="$JR" \
+          -v "$JR:$JR" \
           -e TARGET="${LAVA_NAME}" \
           -e TARGET_DTB="${MACHINE}" \
           "$EFFECTIVE_IMAGE" \
-          python3 lava_Job_definition_generator.py --localjson ./data/cloudData.json --video-driver
+          sh -lc '\
+            set -e; \
+            script="lava_Job_definition_generator.py"; \
+            if [ ! -f "$script" ]; then \
+              alt="lava_job_definition_generator.py"; \
+              if [ -f "$alt" ]; then script="$alt"; else \
+                echo "Generator script not found (lava_Job_definition_generator.py or lava_job_definition_generator.py) in $(pwd)" >&2; \
+                ls -la . || true; \
+                exit 1; \
+              fi; \
+            fi; \
+            python3 "$script" --localjson ./data/cloudData.json --video-driver \
+          '

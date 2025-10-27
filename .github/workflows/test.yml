@@ -34,11 +34,35 @@ jobs:
       - name: Checkout current repo
         uses: actions/checkout@v4
 
-      - name: Checkout job_render (public)
-        uses: actions/checkout@v4
-        with:
-          repository: qualcomm-linux/job_render
-          path: job_render
+      # Clone job_render into the parent of the workspace so ../job_render exists
+      - name: Clone job_render (public) into parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/.."
+          if [[ ! -d job_render/.git ]]; then
+            git clone https://github.com/qualcomm-linux/job_render job_render
+          else
+            echo "job_render already present in parent"
+          fi
+          echo "JR_PATH=$GITHUB_WORKSPACE/../job_render" >> "$GITHUB_ENV"
+          ls -la "$GITHUB_WORKSPACE/../job_render"
+
+      # Optional: verify the generator script exists (handles naming differences)
+      - name: Verify generator script
+        shell: bash
+        run: |
+          set -euo pipefail
+          JR="$GITHUB_WORKSPACE/../job_render"
+          if [[ -f "$JR/lava_Job_definition_generator.py" ]]; then
+            echo "Found: lava_Job_definition_generator.py"
+          elif [[ -f "$JR/lava_job_definition_generator.py" ]]; then
+            echo "Found: lava_job_definition_generator.py"
+          else
+            echo "Generator script not found in $JR" >&2
+            ls -la "$JR" || true
+            exit 1
+          fi
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -110,7 +134,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          work="$GITHUB_WORKSPACE/job_render"
+          work="$GITHUB_WORKSPACE/../job_render"
           yaml="$work/renders/lava_job_definition.yaml"
           json="$work/renders/${MACHINE}.json"
           if [[ -s "$yaml" ]]; then
@@ -135,7 +159,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          work="$GITHUB_WORKSPACE/job_render"
+          work="$GITHUB_WORKSPACE/../job_render"
           def="${{ steps.locate_def.outputs.path }}"
           echo "Submitting: $def"
           job_id=$(docker run -i --rm \
@@ -198,7 +222,6 @@ jobs:
             HEALTH=$(echo "$health_line" | cut -d':' -f2- | sed 's/^ *//;s/ *$//')
             echo "Final Health: $HEALTH"
           fi
-          # Map to a single status output
           if [[ "$HEALTH" == "Complete" ]]; then
             echo "status=PASS" >> "$GITHUB_OUTPUT"
           elif [[ "$STATE" != "Finished" ]]; then
