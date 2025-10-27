@@ -105,6 +105,20 @@ jobs:
             echo "📦 Archive for $machine:"
             ls -lh "$machine/local-kernel-ramdisk.cpio.gz"
             done
+      
+      - name: Copy the common local-kernel-ramdisk to workspace
+        shell: bash
+        run: |
+          set -e
+          src="${{ github.workspace }}/qcs9100-ride-sx/local-kernel-ramdisk.cpio.gz"
+          dest="${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
+          if [ ! -f "$src" ]; then
+            echo "❌ Not found: $src"
+            exit 1
+          fi
+          cp "$src" "$dest"
+          echo "✅ Copied: $src -> $dest"
+          ls -lh "${{ github.workspace }}/"local-kernel-ramdisk.cpio.gz
 
       
       - name: Download meta-qcom stable initramfs artifacts from S3
@@ -198,7 +212,8 @@ jobs:
             gzip -9 ${machine}-merged.cpio
 
             # Cleanup
-            rm -rf temp_merge local-kernel-ramdisk.cpio kerneltest.cpio $firmware_file
+            #rm -rf temp_merge local-kernel-ramdisk.cpio kerneltest.cpio $firmware_file
+            rm -rf temp_merge kerneltest.cpio $firmware_file
             echo "✅ Final archive: ${machine}-merged.cpio.gz"
             ls -lh ${machine}-merged.cpio.gz
 
@@ -356,6 +371,63 @@ jobs:
       #     mode: multi-upload
       #     upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
 
+      - name: ➕ Append Image/Vmlinux/per-machine DTBs and common ramdisk to S3 upload list
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace=${{ github.workspace }}
+          file_list="$workspace/artifacts/file_list.txt"
+          ramdisk="$workspace/local-kernel-ramdisk.cpio.gz"
+
+          # Ensure the list exists (created by your packaging step)
+          if [ ! -f "$file_list" ]; then
+            echo "❌ Missing $file_list. Ensure the packaging step ran successfully."
+            exit 1
+          fi
+
+          # Ensure the common ramdisk exists (copied in your previous step)
+          if [ ! -f "$ramdisk" ]; then
+            echo "❌ Missing common ramdisk at: $ramdisk"
+            exit 1
+          fi
+
+          # Queue common kernel artifacts
+          IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
+          VMLINUX_PATH="$workspace/kobj/vmlinux"
+          for f in "$IMAGE_PATH" "$VMLINUX_PATH" "$ramdisk"; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Missing expected file: $f"
+              exit 1
+            fi
+            echo "$f" >> "$file_list"
+            echo "✅ Queued for upload: $f"
+          done
+
+          # Queue per-machine DTBs by pattern (adjust if your filenames differ)
+          dtb_dir="$workspace/kobj/arch/arm64/boot/dts/qcom"
+          declare -A DTB_PATTERNS=(
+            ["qcs9100-ride-sx"]="qcs9100-ride*.dtb"
+            ["qcs8300-ride-sx"]="qcs8300-ride*.dtb"
+            ["qcs6490-rb3gen2"]="qcs6490-rb3gen2*.dtb"
+          )
+
+          for machine in "${!DTB_PATTERNS[@]}"; do
+            pat="${DTB_PATTERNS[$machine]}"
+            # Pick the first matching DTB for the machine
+            dtb_path="$(ls "$dtb_dir"/$pat 2>/dev/null | head -n1 || true)"
+            if [ -z "$dtb_path" ]; then
+              echo "❌ No DTB matched pattern '$pat' in $dtb_dir for $machine"
+              echo "Available DTBs:"
+              ls -1 "$dtb_dir"/*.dtb || true
+              exit 1
+            fi
+            echo "$dtb_path" >> "$file_list"
+            echo "✅ Queued DTB for $machine: $dtb_path"
+          done
+
+          echo "----- Files queued for S3 upload -----"
+          cat "$file_list"
+    
       - name: 🚀 Upload all boot.img to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
         with:

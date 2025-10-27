@@ -141,5 +141,5 @@ runs:
                 exit 1; \
               fi; \
             fi; \
-            python3 "$script" --localjson ./data/cloudData.json --video-driver \
+            python3 "$script" --localjson ./data/cloudData.json --video-driver-premerge \
           '
