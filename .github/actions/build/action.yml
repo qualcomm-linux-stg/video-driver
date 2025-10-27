@@ -35,10 +35,10 @@ runs:
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/video-driver" \
           --user $(id -u):$(id -g) \
+          --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
-            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=aarch64-linux-gnu-gcc-13 \
+            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=aarch64-linux-gnu-gcc \
               -C ${{ inputs.workspace_path }}/kobj \
-              M=\$(pwd) VIDEO_KERNEL_ROOT=\$(pwd) modules
+              M=$(pwd) VIDEO_KERNEL_ROOT=$(pwd) modules
           "
-
