@@ -13,20 +13,20 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # - name: Build kernel
-    #   shell: bash
-    #   run: |
-    #     docker run -i --rm \
-    #       -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
-    #       -w "${{ inputs.workspace_path }}/kernel" \
-    #       --user $(id -u):$(id -g) \
-    #       --privileged \
-    #       ${{ inputs.docker_image }} \
-    #       bash -c "
-    #         make O=../kobj ARCH=arm64 defconfig
-    #         make O=../kobj -j$(nproc)
-    #         make O=../kobj -j$(nproc) dir-pkg INSTALL_MOD_STRIP=1
-    #       "
+    - name: Build kernel
+      shell: bash
+      run: |
+        docker run -i --rm \
+          -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
+          -w "${{ inputs.workspace_path }}/kernel" \
+          --user $(id -u):$(id -g) \
+          --privileged \
+          ${{ inputs.docker_image }} \
+          bash -c "
+            make O=../kobj ARCH=arm64 defconfig
+            make O=../kobj -j$(nproc)
+            make O=../kobj -j$(nproc) dir-pkg INSTALL_MOD_STRIP=1
+          "
 
     - name: Build video-driver
       shell: bash
@@ -38,6 +38,7 @@ runs:
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
-            $pwd
-            ls -la
+            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=aarch64-linux-gnu-gcc-13 \
+              -C ../kobj \
+              M=$(pwd) VIDEO_KERNEL_ROOT=$(pwd) modules
           "
