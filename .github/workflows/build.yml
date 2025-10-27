@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: qualcomm-linux/kernel
-          ref: qcom-next
+          ref: main
           path: kernel
 
       # 3. Pull Docker image
