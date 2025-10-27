@@ -20,7 +20,7 @@ runs:
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/kernel" \
           --user $(id -u):$(id -g) \
-          --privileged
+          --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
             make O=../kobj ARCH=arm64 defconfig
