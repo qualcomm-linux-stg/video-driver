@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          JR="$GITHUB_WORKSPACE/../job_render"
+          JR="$GITHUB_WORKSPACE/job_render"
           if [[ -f "$JR/lava_Job_definition_generator.py" ]]; then
             echo "Found: lava_Job_definition_generator.py"
           elif [[ -f "$JR/lava_job_definition_generator.py" ]]; then
@@ -134,7 +134,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          work="$GITHUB_WORKSPACE/../job_render"
+          work="$GITHUB_WORKSPACE/job_render"
           yaml="$work/renders/lava_job_definition.yaml"
           json="$work/renders/${MACHINE}.json"
           if [[ -s "$yaml" ]]; then
@@ -150,7 +150,6 @@ jobs:
             ls -l "$work/renders" || true
             exit 1
           fi
-
       - name: Submit LAVA job via lavacli
         id: submit
         env:
@@ -159,7 +158,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          work="$GITHUB_WORKSPACE/../job_render"
+          work="$GITHUB_WORKSPACE/job_render"
           def="${{ steps.locate_def.outputs.path }}"
           echo "Submitting: $def"
           job_id=$(docker run -i --rm \
@@ -168,7 +167,7 @@ jobs:
             "$DOCKER_IMAGE" sh -c '\
               set -e; \
               lavacli identities add --token "$LAVA_TOKEN" --uri https://lava-oss.qualcomm.com/RPC2 --username "$LAVA_USER" production >/dev/null 2>&1 || true; \
-              lavacli -i production jobs submit "$def" \
+              lavacli -i production jobs submit '"$def"' \
             ')
           job_id="$(echo -n "$job_id" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
           if [[ -z "$job_id" ]]; then
