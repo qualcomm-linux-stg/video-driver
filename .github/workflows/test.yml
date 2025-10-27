@@ -35,18 +35,18 @@ jobs:
         uses: actions/checkout@v4
 
       # Clone job_render into the parent of the workspace so ../job_render exists
-      - name: Clone job_render (public) into parent
+      - name: Clone job_render (public) into workspace
         shell: bash
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE/.."
-          if [[ ! -d job_render/.git ]]; then
-            git clone https://github.com/qualcomm-linux/job_render job_render
+          JR="$GITHUB_WORKSPACE/job_render"
+          if [[ ! -d "$JR/.git" ]]; then
+            git clone https://github.com/qualcomm-linux/job_render "$JR"
           else
-            echo "job_render already present in parent"
+            echo "job_render already present in workspace"
           fi
-          echo "JR_PATH=$GITHUB_WORKSPACE/../job_render" >> "$GITHUB_ENV"
-          ls -la "$GITHUB_WORKSPACE/../job_render"
+          echo "JR_PATH=$JR" >> "$GITHUB_ENV"
+          ls -la "$JR"
 
       # Optional: verify the generator script exists (handles naming differences)
       - name: Verify generator script
