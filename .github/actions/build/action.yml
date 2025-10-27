@@ -16,21 +16,22 @@ runs:
     - name: Build kernel
       shell: bash
       run: |
-        docker run --rm \
+        docker run -i --rm \
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/kernel" \
           --user $(id -u):$(id -g) \
+          --privileged
           ${{ inputs.docker_image }} \
           bash -c "
-            make O=../kobj ARCH=arm64 defconfig &&
-            make O=../kobj -j\$(nproc) &&
-            make O=../kobj -j\$(nproc) dir-pkg INSTALL_MOD_STRIP=1
+            make O=../kobj ARCH=arm64 defconfig
+            make O=../kobj -j$(nproc)
+            make O=../kobj -j$(nproc) dir-pkg INSTALL_MOD_STRIP=1
           "
 
     - name: Build video-driver
       shell: bash
       run: |
-        docker run --rm \
+        docker run -i --rm \
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/video-driver" \
           --user $(id -u):$(id -g) \
