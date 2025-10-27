@@ -1,12 +1,10 @@
+---
 name: Build
 description: Build the project using a Docker container
 
 inputs:
   docker_image:
     description: Docker image name
-    required: true
-  workspace_path:
-    description: Path to workspace
     required: true
 
 runs:
@@ -20,20 +18,16 @@ runs:
         GROUP_ID=$(id -g)
         docker run \
           --rm \
-          -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
-          -w "${{ inputs.workspace_path }}" \
+          --user ${USER_ID}:${GROUP_ID} \
+          -v $PWD:/workspace \
+          -w /workspace \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c '
             set -e
-            echo "🔧 Fixing APT sources for ARM64 compatibility..."
-            rm -f /etc/apt/sources.list.d/*.sources
-            sed -i "s|http://archive.ubuntu.com/ubuntu|http://ports.ubuntu.com/ubuntu-ports|g" /etc/apt/sources.list
-            awk "!seen[\$0]++" /etc/apt/sources.list > /tmp/sources.list && mv /tmp/sources.list /etc/apt/sources.list
-
             echo "🔧 Installing missing build tools..."
-            apt-get update
-            apt-get install -y --no-install-recommends \
+            sudo apt-get update
+            sudo apt-get install -y \
               cmake \
               gcc-aarch64-linux-gnu \
               g++-aarch64-linux-gnu \
@@ -46,32 +40,27 @@ runs:
               automake \
               libssl-dev \
               libcurl4-openssl-dev \
-              git || { echo "❌ apt-get install failed"; exit 1; }
-
+              git
             echo "✅ Tools installed successfully."
             echo "📦 Cloning v4l-video-test-app..."
             rm -rf v4l-video-test-app
             git clone https://github.com/quic/v4l-video-test-app.git
             cd v4l-video-test-app
-
             echo "🔧 Patching compiler paths..."
             sed -i -e "s|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|" \
-                   -e "s|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|" \
-                   CMakeLists.txt
+                    -e "s|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|" \
+                    CMakeLists.txt
             cd third-parties
             sed -i -e "s|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|" \
-                   -e "s|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|" \
-                   aarch64_toolchain.cmake
-
+                    -e "s|set(CMAKE_CXX_COMPILER .*aarch64.*g++)|set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)|" \
+                    aarch64_toolchain.cmake
             echo "📦 Preparing third-party modules..."
             chmod +x prepare_3p_module.sh
             bash -xe ./prepare_3p_module.sh
-
             cd ..
             echo "🔨 Building iris_v4l2_test..."
             chmod +x build.sh
             bash -xe ./build.sh
-
             echo "✅ Build completed."
             build_path="$(pwd)/build"
             ls -la "$build_path"

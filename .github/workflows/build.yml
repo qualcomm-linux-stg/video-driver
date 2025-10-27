@@ -12,6 +12,9 @@ on:
         type: string
         required: true
 
+env:
+  KERNEL_MODULE_PATH: kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates
+
 jobs:
   build:
     runs-on:
@@ -21,9 +24,6 @@ jobs:
       fail-fast: false
       matrix:
         machine: ${{ fromJson(inputs.build_matrix) }}
-
-    env:
-      KERNEL_MODULE_PATH: kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates
 
     steps:
       # 1. Sync repo context (PR, push, etc)
@@ -36,17 +36,18 @@ jobs:
           base_ref: ${{ github.ref_name }}
 
       # 2. Clone kernel and video-driver sources
-      - name: Clone kernel and video-driver sources
-        uses: qualcomm-linux-stg/video-driver/.github/actions/clone_sources@format
+      - name: Clone kernel sources
+        uses: actions/checkout@v5
         with:
-          workspace_path: ${{ github.workspace }}
-          kernel_branch: origin/qcom-next
+          repository: qualcomm-linux/kernel
+          ref: qcom-next
+          path: kernel
 
-      # 3. Build Docker image
-      - name: Build Docker image
-        uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@format
+      # 3. Pull Docker image
+      - name: Pull Docker image
+        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
-          image: ${{ inputs.docker_image }}
+          image: kmake-image:ver.1.0
 
       # 4. Build workspace
       - name: Build workspace
@@ -67,11 +68,6 @@ jobs:
         run: |
           echo "📂 Full workspace contents:"
           find ${{ github.workspace }} -type f -exec ls -lh {} \;
-
-      - name: Print the workspace
-        run: |
-          echo "📍 Current workspace directory:"
-          pwd
 
       # 7. Download firmware file from S3
       - name: Download firmware file from S3

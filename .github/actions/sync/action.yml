@@ -26,6 +26,7 @@ runs:
         fetch-depth: 0
         ref: ${{ inputs.pr_ref }}
         repository: ${{ inputs.pr_repo }}
+        path: ${{ github.repository }}
 
     - name: Checkout master (push)
       if: ${{ (inputs.event_name == 'push' || inputs.event_name == 'workflow_call') && inputs.base_ref != '' }}
@@ -33,6 +34,7 @@ runs:
       with:
         fetch-depth: 0
         ref: ${{ inputs.base_ref }}
+        path: ${{ github.repository }}
 
     - name: Checkout current repo and ref (Fallback)
       if: ${{ (inputs.event_name == 'push' || inputs.event_name == 'workflow_call') && (inputs.base_ref == '' || inputs.pr_repo == '') }}
@@ -40,6 +42,7 @@ runs:
       with:
         fetch-depth: 0
         ref: ${{ github.ref }}
+        path: ${{ github.repository }}
 
     - name: Checkout for workflow_dispatch
       if: ${{ inputs.event_name == 'workflow_dispatch' }}
@@ -47,3 +50,4 @@ runs:
       with:
         fetch-depth: 0
         ref: ${{ inputs.base_ref }}
+        path: ${{ github.repository }}
