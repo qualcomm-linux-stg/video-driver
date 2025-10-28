@@ -77,9 +77,10 @@ jobs:
         shell: bash 
         run: |
              mkdir -p ${{ github.workspace }}/downloads
+             mkdir -p ${{ github.workspace }}/downloads/video_clips_iris
              echo " Downloading the video-content files"
              wget https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz -O ${{ github.workspace }}/downloads/video_clips_iris.tar.gz
-             tar -xvzf ${{ github.workspace }}/downloads/video_clips_iris.tar.gz
+             tar -xvzf ${{ github.workspace }}/downloads/video_clips_iris.tar.gz -C  ${{ github.workspace }}/downloads/video_clips_iris
 
       - name: Copy driver and test app to target directories and list contents
         run: |
@@ -95,7 +96,7 @@ jobs:
 
           cp downloads/vpu20_1v.mbn kobj/tar-install/lib/modules/$firmware_version/updates/
 
-          cp downloads/video_clips_iris kobj/tar-install/lib/modules/$firmware_version/updates/
+          cp -r downloads/video_clips_iris kobj/tar-install/lib/modules/$firmware_version/updates/
 
           # Print contents of the updates directory
           echo "📂 Contents of updates directory:"
