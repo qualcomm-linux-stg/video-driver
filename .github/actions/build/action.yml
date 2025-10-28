@@ -13,6 +13,15 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: debug
+      shell: bash
+      run: |
+        set +x
+        pwd
+        ls -la
+        ls -la kernel/
+        ls -la video-driver/
+
     - name: Build kernel
       shell: bash
       run: |
@@ -28,6 +37,8 @@ runs:
             make O=../kobj -j$(nproc)
             make O=../kobj -j$(nproc) dir-pkg INSTALL_MOD_STRIP=1
           "
+        cd ${{ github.workspace }}
+        ls -la
 
     - name: Build video-driver
       shell: bash
