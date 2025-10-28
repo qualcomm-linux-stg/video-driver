@@ -114,7 +114,7 @@ jobs:
 
           cp downloads/vpu20_1v.mbn kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
 
-          cp -r downloads/video_clips_iris kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
+          cp downloads/video_clips_iris/720p_AVC.h264 kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
 
           # Print contents of the updates directory
           echo "📂 Contents of updates directory:"
