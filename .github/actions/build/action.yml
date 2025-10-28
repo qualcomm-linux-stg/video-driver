@@ -16,6 +16,7 @@ runs:
     - name: Build kernel
       shell: bash
       run: |
+        cd kernel
         docker run -i --rm \
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/kernel" \
