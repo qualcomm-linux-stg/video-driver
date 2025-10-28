@@ -31,6 +31,7 @@ runs:
     - name: Build video-driver
       shell: bash
       run: |
+        cd video-driver
         docker run -i --rm \
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/video-driver" \
