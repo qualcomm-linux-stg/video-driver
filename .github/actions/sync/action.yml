@@ -51,3 +51,11 @@ runs:
         fetch-depth: 0
         ref: ${{ inputs.base_ref }}
         path: ${{ github.event.repository.name }}
+
+    - name: Clone kernel sources
+      uses: actions/checkout@v5
+      with:
+        repository: qualcomm-linux/kernel
+        ref: qcom-next
+        path: kernel
+        fetch-depth: 0

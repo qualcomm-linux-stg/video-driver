@@ -35,15 +35,6 @@ jobs:
           pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
           base_ref: ${{ github.ref_name }}
 
-      # 2. Clone kernel sources
-      - name: Clone kernel sources
-        uses: actions/checkout@v5
-        with:
-          repository: qualcomm-linux/kernel
-          ref: qcom-next
-          path: kernel
-          fetch-depth: 0
-
       # 3. Pull Docker image
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
