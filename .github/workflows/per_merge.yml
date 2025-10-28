@@ -26,14 +26,14 @@ jobs:
     with:
       docker_image: kmake-image:ver.1.0
 
-  test:
-    needs: build
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
-    secrets: inherit
-    with:
-      docker_image: 
+  # test:
+  #   needs: build
+  #   uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
+  #   secrets: inherit
+  #   with:
+  #     docker_image: 
   lava-test:
-    needs: sync-and-build
+    needs: build
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
     with:
       docker_image: kmake-image:ver.1.0
