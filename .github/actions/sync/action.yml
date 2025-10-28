@@ -15,6 +15,10 @@ inputs:
   base_ref:
     description: Base branch ref (e.g., master)
     required: false
+  caller_workflow:
+    description: Name of the workflow calling this actions
+    required: false
+    default: None
 
 runs:
   using: 'composite'
@@ -53,6 +57,7 @@ runs:
         path: ${{ github.event.repository.name }}
 
     - name: Clone kernel sources
+      if: ${{ inputs.caller_workflow == "build" }}
       uses: actions/checkout@v5
       with:
         repository: qualcomm-linux/kernel
