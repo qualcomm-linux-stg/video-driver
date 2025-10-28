@@ -1,369 +1,164 @@
-# name: Lava Job Render (Boot.img Only)
-# description: Render LAVA job definition for boot.img-only testing
-# inputs:
-#   docker_image:
-#     description: Docker image to use for rendering and scripts
-#     default: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
-#     required: false
-#   s3_bucket:
-#     description: S3 bucket for temporary metadata upload
-#     default: qli-stg-video-gh-artifacts
-#     required: false
-
-# runs:
-#   using: "composite"
-#   steps:
-#     - name: Locate presigned_urls.json
-#       shell: bash
-#       run: |
-#         set -euo pipefail
-#         candidates=()
-#         candidates+=("$GITHUB_WORKSPACE/presigned_urls.json")
-#         candidates+=("$GITHUB_WORKSPACE/video-driver/presigned_urls.json")
-#         candidates+=("/opt/actions-runner/_work/video-driver/video-driver/presigned_urls.json")
-#         for p in "${candidates[@]}"; do
-#           if [[ -f "$p" ]]; then
-#             echo "MANIFEST_PATH=$p" >> "$GITHUB_ENV"
-#             echo "Found manifest at $p"
-#             exit 0
-#           fi
-#         done
-#         echo "presigned_urls.json not found in expected locations" >&2
-#         exit 1
-
-#     - name: Extract boot.img URL from manifest
-#       id: process_urls
-#       uses: actions/github-script@v7
-#       with:
-#         script: |
-#           const fs = require('fs');
-#           const manifest = process.env.MANIFEST_PATH;
-#           if (!manifest || !fs.existsSync(manifest)) {
-#             core.setFailed(`Manifest not found at ${manifest || '(unset)'}`);
-#             return;
-#           }
-#           const data = JSON.parse(fs.readFileSync(manifest, 'utf-8'));
-#           const machine = process.env.MACHINE || '';
-#           const tarballName = `${machine}_boot_payload.tar.gz`;
-#           let bootimg_url = data[tarballName] ?? null;
-#           if (!bootimg_url) {
-#             for (const [k, v] of Object.entries(data)) {
-#               if (k.endsWith(tarballName)) { bootimg_url = v; break; }
-#             }
-#           }
-#           if (!bootimg_url) {
-#             core.setFailed(`boot.img tarball URL not found for ${machine} (expected key or suffix: ${tarballName})`);
-#             return;
-#           }
-#           core.setOutput('bootimg_url', bootimg_url);
-
-#     - name: Set job_render path
-#       shell: bash
-#       run: |
-#         set -euo pipefail
-#         JR="$GITHUB_WORKSPACE/job_render"
-#         if [[ ! -d "$JR" ]]; then
-#           echo "job_render repo not found at $JR" >&2
-#           exit 1
-#         fi
-#         echo "JR=$JR" >> "$GITHUB_ENV"
-#         echo "Using job_render at: $JR"
-
-#     - name: Create metadata.json
-#       shell: bash
-#       run: |
-#         set -euo pipefail
-#         mkdir -p "$JR/data"
-#         cat > "$JR/data/metadata.json" << 'EOF'
-#         {
-#           "schema": 1
-#         }
-#         EOF
-#         echo "Wrote $JR/data/metadata.json"
-
-#     - name: Upload metadata to S3
-#       id: upload_meta
-#       uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
-#       with:
-#         s3_bucket: ${{ inputs.s3_bucket }}
-#         local_file: ${{ env.JR }}/data/metadata.json
-#         mode: single-upload
-#         upload_location: qualcomm-linux-stg/video-driver/${{ github.run_id }}-${{ github.run_attempt }}
-#         download_location: .
-
-#     - name: Create cloudData.json
-#       shell: bash
-#       run: |
-#         set -euo pipefail
-#         mkdir -p "$JR/data"
-#         meta_url="${{ steps.upload_meta.outputs.presigned_url }}"
-#         cat > "$JR/data/cloudData.json" << EOF
-#         {
-#           "metadata_url": "${meta_url}",
-#           "bootimg_url": "${{ steps.process_urls.outputs.bootimg_url }}",
-#           "machine": "${MACHINE}"
-#         }
-#         EOF
-#         echo "Wrote $JR/data/cloudData.json"
-
-#     - name: Normalize renderer image
-#       shell: bash
-#       run: |
-#         set -euo pipefail
-#         img="${{ inputs.docker_image }}"
-#         if [[ "$img" != */* ]]; then
-#           img="ghcr.io/qualcomm-linux-stg/$img"
-#         fi
-#         echo "EFFECTIVE_IMAGE=$img" >> "$GITHUB_ENV"
-#         echo "Renderer image: $img"
-
-#     - name: Generate LAVA job definition
-#       shell: bash
-#       run: |
-#         set -euo pipefail
-#         mkdir -p "$JR/renders"
-#         echo "Generating with image: $EFFECTIVE_IMAGE"
-#         docker run -i --rm \
-#           --user "$(id -u):$(id -g)" \
-#           --workdir="$JR" \
-#           -v "$JR:$JR" \
-#           -e TARGET="${LAVA_NAME}" \
-#           -e TARGET_DTB="${MACHINE}" \
-#           "$EFFECTIVE_IMAGE" \
-#           sh -lc '\
-#             set -e; \
-#             script="lava_Job_definition_generator.py"; \
-#             if [ ! -f "$script" ]; then \
-#               alt="lava_job_definition_generator.py"; \
-#               if [ -f "$alt" ]; then script="$alt"; else \
-#                 echo "Generator script not found (lava_Job_definition_generator.py or lava_job_definition_generator.py) in $(pwd)" >&2; \
-#                 ls -la . || true; \
-#                 exit 1; \
-#               fi; \
-#             fi; \
-#             python3 "$script" --localjson ./data/cloudData.json --video-driver-premerge \
-#           '
 name: LAVA Job Render
-description: Parse presigned_urls.json, create cloudData.json for MACHINE, and render a LAVA job definition.
-
 inputs:
   docker_image:
-    description: Docker image containing python3, jq (optional), lavacli, and job_render dependencies
+    description: Docker image
     required: true
     default: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
-  presigned_file:
-    description: Path to presigned_urls.json (absolute or relative to workspace)
-    required: false
-    default: presigned_urls.json
-  # Optional; accepted for compatibility, not used by default
-  s3_bucket:
-    description: S3 bucket (unused by default)
-    required: false
-    default: ""
-
-# Outputs from this composite action
-outputs:
-  image_url:
-    description: Selected kernel Image/Image.gz URL
-    value: ${{ steps.select.outputs.image_url }}
-  vmlinux_url:
-    description: Selected vmlinux URL (if present)
-    value: ${{ steps.select.outputs.vmlinux_url }}
-  dtb_url:
-    description: Selected DTB URL for MACHINE
-    value: ${{ steps.select.outputs.dtb_url }}
-  ramdisk_url:
-    description: Selected ramdisk URL (machine-specific merged or common)
-    value: ${{ steps.select.outputs.ramdisk_url }}
-  bootimg_url:
-    description: Selected boot payload URL (boot.img or tar.gz)
-    value: ${{ steps.select.outputs.bootimg_url }}
-  cloudData_path:
-    description: Path to generated cloudData.json
-    value: ${{ steps.render.outputs.cloudData_path }}
-  job_definition_path:
-    description: Path to rendered job definition yaml (if produced)
-    value: ${{ steps.render.outputs.job_definition_path }}
 
 runs:
   using: "composite"
   steps:
-    - name: Validate environment and inputs
+    - name: Process presigned_urls.json
+      id: process_urls
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const p = require('path');
+
+          const filePath = p.join(process.env.GITHUB_WORKSPACE, 'presigned_urls.json');
+          if (!fs.existsSync(filePath)) {
+            core.setFailed(`File not found: ${filePath}`);
+          }
+
+          // Read JSON mapping of uploaded file paths -> presigned URLs
+          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+          // Helper: exact filename match
+          function findUrlByFilename(filename) {
+            for (const [path, url] of Object.entries(data)) {
+              if (path.endsWith(filename)) return url;
+            }
+            return null;
+          }
+
+          const modulesTarUrl = findUrlByFilename('modules.tar.xz');
+          const imageUrl = findUrlByFilename('Image');
+          const vmlinuxUrl = findUrlByFilename('vmlinux');
+
+          // DTB is expected to be "<MACHINE>.dtb"
+          const dtbFilename = `${process.env.MACHINE}.dtb`;
+          const dtbUrl = findUrlByFilename(dtbFilename);
+
+          core.setOutput('modules_url', modulesTarUrl || '');
+          core.setOutput('image_url', imageUrl || '');
+          core.setOutput('vmlinux_url', vmlinuxUrl || '');
+          core.setOutput('dtb_url', dtbUrl || '');
+
+          console.log(`Modules URL: ${modulesTarUrl}`);
+          console.log(`Image URL: ${imageUrl}`);
+          console.log(`Vmlinux URL: ${vmlinuxUrl}`);
+          console.log(`Dtb URL: ${dtbUrl}`);
+
+    - name: Create metadata.json
+      id: create_metadata
       shell: bash
       run: |
-        set -euo pipefail
-        if [[ -z "${MACHINE:-}" ]]; then
-          echo "MACHINE env not set"; exit 1
-        fi
-        if [[ -z "${LAVA_NAME:-}" ]]; then
-          echo "LAVA_NAME env not set"; exit 1
-        fi
-        PRES="${{ inputs.presigned_file }}"
-        if [[ "${PRES}" != /* ]]; then
-          PRES="$GITHUB_WORKSPACE/${PRES}"
-        fi
-        if [[ ! -s "$PRES" ]]; then
-          echo "presigned_urls.json not found at: $PRES"; exit 1
-        fi
-        JR="$GITHUB_WORKSPACE/job_render"
-        if [[ ! -d "$JR" ]]; then
-          echo "job_render directory not found at $JR. Clone it in the calling workflow."; exit 1
-        fi
-        echo "PRESIGNED_PATH=$PRES" >> "$GITHUB_ENV"
-        echo "JR_PATH=$JR" >> "$GITHUB_ENV"
-
-    - name: Select artifact URLs from presigned_urls.json
-      id: select
-      shell: bash
-      run: |
-        set -euo pipefail
-        PRES="$PRESIGNED_PATH"
-
-        # Convert JSON to TSV lines: "path<TAB>url", supporting both object and array formats.
-        tsv=$(python3 - "$PRES" <<'PY'
-import json,sys
-p=sys.argv[1]
-with open(p,'r') as f:
-    d=json.load(f)
-pairs=[]
-if isinstance(d, dict):
-    for k,v in d.items():
-        pairs.append((k,v))
-elif isinstance(d, list):
-    for item in d:
-        if isinstance(item, dict) and 'path' in item and 'url' in item:
-            pairs.append((item['path'], item['url']))
-else:
-    pass
-for k,v in pairs:
-    print(f"{k}\t{v}")
-PY
-)
-        if [[ -z "$tsv" ]]; then
-          echo "Unsupported or empty presigned_urls.json structure."; exit 1
-        fi
-
-        # Helper: pick first URL whose path matches any suffix (exact equal or endswith)
-        pick_url() {
-          local suffixes=("$@")
-          while IFS=$'\t' read -r path url; do
-            for s in "${suffixes[@]}"; do
-              if [[ "$path" == "$s" || "$path" == *"$s" ]]; then
-                echo "$url"; return 0
-              fi
-            done
-          done <<< "$tsv"
-          return 1
-        }
-
-        # DTB mapping by machine
-        case "${MACHINE}" in
-          qcs9100-ride-sx) dtb_name="qcs9100-ride.dtb" ;;
-          qcs8300-ride-sx) dtb_name="qcs8300-ride.dtb" ;;
-          qcs6490-rb3gen2) dtb_name="qcs6490-rb3gen2.dtb" ;;
-          *) echo "Unknown MACHINE: ${MACHINE}"; exit 1 ;;
-        esac
-
-        # Select primary artifacts (kernel Image or Image.gz, vmlinux, dtb, ramdisk, boot payload)
-        image_url=$(pick_url "/kobj/arch/arm64/boot/Image" "/Image" "Image")
-        if [[ -z "${image_url}" ]]; then
-          image_url=$(pick_url "/kobj/arch/arm64/boot/Image.gz" "/Image.gz" "Image.gz" )
-        fi
-
-        vmlinux_url=$(pick_url "/kobj/vmlinux" "/vmlinux" "vmlinux")
-        dtb_url=$(pick_url "/dts/qcom/${dtb_name}" "${dtb_name}")
-        ramdisk_url=$(pick_url "${MACHINE}-merged.cpio.gz")
-        if [[ -z "${ramdisk_url}" ]]; then
-          # Fallback to common ramdisk
-          ramdisk_url=$(pick_url "local-kernel-ramdisk.cpio.gz")
-        fi
-        bootimg_url=$(pick_url "${MACHINE}-boot.img" "${MACHINE}_boot_payload.tar.gz")
-
-        # Basic sanity: DTB and kernel are required
-        if [[ -z "${dtb_url}" ]]; then
-          echo "Failed to select DTB URL for ${MACHINE} (${dtb_name})."; exit 1
-        fi
-        if [[ -z "${image_url}" ]]; then
-          echo "Failed to select kernel Image/Image.gz URL."; exit 1
-        fi
-
-        # Export as step outputs
-        {
-          echo "image_url=${image_url}"
-          echo "vmlinux_url=${vmlinux_url}"
-          echo "dtb_url=${dtb_url}"
-          echo "ramdisk_url=${ramdisk_url}"
-          echo "bootimg_url=${bootimg_url}"
-        } >> "$GITHUB_OUTPUT"
-
-    - name: Create cloudData.json
-      id: render
-      shell: bash
-      run: |
-        set -euo pipefail
-        JR="$JR_PATH"
-        mkdir -p "$JR/data" "$JR/renders"
-
-        cloud="$JR/data/cloudData.json"
-        echo '{}' > "$cloud"
-
-        # Inject selected artifact URLs
-        set_kv() {
-          local key="$1" val="$2"
-          [[ -z "$val" ]] && return 0
-          python3 - "$cloud" "$key" "$val" <<'PY'
-import json,sys
-p,k,v=sys.argv[1],sys.argv[2],sys.argv[3]
-with open(p,'r') as f: d=json.load(f)
-d.setdefault('artifacts',{})[k]=v
-with open(p,'w') as f: json.dump(d,f,indent=2)
-PY
-        }
-
-        set_kv "kernel"   "${{ steps.select.outputs.image_url }}"
-        set_kv "vmlinux"  "${{ steps.select.outputs.vmlinux_url }}"
-        # Provide DTB under 'dtbs/qcom/<MACHINE>.dtb' for generator or scripts that expect structured DTB path
-        set_kv "dtbs/qcom/${MACHINE}.dtb" "${{ steps.select.outputs.dtb_url }}"
-        set_kv "ramdisk"  "${{ steps.select.outputs.ramdisk_url }}"
-        set_kv "bootimg"  "${{ steps.select.outputs.bootimg_url }}"
-
-        echo "cloudData.json:"
-        cat "$cloud"
-
-        # Locate generator script (supports either naming)
-        gen="$JR/lava_Job_definition_generator.py"
-        if [[ ! -f "$gen" ]]; then
-          alt="$JR/lava_job_definition_generator.py"
-          if [[ -f "$alt" ]]; then
-            gen="$alt"
-          else
-            echo "LAVA job generator script not found in $JR"; ls -la "$JR" || true; exit 1
-          fi
-        fi
-
-        # Render job definition using dockerized python
-        docker run --rm \
+        echo "Creating metadata.json from job_render templates"
+        cd ../job_render
+        docker run -i --rm \
           --user "$(id -u):$(id -g)" \
-          --workdir "$JR" \
-          -v "$JR":"$JR" \
-          -e BOOT_METHOD=fastboot \
-          -e TARGET="${LAVA_NAME}" \
-          -e TARGET_DTB="${MACHINE}" \
-          "${{ inputs.docker_image }}" \
-          sh -c 'python3 "'"$gen"'" --localjson ./data/cloudData.json'
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e dtb_url="${{ steps.process_urls.outputs.dtb_url }}" \
+          ${{ inputs.docker_image }} \
+          jq '.artifacts["dtbs/qcom/${{ env.MACHINE }}.dtb"] = env.dtb_url' data/metadata.json > temp.json && mv temp.json data/metadata.json
 
-        # The job_render generator typically writes renders/lava_job_definition.yaml
-        out_yaml="$JR/renders/lava_job_definition.yaml"
-        if [[ -s "$out_yaml" ]]; then
-          echo "cloudData_path=$cloud" >> "$GITHUB_OUTPUT"
-          echo "job_definition_path=$out_yaml" >> "$GITHUB_OUTPUT"
-        else
-          # Fallback: some variants write JSON per-machine
-          out_json="$JR/renders/${MACHINE}.json"
-          if [[ -s "$out_json" ]]; then
-            echo "cloudData_path=$cloud" >> "$GITHUB_OUTPUT"
-            echo "job_definition_path=$out_json" >> "$GITHUB_OUTPUT"
-          else
-            echo "No rendered job definition found in $JR/renders"; ls -la "$JR/renders" || true; exit 1
-          fi
+    - name: Upload metadata.json
+      id: upload_metadata
+      uses: qualcomm-linux/kernel-config/.github/actions/aws_s3_helper@main
+      with:
+        local_file: ../job_render/data/metadata.json
+        s3_bucket: qli-prd-kernel-gh-artifacts
+        mode: single-upload
+
+    - name: Create template json (cloudData.json)
+      shell: bash
+      run: |
+        echo "Populating cloudData.json with kernel, vmlinux, modules, metadata"
+        metadata_url="${{ steps.upload_metadata.outputs.presigned_url }}"
+        vmlinux_url="${{ steps.process_urls.outputs.vmlinux_url }}"
+        image_url="${{ steps.process_urls.outputs.image_url }}"
+        modules_url="${{ steps.process_urls.outputs.modules_url }}"
+
+        cd ../job_render
+
+        # metadata
+        docker run -i --rm \
+          --user "$(id -u):$(id -g)" \
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e metadata_url="$metadata_url" \
+          ${{ inputs.docker_image }} \
+          jq '.artifacts.metadata = env.metadata_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+
+        # kernel Image
+        docker run -i --rm \
+          --user "$(id -u):$(id -g)" \
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e image_url="$image_url" \
+          ${{ inputs.docker_image }} \
+          jq '.artifacts.kernel = env.image_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+
+        # vmlinux
+        docker run -i --rm \
+          --user "$(id -u):$(id -g)" \
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e vmlinux_url="$vmlinux_url" \
+          ${{ inputs.docker_image }} \
+          jq '.artifacts.vmlinux = env.vmlinux_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+
+        # modules
+        docker run -i --rm \
+          --user "$(id -u):$(id -g)" \
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e modules_url="$modules_url" \
+          ${{ inputs.docker_image }} \
+          jq '.artifacts.modules = env.modules_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+
+    - name: Update firmware and ramdisk
+      shell: bash
+      run: |
+        cd ../job_render
+        # Use stable kerneltest ramdisk from PRD meta-qcom
+        ramdisk_url="$(aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz --expires 7600)"
+
+        docker run -i --rm \
+          --user "$(id -u):$(id -g)" \
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e ramdisk_url="$ramdisk_url" \
+          ${{ inputs.docker_image }} \
+          jq '.artifacts.ramdisk = env.ramdisk_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+
+        # Optional board-specific firmware initramfs
+        if [ -n "${{ env.FIRMWARE }}" ]; then
+          firmware_url="$(aws s3 presign s3://qli-stg-video-gh-artifacts/meta-qcom/initramfs-firmware-${{ env.FIRMWARE }}-image-qcom-armv8a.cpio.gz --expires 7600)"
+          docker run -i --rm \
+            --user "$(id -u):$(id -g)" \
+            --workdir="$PWD" \
+            -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+            -e firmware_url="$firmware_url" \
+            ${{ inputs.docker_image }} \
+            jq '.artifacts.firmware = env.firmware_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
         fi
+
+    - name: Create lava_job_definition
+      shell: bash
+      run: |
+        cd ../job_render
+        mkdir -p renders
+        docker run -i --rm \
+          --user "$(id -u):$(id -g)" \
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e TARGET="${{ env.LAVA_NAME }}" \
+          -e TARGET_DTB="${{ env.MACHINE }}" \
+          ${{ inputs.docker_image }} \
+          sh -c 'export BOOT_METHOD=fastboot && \
+            export TARGET=${TARGET} && \
+            export TARGET_DTB=${TARGET_DTB} && \
+            python3 lava_Job_definition_generator.py --localjson ./data/cloudData.json --video_pre-merge'

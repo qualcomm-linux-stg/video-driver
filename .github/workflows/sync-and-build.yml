@@ -8,7 +8,7 @@ on:
         description: Docker image to use for the build
         required: false
         type: string
-        default: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
+        default: kmake-image:ver.1.0
 
 permissions:
   packages: read
@@ -30,11 +30,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker image
-        uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@workflow_2
+      # - name: Build Docker image
+      #   uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@workflow_2
+      #   with:
+      #     image: kmake-image:ver.1.0
+      - name: Pull Docker image
+        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
-          image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
-
+          image: ${{ inputs.docker_image }}
+      
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_2
         with:
@@ -43,13 +47,13 @@ jobs:
       - name: Build workspace
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@workflow_2
         with:
-          docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
+          docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
       - name: Generate Iris test app
         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@workflow_2
         with:
-          docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
+          docker_image: kmake-image:ver.1.0
 
       - name: Print full workspace contents
         run: |
@@ -385,11 +389,21 @@ jobs:
             exit 1
           fi
 
-          # Ensure the common ramdisk exists (copied in your previous step)
+          # Ensure the common ramdisk exists
           if [ ! -f "$ramdisk" ]; then
             echo "❌ Missing common ramdisk at: $ramdisk"
             exit 1
           fi
+
+          # Package lib/modules (xz-compressed)
+          mod_root="$workspace/kobj/tar-install/lib/modules"
+          if [ ! -d "$mod_root" ]; then
+            echo "❌ Missing directory: $mod_root"
+            exit 1
+          fi
+          tar -C "$workspace/kobj/tar-install" -cJf "$workspace/modules.tar.xz" lib/modules
+          echo "$workspace/modules.tar.xz" >> "$file_list"
+          echo "✅ Queued for upload: $workspace/modules.tar.xz"
 
           # Queue common kernel artifacts
           IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
@@ -403,17 +417,15 @@ jobs:
             echo "✅ Queued for upload: $f"
           done
 
-          # Queue per-machine DTBs by pattern (adjust if your filenames differ)
+          # Queue per-machine DTBs by pattern
           dtb_dir="$workspace/kobj/arch/arm64/boot/dts/qcom"
           declare -A DTB_PATTERNS=(
-            ["qcs9100-ride-sx"]="qcs9100-ride*.dtb"
-            ["qcs8300-ride-sx"]="qcs8300-ride*.dtb"
-            ["qcs6490-rb3gen2"]="qcs6490-rb3gen2*.dtb"
+            ["qcs9100-ride-sx"]="sa8775p-ride.dtb"
+            ["qcs8300-ride-sx"]="qcs8300-ride.dtb"
+            ["qcs6490-rb3gen2"]="qcs6490-rb3gen2.dtb"
           )
-
           for machine in "${!DTB_PATTERNS[@]}"; do
             pat="${DTB_PATTERNS[$machine]}"
-            # Pick the first matching DTB for the machine
             dtb_path="$(ls "$dtb_dir"/$pat 2>/dev/null | head -n1 || true)"
             if [ -z "$dtb_path" ]; then
               echo "❌ No DTB matched pattern '$pat' in $dtb_dir for $machine"
@@ -427,7 +439,7 @@ jobs:
 
           echo "----- Files queued for S3 upload -----"
           cat "$file_list"
-    
+          
       - name: 🚀 Upload all boot.img to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
         with:

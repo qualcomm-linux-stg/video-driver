@@ -24,40 +24,28 @@ jobs:
     uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@workflow_2
     secrets: inherit
     with:
-      docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
+      docker_image: kmake-image:ver.1.0
 
   test:
     needs: build
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
     secrets: inherit
     with:
-      docker_image: kmake-video-image:ver.1.0
-  #  test-qcs9100:
-  #   needs: build
-  #   uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
-  #   secrets: inherit
-  #   with:
-  #     docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
-  #     machine: qcs9100-ride-sx
-  #     lavaname: qcs9100-ride-oss
-  #     presigned_artifact_name: presigned_urls.json
-
-  # test-qcs8300:
-  #   needs: build
-  #   uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
-  #   secrets: inherit
-  #   with:
-  #     docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
-  #     machine: qcs8300-ride-sx
-  #     lavaname: qcs8300-ride-oss
-  #     presigned_artifact_name: presigned_urls.json
-
-  # test-qcs6490:
-  #   needs: build
-  #   uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
-  #   secrets: inherit
-  #   with:
-  #     docker_image: ghcr.io/qualcomm-linux-stg/kmake-video-image:ver.1.0
-  #     machine: qcs6490-rb3gen2
-  #     lavaname: qcs6490-rb3gen2-oss
-  #     presigned_artifact_name: presigned_urls.json
+      docker_image: 
+  lava-test:
+    needs: sync-and-build
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
+    with:
+      docker_image: kmake-image:ver.1.0
+      build_matrix: >
+        [
+          { "machine": "qcs9100-ride",    "firmware": "sa8775p-ride" },
+          { "machine": "qcs8300-ride",    "firmware": "qcs8300-ride" },
+          { "machine": "qcs6490-rb3gen2", "firmware": "rb3gen2" }
+        ]
+      full_matrix: >
+        [
+          { "machine": "qcs9100-ride",    "lavaname": "qcs9100-rid" },
+          { "machine": "qcs8300-ride",    "lavaname": "qcs8300-ride" },
+          { "machine": "qcs6490-rb3gen2", "lavaname": "qcs6490-rb3gen2" }
+        ]
