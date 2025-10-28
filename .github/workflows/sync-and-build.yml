@@ -55,15 +55,15 @@ jobs:
         with:
           docker_image: kmake-image:ver.1.0
 
-      - name: Print full workspace contents
-        run: |
-          echo "📂 Full workspace contents:"
-          find ${{ github.workspace }} -type f -exec ls -lh {} \;
+      # - name: Print full workspace contents
+      #   run: |
+      #     echo "📂 Full workspace contents:"
+      #     find ${{ github.workspace }} -type f -exec ls -lh {} \;
         
-      - name: print the workspace
-        run: |
-          echo "📍 Current workspace directory:"
-          pwd
+      # - name: print the workspace
+      #   run: |
+      #     echo "📍 Current workspace directory:"
+      #     pwd
         
       - name: Download firmware file from s3
         shell: bash
@@ -291,7 +291,7 @@ jobs:
               --user "$(id -u):$(id -g)" \
               --workdir "$PWD" \
               -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
-              kmake-video-image:ver.1.0 \
+              kmake-image:ver.1.0 \
               mkbootimg \
                 --header_version 2 \
                 --ramdisk "$machine/${machine}-merged.cpio.gz" \
