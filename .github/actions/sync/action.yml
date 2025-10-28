@@ -57,7 +57,7 @@ runs:
         path: ${{ github.event.repository.name }}
 
     - name: Clone kernel sources
-      if: ${{ inputs.caller_workflow == "build" }}
+      if: ${{ inputs.caller_workflow == 'build' }}
       uses: actions/checkout@v5
       with:
         repository: qualcomm-linux/kernel
