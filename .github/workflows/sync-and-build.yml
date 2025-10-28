@@ -179,61 +179,61 @@ jobs:
 
           echo "✅ Files copied to target directories."
 
-      # - name: 🔀 Merge and repackage initramfs for each machine
-      #   shell: bash
-      #   run: |
-      #     for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-      #       echo "🔧 Processing $machine"
+      - name: 🔀 Merge and repackage initramfs for each machine
+        shell: bash
+        run: |
+          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+            echo "🔧 Processing $machine"
 
-      #       cd ${{ github.workspace }}/$machine
+            cd ${{ github.workspace }}/$machine
 
-      #       # Decompress local-kernel-ramdisk
-      #       mv local-kernel-ramdisk.cpio.gz local-kernel-ramdisk.cpio.gz.bak
-      #       gunzip -c local-kernel-ramdisk.cpio.gz.bak > local-kernel-ramdisk.cpio
+            # Decompress local-kernel-ramdisk
+            mv local-kernel-ramdisk.cpio.gz local-kernel-ramdisk.cpio.gz.bak
+            gunzip -c local-kernel-ramdisk.cpio.gz.bak > local-kernel-ramdisk.cpio
 
-      #       # Determine firmware file name
-      #       firmware_file=""
-      #       if [[ "$machine" == "qcs9100-ride-sx" ]]; then
-      #         firmware_file="firmware-qcs9100-ride-sx.cpio"
-      #       elif [[ "$machine" == "qcs8300-ride-sx" ]]; then
-      #         firmware_file="firmware-qcs8300-ride-sx.cpio"
-      #       elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
-      #         firmware_file="firmware-qcs6490-rb3gen2.cpio"
-      #       fi
+            # Determine firmware file name
+            firmware_file=""
+            if [[ "$machine" == "qcs9100-ride-sx" ]]; then
+              firmware_file="firmware-qcs9100-ride-sx.cpio"
+            elif [[ "$machine" == "qcs8300-ride-sx" ]]; then
+              firmware_file="firmware-qcs8300-ride-sx.cpio"
+            elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
+              firmware_file="firmware-qcs6490-rb3gen2.cpio"
+            fi
 
-      #       # Copy firmware and kerneltest from downloads
-      #       cp ${{ github.workspace }}/downloads/$firmware_file .
-      #       cp ${{ github.workspace }}/downloads/kerneltest.cpio .
+            # Copy firmware and kerneltest from downloads
+            cp ${{ github.workspace }}/downloads/$firmware_file .
+            cp ${{ github.workspace }}/downloads/kerneltest.cpio .
 
-      #       # Merge all components
-      #       cat kerneltest.cpio local-kernel-ramdisk.cpio $firmware_file > ${machine}-merged.cpio
-      #       gzip -9 ${machine}-merged.cpio
+            # Merge all components
+            cat kerneltest.cpio local-kernel-ramdisk.cpio $firmware_file > ${machine}-merged.cpio
+            gzip -9 ${machine}-merged.cpio
 
-      #       # Create temp workspace to clean up archive
-      #       mkdir -p temp_merge
-      #       cd temp_merge
-      #       cpio -id < ../kerneltest.cpio
-      #       cpio -id < ../local-kernel-ramdisk.cpio
-      #       cpio -id < ../$firmware_file
-      #       cd ..
+            # Create temp workspace to clean up archive
+            mkdir -p temp_merge
+            cd temp_merge
+            cpio -id < ../kerneltest.cpio
+            cpio -id < ../local-kernel-ramdisk.cpio
+            cpio -id < ../$firmware_file
+            cd ..
 
-      #       # Remove old merged archive
-      #       rm ${machine}-merged.cpio.gz
+            # Remove old merged archive
+            rm ${machine}-merged.cpio.gz
 
-      #       # Repackage clean archive
-      #       cd temp_merge
-      #       find . | cpio -o -H newc > ../${machine}-merged.cpio
-      #       cd ..
-      #       gzip -9 ${machine}-merged.cpio
+            # Repackage clean archive
+            cd temp_merge
+            find . | cpio -o -H newc > ../${machine}-merged.cpio
+            cd ..
+            gzip -9 ${machine}-merged.cpio
 
-      #       # Cleanup
-      #       #rm -rf temp_merge local-kernel-ramdisk.cpio kerneltest.cpio $firmware_file
-      #       rm -rf temp_merge kerneltest.cpio $firmware_file
-      #       echo "✅ Final archive: ${machine}-merged.cpio.gz"
-      #       ls -lh ${machine}-merged.cpio.gz
+            # Cleanup
+            #rm -rf temp_merge local-kernel-ramdisk.cpio kerneltest.cpio $firmware_file
+            rm -rf temp_merge kerneltest.cpio $firmware_file
+            echo "✅ Final archive: ${machine}-merged.cpio.gz"
+            ls -lh ${machine}-merged.cpio.gz
 
-      #       cd ${{ github.workspace }}
-      #     done
+            cd ${{ github.workspace }}
+          done
       
       - name: 📂 List files in each machine directory
         shell: bash
@@ -244,36 +244,36 @@ jobs:
             echo ""
           done
 
-      # - name: 🧱 Build boot.img for each machine using Docker
-      #   shell: bash
-      #   run: |
-      #     machines=(qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2)
-      #     for machine in "${machines[@]}"; do
-      #       echo "🚀 Building boot.img for $machine"
-      #       # Set DTB filename based on machine
-      #       case "$machine" in
-      #         qcs9100-ride-sx) dtb="qcs9100-ride.dtb" ;;
-      #         qcs8300-ride-sx) dtb="qcs8300-ride.dtb" ;;
-      #         qcs6490-rb3gen2) dtb="qcs6490-rb3gen2.dtb" ;;
-      #         *) echo "❌ Unknown machine: $machine"; exit 1 ;;
-      #       esac
-      #       # Run mkbootimg inside Docker container directly
-      #       docker run --rm \
-      #         --user "$(id -u):$(id -g)" \
-      #         --workdir "$PWD" \
-      #         -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
-      #         kmake-image:ver.1.0 \
-      #         mkbootimg \
-      #           --header_version 2 \
-      #           --ramdisk "$machine/${machine}-merged.cpio.gz" \
-      #           --kernel "kobj/arch/arm64/boot/Image" \
-      #           --dtb "kobj/arch/arm64/boot/dts/qcom/$dtb" \
-      #           --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
-      #           --base 0x80000000 \
-      #           --pagesize 2048 \
-      #           --output "$machine/${machine}-boot.img"
-      #       echo "✅ Boot image created: $machine/${machine}-boot.img"
-      #     done
+      - name: 🧱 Build boot.img for each machine using Docker
+        shell: bash
+        run: |
+          machines=(qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2)
+          for machine in "${machines[@]}"; do
+            echo "🚀 Building boot.img for $machine"
+            # Set DTB filename based on machine
+            case "$machine" in
+              qcs9100-ride-sx) dtb="qcs9100-ride.dtb" ;;
+              qcs8300-ride-sx) dtb="qcs8300-ride.dtb" ;;
+              qcs6490-rb3gen2) dtb="qcs6490-rb3gen2.dtb" ;;
+              *) echo "❌ Unknown machine: $machine"; exit 1 ;;
+            esac
+            # Run mkbootimg inside Docker container directly
+            docker run --rm \
+              --user "$(id -u):$(id -g)" \
+              --workdir "$PWD" \
+              -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+              kmake-image:ver.1.0 \
+              mkbootimg \
+                --header_version 2 \
+                --ramdisk "$machine/${machine}-merged.cpio.gz" \
+                --kernel "kobj/arch/arm64/boot/Image" \
+                --dtb "kobj/arch/arm64/boot/dts/qcom/$dtb" \
+                --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
+                --base 0x80000000 \
+                --pagesize 2048 \
+                --output "$machine/${machine}-boot.img"
+            echo "✅ Boot image created: $machine/${machine}-boot.img"
+          done
             
       - name:  Final contents of each machine directory
         shell: bash
@@ -285,29 +285,29 @@ jobs:
           done
 
 
-      # - name: 📦 Package boot.img for the s3 upload
-      #   shell: bash
-      #   run: |
-      #     set -e
-      #     workspace=${{ github.workspace }}
-      #     mkdir -p "$workspace/artifacts"
-      #     touch "$workspace/artifacts/file_list.txt"
+      - name: 📦 Package boot.img for the s3 upload
+        shell: bash
+        run: |
+          set -e
+          workspace=${{ github.workspace }}
+          mkdir -p "$workspace/artifacts"
+          touch "$workspace/artifacts/file_list.txt"
 
-      #     for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-      #       echo "📦 Creating tarball for $machine"
+          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+            echo "📦 Creating tarball for $machine"
 
-      #       bootimg_path="$workspace/$machine/${machine}-boot.img"
-      #       if [ ! -f "$bootimg_path" ]; then
-      #         echo "❌ Missing boot.img for $machine"
-      #         exit 1
-      #       fi
+            bootimg_path="$workspace/$machine/${machine}-boot.img"
+            if [ ! -f "$bootimg_path" ]; then
+              echo "❌ Missing boot.img for $machine"
+              exit 1
+            fi
 
-      #       tarball="${machine}_boot_payload.tar.gz"
-      #       tar -czf "$workspace/$tarball" -C "$workspace/$machine" "${machine}-boot.img"
-      #       echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
+            tarball="${machine}_boot_payload.tar.gz"
+            tar -czf "$workspace/$tarball" -C "$workspace/$machine" "${machine}-boot.img"
+            echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
 
-      #       echo "✅ Tarball created: $tarball"
-      #     done
+            echo "✅ Tarball created: $tarball"
+          done
 
       - name: Append Image/Vmlinux/per-machine DTBs and common ramdisk to S3 upload list
         shell: bash

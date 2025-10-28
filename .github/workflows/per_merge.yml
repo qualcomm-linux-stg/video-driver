@@ -45,7 +45,7 @@ jobs:
         ]
       full_matrix: >
         [
-          { "machine": "qcs9100-ride",    "lavaname": "qcs9100-rid" },
+          { "machine": "qcs9100-ride",    "lavaname": "qcs9100-ride" },
           { "machine": "qcs8300-ride",    "lavaname": "qcs8300-ride" },
-          { "machine": "qcs6490-rb3gen2", "lavaname": "qcs6490-rb3gen2" }
+          { "machine": "qcs6490-rb3gen2", "lavaname": "qcs6490" }
         ]
