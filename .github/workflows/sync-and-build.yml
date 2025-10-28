@@ -84,7 +84,7 @@ jobs:
 
       - name: Copy driver and test app to target directories and list contents
         run: |
-           #Create the updates directory if it doesn't exist
+          # Create the updates directory if it doesn't exist
           firmware_version=$(ls kobj/tar-install/lib/modules/)
           mkdir -p "kobj/tar-install/lib/modules/$firmware_version/updates"
 
