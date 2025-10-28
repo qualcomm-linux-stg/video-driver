@@ -39,7 +39,5 @@ runs:
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
-            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=aarch64-linux-gnu-gcc-13 \
-              -C ../kobj \
-              M=$(pwd) VIDEO_KERNEL_ROOT=$(pwd) modules
+            make -C ../kobj M=$(pwd) VIDEO_KERNEL_ROOT=$(pwd) modules
           "
