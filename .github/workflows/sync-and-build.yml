@@ -191,7 +191,7 @@ jobs:
           echo "----- Files queued for S3 upload -----"
           cat "$file_list"
           
-      - name: 🚀 Upload all artifacts to S3
+      - name: Upload all artifacts to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@final-test
         with:
           s3_bucket: qli-stg-video-gh-artifacts
