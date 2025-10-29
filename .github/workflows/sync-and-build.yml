@@ -1,0 +1,242 @@
+name: Sync and Build
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      docker_image:
+        description: Docker image to use for the build
+        required: false
+        type: string
+        default: kmake-image:ver.1.0
+
+permissions:
+  packages: read
+
+jobs:
+  sync-and-build:
+    runs-on: 
+      group: GHA-video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
+
+    steps:
+      - name: Pull Docker image
+        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        with:
+          image: ${{ inputs.docker_image }}
+      
+      - name: Sync codebase
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_2
+        with:
+          event_name: ${{ github.event_name }}
+          pr_ref: ${{ github.event.pull_request.head.ref }}
+          pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
+          base_ref: ${{ github.ref_name }}
+          caller_workflow: build
+
+      - name: Build workspace
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@workflow_2
+        with:
+          docker_image: kmake-image:ver.1.0
+          workspace_path: ${{ github.workspace }}
+
+      - name: Generate Iris test app
+        uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@workflow_2
+        with:
+          docker_image: kmake-image:ver.1.0
+        
+      - name: Download firmware file from s3
+        shell: bash
+        run: |
+          mkdir -p ${{ github.workspace }}/downloads
+          echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
+          aws s3 sync s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/ ${{ github.workspace }}/downloads
+          echo "✅ Download complete"
+
+      - name : Download the video-contents for testing
+        shell: bash 
+        run: |
+             mkdir -p ${{ github.workspace }}/downloads
+             mkdir -p ${{ github.workspace }}/downloads/video_clips_iris
+             echo " Downloading the video-content files"
+             wget https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz -O ${{ github.workspace }}/downloads/video_clips_iris.tar.gz
+             tar -xvzf ${{ github.workspace }}/downloads/video_clips_iris.tar.gz -C  ${{ github.workspace }}/downloads/video_clips_iris
+
+      - name: Copy driver and test app to target directories and list contents
+        run: |
+          # Create the updates directory if it doesn't exist
+          firmware_version=$(ls kobj/tar-install/lib/modules/)
+          mkdir -p "kobj/tar-install/lib/modules/$firmware_version/updates"
+
+          # Copy iris_vpu.ko to the updates directory
+          cp video-driver/iris_vpu.ko kobj/tar-install/lib/modules/$firmware_version/updates/
+
+          # Copy iris_v4l2_test into the updates directory
+          cp v4l-video-test-app/build/iris_v4l2_test kobj/tar-install/lib/modules/$firmware_version/updates/
+
+          cp downloads/vpu20_1v.mbn kobj/tar-install/lib/modules/$firmware_version/updates/
+
+          cp -r downloads/video_clips_iris kobj/tar-install/lib/modules/$firmware_version/updates/
+
+          # Print contents of the updated directory
+          echo "📂 Contents of updates directory:"
+          ls -lh kobj/tar-install/lib/modules/$firmware_version/updates/
+      
+      - name: Create compressed kernel ramdisk archives for all machines
+        run: |
+            # Define target folders
+            for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+            echo "📁 Creating archive for $machine"
+
+            # Create the machine-specific directory
+            mkdir -p "$machine"
+
+            # Generate the compressed cpio archive
+            cd kobj/tar-install
+            find lib/modules | cpio -o -H newc -R +0:+0 | gzip -9 > "../../$machine/local-kernel-ramdisk.cpio.gz"
+            cd - > /dev/null
+
+            # Confirm the archive was created
+            echo "📦 Archive for $machine:"
+            ls -lh "$machine/local-kernel-ramdisk.cpio.gz"
+            done
+      
+      - name: Copy the common local-kernel-ramdisk to workspace
+        shell: bash
+        run: |
+          set -e
+          src="${{ github.workspace }}/qcs9100-ride-sx/local-kernel-ramdisk.cpio.gz"
+          dest="${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
+          if [ ! -f "$src" ]; then
+            echo "❌ Not found: $src"
+            exit 1
+          fi
+          cp "$src" "$dest"
+          echo "✅ Copied: $src -> $dest"
+          ls -lh "${{ github.workspace }}/"local-kernel-ramdisk.cpio.gz
+
+      
+      - name: Download meta-qcom stable initramfs artifacts from S3
+        shell: bash
+        run: |
+          mkdir -p ${{ github.workspace }}/downloads
+          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/linux-stg/video-driver/artifacts/initramfs/"
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
+          echo "✅ All initramfs files downloaded to: ${{ github.workspace }}/downloads"
+
+
+      - name: 📦 Decompress ramdisk files and rename .cpio.gz files
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/downloads
+          echo "📂 Decompressing and renaming .cpio.gz files..."
+
+          gunzip -c initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz > firmware-qcs8300-ride-sx.cpio
+          gunzip -c initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz > firmware-qcs6490-rb3gen2.cpio
+          gunzip -c initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz > firmware-qcs9100-ride-sx.cpio
+          gunzip -c initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz > kerneltest.cpio
+
+          echo "✅ Decompression complete."
+
+      - name: 🗂️ Organize decompressed files into target directories
+        shell: bash
+        run: |
+          cd ${{ github.workspace }}/downloads
+
+          mkdir -p ../qcs9100-ride-sx ../qcs8300-ride-sx ../qcs6490-rb3gen2
+
+          cp firmware-qcs9100-ride-sx.cpio ../qcs9100-ride-sx/
+          cp kerneltest.cpio ../qcs9100-ride-sx/
+
+          cp firmware-qcs8300-ride-sx.cpio ../qcs8300-ride-sx/
+          cp kerneltest.cpio ../qcs8300-ride-sx/
+
+          cp firmware-qcs6490-rb3gen2.cpio ../qcs6490-rb3gen2/
+          cp kerneltest.cpio ../qcs6490-rb3gen2/
+
+          echo "✅ Files copied to target directories."
+            
+      - name:  Final contents of each machine directory
+        shell: bash
+        run: |
+          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+           echo " 📁 Final contents of $machine:"
+           ls -lh ${{ github.workspace }}/$machine
+           echo ""
+          done
+
+      - name: Append Image/Vmlinux/per-machine DTBs and common ramdisk to S3 upload list
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace=${{ github.workspace }}
+          file_list="$workspace/artifacts/file_list.txt"
+          ramdisk="$workspace/local-kernel-ramdisk.cpio.gz"
+
+          # Ensure the list exists (created by your packaging step)
+          if [ ! -f "$file_list" ]; then
+            echo "❌ Missing $file_list. Ensure the packaging step ran successfully."
+            exit 1
+          fi
+
+          # Ensure the common ramdisk exists
+          if [ ! -f "$ramdisk" ]; then
+            echo "❌ Missing common ramdisk at: $ramdisk"
+            exit 1
+          fi
+
+          # Package lib/modules (xz-compressed)
+          mod_root="$workspace/kobj/tar-install/lib/modules"
+          if [ ! -d "$mod_root" ]; then
+            echo "❌ Missing directory: $mod_root"
+            exit 1
+          fi
+          tar -C "$workspace/kobj/tar-install" -cJf "$workspace/modules.tar.xz" lib/modules
+          echo "$workspace/modules.tar.xz" >> "$file_list"
+          echo "✅ Queued for upload: $workspace/modules.tar.xz"
+
+          # Queue common kernel artifacts
+          IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
+          VMLINUX_PATH="$workspace/kobj/vmlinux"
+          for f in "$IMAGE_PATH" "$VMLINUX_PATH" "$ramdisk"; do
+            if [ ! -f "$f" ]; then
+              echo "❌ Missing expected file: $f"
+              exit 1
+            fi
+            echo "$f" >> "$file_list"
+            echo "✅ Queued for upload: $f"
+          done
+
+          # Queue per-machine DTBs by pattern
+          dtb_dir="$workspace/kobj/arch/arm64/boot/dts/qcom"
+          declare -A DTB_PATTERNS=(
+            ["qcs9100-ride-r3"]="qcs9100-ride-r3.dtb"
+            ["qcs8300-ride"]="qcs8300-ride.dtb"
+            ["qcs6490-rb3gen2"]="qcs6490-rb3gen2.dtb"
+          )
+          for machine in "${!DTB_PATTERNS[@]}"; do
+            pat="${DTB_PATTERNS[$machine]}"
+            dtb_path="$(ls "$dtb_dir"/$pat 2>/dev/null | head -n1 || true)"
+            if [ -z "$dtb_path" ]; then
+              echo "❌ No DTB matched pattern '$pat' in $dtb_dir for $machine"
+              echo "Available DTBs:"
+              ls -1 "$dtb_dir"/*.dtb || true
+              exit 1
+            fi
+            echo "$dtb_path" >> "$file_list"
+            echo "✅ Queued DTB for $machine: $dtb_path"
+          done
+
+          echo "----- Files queued for S3 upload -----"
+          cat "$file_list"
+          
+      - name: 🚀 Upload all artifacts to S3
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
+        with:
+          s3_bucket: qli-stg-video-gh-artifacts
+          local_file: ${{ github.workspace }}/artifacts/file_list.txt
+          mode: multi-upload
+          upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}

@@ -1,0 +1,52 @@
+name: pre_merge
+description: |
+  Orchestrates pre-merge CI for the video-driver repository without a matrix
+  in the caller workflow. Builds and tests using reusable workflows.
+
+on:
+  push:
+    branches:
+      - workflow_2
+  workflow_dispatch:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches:
+      - workflow_2
+    paths-ignore:
+      - '.github/**'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@workflow_2
+    secrets: inherit
+    with:
+      docker_image: kmake-image:ver.1.0
+
+  # test:
+  #   needs: build
+  #   uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
+  #   secrets: inherit
+  #   with:
+  #     docker_image: 
+  lava-test:
+    needs: build
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
+    secrets: inherit
+    with:
+      docker_image: kmake-image:ver.1.0
+      build_matrix: >
+        [
+          { "machine": "qcs9100-ride",    "firmware": "sa8775p-ride" },
+          { "machine": "qcs8300-ride",    "firmware": "qcs8300-ride" },
+          { "machine": "qcs6490-rb3gen2", "firmware": "rb3gen2" }
+        ]
+      full_matrix: >
+        [
+          { "machine": "qcs9100-ride",    "lavaname": "qcs9100-ride" },
+          { "machine": "qcs8300-ride",    "lavaname": "qcs8300-ride" },
+          { "machine": "qcs6490-rb3gen2", "lavaname": "qcs6490" }
+        ]
