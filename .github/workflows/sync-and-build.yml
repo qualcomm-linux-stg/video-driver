@@ -9,6 +9,10 @@ on:
         required: false
         type: string
         default: kmake-image:ver.1.0
+      build_matrix:
+        description: Build matrix for multi target builds
+        type: string
+        required: true
 
 permissions:
   packages: read
@@ -168,24 +172,10 @@ jobs:
             echo "✅ Queued for upload: $f"
           done
 
-          # Queue per-machine DTBs by pattern
-          dtb_dir="$workspace/kobj/arch/arm64/boot/dts/qcom"
-          declare -A DTB_PATTERNS=(
-            ["qcs9100-ride-r3"]="qcs9100-ride-r3.dtb"
-            ["qcs8300-ride"]="qcs8300-ride.dtb"
-            ["qcs6490-rb3gen2"]="qcs6490-rb3gen2.dtb"
-          )
-          for machine in "${!DTB_PATTERNS[@]}"; do
-            pat="${DTB_PATTERNS[$machine]}"
-            dtb_path="$(ls "$dtb_dir"/$pat 2>/dev/null | head -n1 || true)"
-            if [ -z "$dtb_path" ]; then
-              echo "❌ No DTB matched pattern '$pat' in $dtb_dir for $machine"
-              echo "Available DTBs:"
-              ls -1 "$dtb_dir"/*.dtb || true
-              exit 1
-            fi
-            echo "$dtb_path" >> "$file_list"
-            echo "✅ Queued DTB for $machine: $dtb_path"
+          # Loop through all machines from the build_matrix input
+          machines='${{ inputs.build_matrix }}'
+          for machine in $(echo "$machines" | jq -r '.[].machine'); do
+            echo "$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb" >> $workspace/../artifacts/file_list.txt
           done
 
           echo "----- Files queued for S3 upload -----"

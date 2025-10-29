@@ -12,35 +12,25 @@ on:
     types: [opened, synchronize, reopened]
     branches:
       - final-test
-    paths-ignore:
-      - '.github/**'
-
-permissions:
-  contents: read
-  packages: read
 
 jobs:
+  loading:
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@final-test
+    secrets: inherit
+
   build:
+    needs: loading
     uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@final-test
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
+      build_matrix: ${{ needs.loading.outputs.build_matrix }}
 
   lava-test:
-    needs: build
+    needs: [loading, build]
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@final-test
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
-      build_matrix: >
-        [
-          { "machine": "qcs9100-ride",    "firmware": "sa8775p-ride" },
-          { "machine": "qcs8300-ride",    "firmware": "qcs8300-ride" },
-          { "machine": "qcs6490-rb3gen2", "firmware": "rb3gen2" }
-        ]
-      full_matrix: >
-        [
-          { "machine": "qcs9100-ride",    "lavaname": "qcs9100-ride" },
-          { "machine": "qcs8300-ride",    "lavaname": "qcs8300-ride" },
-          { "machine": "qcs6490-rb3gen2", "lavaname": "qcs6490" }
-        ]
+      build_matrix: ${{ needs.loading.outputs.build_matrix }}
+      full_matrix: ${{ needs.loading.outputs.full_matrix }}
