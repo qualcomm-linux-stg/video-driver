@@ -35,6 +35,7 @@ jobs:
   lava-test:
     needs: build
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
+    secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
       build_matrix: >

@@ -20,20 +20,6 @@ jobs:
       labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # - name: Build Docker images
-      #   uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@workflow_2
-      #   with:
-      #     image: kmake-image:ver.1.0
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
@@ -42,7 +28,11 @@ jobs:
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_2
         with:
-          workspace_path: ${{ github.workspace }}
+          event_name: ${{ github.event_name }}
+          pr_ref: ${{ github.event.pull_request.head.ref }}
+          pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
+          base_ref: ${{ github.ref_name }}
+          caller_workflow: build
 
       - name: Build workspace
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@workflow_2
@@ -54,16 +44,6 @@ jobs:
         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@workflow_2
         with:
           docker_image: kmake-image:ver.1.0
-
-      # - name: Print full workspace contents
-      #   run: |
-      #     echo "📂 Full workspace contents:"
-      #     find ${{ github.workspace }} -type f -exec ls -lh {} \;
-        
-      # - name: print the workspace
-      #   run: |
-      #     echo "📍 Current workspace directory:"
-      #     pwd
         
       - name: Download firmware file from s3
         shell: bash
@@ -178,102 +158,6 @@ jobs:
           cp kerneltest.cpio ../qcs6490-rb3gen2/
 
           echo "✅ Files copied to target directories."
-
-      - name: 🔀 Merge and repackage initramfs for each machine
-        shell: bash
-        run: |
-          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-            echo "🔧 Processing $machine"
-
-            cd ${{ github.workspace }}/$machine
-
-            # Decompress local-kernel-ramdisk
-            mv local-kernel-ramdisk.cpio.gz local-kernel-ramdisk.cpio.gz.bak
-            gunzip -c local-kernel-ramdisk.cpio.gz.bak > local-kernel-ramdisk.cpio
-
-            # Determine firmware file name
-            firmware_file=""
-            if [[ "$machine" == "qcs9100-ride-sx" ]]; then
-              firmware_file="firmware-qcs9100-ride-sx.cpio"
-            elif [[ "$machine" == "qcs8300-ride-sx" ]]; then
-              firmware_file="firmware-qcs8300-ride-sx.cpio"
-            elif [[ "$machine" == "qcs6490-rb3gen2" ]]; then
-              firmware_file="firmware-qcs6490-rb3gen2.cpio"
-            fi
-
-            # Copy firmware and kerneltest from downloads
-            cp ${{ github.workspace }}/downloads/$firmware_file .
-            cp ${{ github.workspace }}/downloads/kerneltest.cpio .
-
-            # Merge all components
-            cat kerneltest.cpio local-kernel-ramdisk.cpio $firmware_file > ${machine}-merged.cpio
-            gzip -9 ${machine}-merged.cpio
-
-            # Create temp workspace to clean up archive
-            mkdir -p temp_merge
-            cd temp_merge
-            cpio -id < ../kerneltest.cpio
-            cpio -id < ../local-kernel-ramdisk.cpio
-            cpio -id < ../$firmware_file
-            cd ..
-
-            # Remove old merged archive
-            rm ${machine}-merged.cpio.gz
-
-            # Repackage clean archive
-            cd temp_merge
-            find . | cpio -o -H newc > ../${machine}-merged.cpio
-            cd ..
-            gzip -9 ${machine}-merged.cpio
-
-            # Cleanup
-            #rm -rf temp_merge local-kernel-ramdisk.cpio kerneltest.cpio $firmware_file
-            rm -rf temp_merge kerneltest.cpio $firmware_file
-            echo "✅ Final archive: ${machine}-merged.cpio.gz"
-            ls -lh ${machine}-merged.cpio.gz
-
-            cd ${{ github.workspace }}
-          done
-      
-      - name: 📂 List files in each machine directory
-        shell: bash
-        run: |
-          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-            echo "📁 Contents of $machine:"
-            ls -lh ${{ github.workspace }}/$machine
-            echo ""
-          done
-
-      - name: 🧱 Build boot.img for each machine using Docker
-        shell: bash
-        run: |
-          machines=(qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2)
-          for machine in "${machines[@]}"; do
-            echo "🚀 Building boot.img for $machine"
-            # Set DTB filename based on machine
-            case "$machine" in
-              qcs9100-ride-sx) dtb="qcs9100-ride.dtb" ;;
-              qcs8300-ride-sx) dtb="qcs8300-ride.dtb" ;;
-              qcs6490-rb3gen2) dtb="qcs6490-rb3gen2.dtb" ;;
-              *) echo "❌ Unknown machine: $machine"; exit 1 ;;
-            esac
-            # Run mkbootimg inside Docker container directly
-            docker run --rm \
-              --user "$(id -u):$(id -g)" \
-              --workdir "$PWD" \
-              -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
-              kmake-image:ver.1.0 \
-              mkbootimg \
-                --header_version 2 \
-                --ramdisk "$machine/${machine}-merged.cpio.gz" \
-                --kernel "kobj/arch/arm64/boot/Image" \
-                --dtb "kobj/arch/arm64/boot/dts/qcom/$dtb" \
-                --cmdline "earlycon clk_ignore_unused pd_ignore_unused audit=0" \
-                --base 0x80000000 \
-                --pagesize 2048 \
-                --output "$machine/${machine}-boot.img"
-            echo "✅ Boot image created: $machine/${machine}-boot.img"
-          done
             
       - name:  Final contents of each machine directory
         shell: bash
@@ -282,31 +166,6 @@ jobs:
            echo " 📁 Final contents of $machine:"
            ls -lh ${{ github.workspace }}/$machine
            echo ""
-          done
-
-
-      - name: 📦 Package boot.img for the s3 upload
-        shell: bash
-        run: |
-          set -e
-          workspace=${{ github.workspace }}
-          mkdir -p "$workspace/artifacts"
-          touch "$workspace/artifacts/file_list.txt"
-
-          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-            echo "📦 Creating tarball for $machine"
-
-            bootimg_path="$workspace/$machine/${machine}-boot.img"
-            if [ ! -f "$bootimg_path" ]; then
-              echo "❌ Missing boot.img for $machine"
-              exit 1
-            fi
-
-            tarball="${machine}_boot_payload.tar.gz"
-            tar -czf "$workspace/$tarball" -C "$workspace/$machine" "${machine}-boot.img"
-            echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
-
-            echo "✅ Tarball created: $tarball"
           done
 
       - name: Append Image/Vmlinux/per-machine DTBs and common ramdisk to S3 upload list
@@ -354,8 +213,8 @@ jobs:
           # Queue per-machine DTBs by pattern
           dtb_dir="$workspace/kobj/arch/arm64/boot/dts/qcom"
           declare -A DTB_PATTERNS=(
-            ["qcs9100-ride-sx"]="sa8775p-ride.dtb"
-            ["qcs8300-ride-sx"]="qcs8300-ride.dtb"
+            ["qcs9100-ride-r3"]="qcs9100-ride-r3.dtb"
+            ["qcs8300-ride"]="qcs8300-ride.dtb"
             ["qcs6490-rb3gen2"]="qcs6490-rb3gen2.dtb"
           )
           for machine in "${!DTB_PATTERNS[@]}"; do
@@ -374,29 +233,10 @@ jobs:
           echo "----- Files queued for S3 upload -----"
           cat "$file_list"
           
-      - name: 🚀 Upload all boot.img to S3
+      - name: 🚀 Upload all artifacts to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_2
         with:
           s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
-
-          
-      - name: 📦 Upload boot payloads as GitHub artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: boot_payloads
-          path: |
-            ${{ github.workspace }}/qcs9100-ride-sx/qcs9100-ride-sx-boot.img
-            ${{ github.workspace }}/qcs8300-ride-sx/qcs8300-ride-sx-boot.img
-            ${{ github.workspace }}/qcs6490-rb3gen2/qcs6490-rb3gen2-boot.img
-            ${{ github.workspace }}/artifacts/*.tar.gz
-          retention-days: 7
-    
-
-
-
-    
-
-
