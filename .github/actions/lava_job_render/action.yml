@@ -24,7 +24,6 @@ runs:
           // Read JSON mapping of uploaded file paths -> presigned URLs
           const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
-          // Helper: exact filename match
           function findUrlByFilename(filename) {
             for (const [path, url] of Object.entries(data)) {
               if (path.endsWith(filename)) return url;
@@ -34,8 +33,7 @@ runs:
 
           const modulesTarUrl = findUrlByFilename('modules.tar.xz');
           const imageUrl = findUrlByFilename('Image');
-          const vmlinuxUrl = findUrlByFilename('vmlinux');
-          const localRamdiskUrl = findUrlByFilename('local-kernel-ramdisk.cpio.gz');
+          const mergedRamdiskUrl = findUrlByFilename('video-merged.cpio.gz');
 
           // DTB is expected to be "<MACHINE>.dtb"
           const dtbFilename = `${process.env.MACHINE}.dtb`;
@@ -43,15 +41,13 @@ runs:
 
           core.setOutput('modules_url', modulesTarUrl || '');
           core.setOutput('image_url', imageUrl || '');
-          core.setOutput('vmlinux_url', vmlinuxUrl || '');
           core.setOutput('dtb_url', dtbUrl || '');
-          core.setOutput('local_ramdisk_url', localRamdiskUrl || '');
+          core.setOutput('merged_ramdisk_url', mergedRamdiskUrl || '');
 
           console.log(`Modules URL: ${modulesTarUrl}`);
           console.log(`Image URL: ${imageUrl}`);
-          console.log(`Vmlinux URL: ${vmlinuxUrl}`);
           console.log(`Dtb URL: ${dtbUrl}`);
-          console.log(`Local Ramdisk URL: ${localRamdiskUrl}`);
+          console.log(`Merged Ramdisk URL: ${mergedRamdiskUrl}`);
 
     - name: Create metadata.json
       id: create_metadata
@@ -78,12 +74,11 @@ runs:
     - name: Create template json (cloudData.json)
       shell: bash
       run: |
-        echo "Populating cloudData.json with kernel, vmlinux, modules, metadata"
+        echo "Populating cloudData.json with kernel, modules, metadata, ramdisk"
         metadata_url="${{ steps.upload_metadata.outputs.presigned_url }}"
-        vmlinux_url="${{ steps.process_urls.outputs.vmlinux_url }}"
         image_url="${{ steps.process_urls.outputs.image_url }}"
         modules_url="${{ steps.process_urls.outputs.modules_url }}"
-        local_ramdisk_url="${{ steps.process_urls.outputs.local_ramdisk_url }}"
+        merged_ramdisk_url="${{ steps.process_urls.outputs.merged_ramdisk_url }}"
 
         cd ../job_render
 
@@ -105,15 +100,6 @@ runs:
           ${{ inputs.docker_image }} \
           jq '.artifacts.kernel = env.image_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
 
-        # vmlinux
-        docker run -i --rm \
-          --user "$(id -u):$(id -g)" \
-          --workdir="$PWD" \
-          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
-          -e vmlinux_url="$vmlinux_url" \
-          ${{ inputs.docker_image }} \
-          jq '.artifacts.vmlinux = env.vmlinux_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
-
         # modules
         docker run -i --rm \
           --user "$(id -u):$(id -g)" \
@@ -123,33 +109,33 @@ runs:
           ${{ inputs.docker_image }} \
           jq '.artifacts.modules = env.modules_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
 
-        # local ramdisk (preferred, if present)
+        # ramdisk: use merged only here (fallback added in next step if missing)
         docker run -i --rm \
           --user "$(id -u):$(id -g)" \
           --workdir="$PWD" \
           -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
-          -e local_ramdisk_url="$local_ramdisk_url" \
+          -e merged_ramdisk_url="$merged_ramdisk_url" \
           ${{ inputs.docker_image }} \
-          sh -c 'if [ -n "$local_ramdisk_url" ]; then jq ".artifacts.ramdisk = env.local_ramdisk_url" data/cloudData.json > temp.json && mv temp.json data/cloudData.json; fi'
+          sh -c 'if [ -n "$merged_ramdisk_url" ]; then jq ".artifacts.ramdisk = env.merged_ramdisk_url" data/cloudData.json > temp.json && mv temp.json data/cloudData.json; fi'
 
     - name: Update firmware and ramdisk
       shell: bash
       run: |
         cd ../job_render
-        # If local ramdisk was not found, fallback to stable kerneltest ramdisk
-        #if [ -z "${{ steps.process_urls.outputs.local_ramdisk_url }}" ]; then
-         # echo "Local ramdisk URL not found. Using stable kerneltest ramdisk fallback."
-        ramdisk_url="$(aws s3 presign s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz --expires 7600)"
-        docker run -i --rm \
-          --user "$(id -u):$(id -g)" \
-          --workdir="$PWD" \
-          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
-          -e ramdisk_url="$ramdisk_url" \
-          ${{ inputs.docker_image }} \
-          jq '.artifacts.ramdisk = env.ramdisk_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
-        #else
-          #echo "Local ramdisk URL present; already set in cloudData.json."
-        #fi
+        # Fallback to stable kerneltest ramdisk only if merged ramdisk is not available
+        if [ -z "${{ steps.process_urls.outputs.merged_ramdisk_url }}" ]; then
+          echo "Merged ramdisk not found. Using stable kerneltest ramdisk fallback."
+          ramdisk_url="$(aws s3 presign s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz --expires 7600)"
+          docker run -i --rm \
+            --user "$(id -u):$(id -g)" \
+            --workdir="$PWD" \
+            -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+            -e ramdisk_url="$ramdisk_url" \
+            ${{ inputs.docker_image }} \
+            jq '.artifacts.ramdisk = env.ramdisk_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+        else
+          echo "Ramdisk set from merged source; skipping kerneltest fallback."
+        fi
 
         # Optional board-specific firmware initramfs
         if [ -n "${{ env.FIRMWARE }}" ]; then
@@ -178,5 +164,4 @@ runs:
           sh -c 'export BOOT_METHOD=fastboot && \
             export TARGET=${TARGET} && \
             export TARGET_DTB=${TARGET_DTB} && \
-
             python3 lava_Job_definition_generator.py --localjson ./data/cloudData.json --video_pre-merge'
