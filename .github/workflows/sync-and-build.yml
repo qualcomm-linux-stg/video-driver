@@ -30,7 +30,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # - name: Build Docker image
+      # - name: Build Docker images
       #   uses: qualcomm-linux-stg/video-driver/.github/actions/build_docker_image@workflow_2
       #   with:
       #     image: kmake-image:ver.1.0
