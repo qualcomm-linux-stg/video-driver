@@ -35,6 +35,7 @@ runs:
           const modulesTarUrl = findUrlByFilename('modules.tar.xz');
           const imageUrl = findUrlByFilename('Image');
           const vmlinuxUrl = findUrlByFilename('vmlinux');
+          const localRamdiskUrl = findUrlByFilename('local-kernel-ramdisk.cpio.gz');
 
           // DTB is expected to be "<MACHINE>.dtb"
           const dtbFilename = `${process.env.MACHINE}.dtb`;
@@ -44,11 +45,13 @@ runs:
           core.setOutput('image_url', imageUrl || '');
           core.setOutput('vmlinux_url', vmlinuxUrl || '');
           core.setOutput('dtb_url', dtbUrl || '');
+          core.setOutput('local_ramdisk_url', localRamdiskUrl || '');
 
           console.log(`Modules URL: ${modulesTarUrl}`);
           console.log(`Image URL: ${imageUrl}`);
           console.log(`Vmlinux URL: ${vmlinuxUrl}`);
           console.log(`Dtb URL: ${dtbUrl}`);
+          console.log(`Local Ramdisk URL: ${localRamdiskUrl}`);
 
     - name: Create metadata.json
       id: create_metadata
@@ -80,6 +83,7 @@ runs:
         vmlinux_url="${{ steps.process_urls.outputs.vmlinux_url }}"
         image_url="${{ steps.process_urls.outputs.image_url }}"
         modules_url="${{ steps.process_urls.outputs.modules_url }}"
+        local_ramdisk_url="${{ steps.process_urls.outputs.local_ramdisk_url }}"
 
         cd ../job_render
 
@@ -119,20 +123,33 @@ runs:
           ${{ inputs.docker_image }} \
           jq '.artifacts.modules = env.modules_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
 
-    - name: Update firmware and ramdisk
-      shell: bash
-      run: |
-        cd ../job_render
-        # Use stable kerneltest ramdisk from PRD meta-qcom
-        ramdisk_url="$(aws s3 presign s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz --expires 7600)"
-
+        # local ramdisk (preferred, if present)
         docker run -i --rm \
           --user "$(id -u):$(id -g)" \
           --workdir="$PWD" \
           -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
-          -e ramdisk_url="$ramdisk_url" \
+          -e local_ramdisk_url="$local_ramdisk_url" \
           ${{ inputs.docker_image }} \
-          jq '.artifacts.ramdisk = env.ramdisk_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+          sh -c 'if [ -n "$local_ramdisk_url" ]; then jq ".artifacts.ramdisk = env.local_ramdisk_url" data/cloudData.json > temp.json && mv temp.json data/cloudData.json; fi'
+
+    - name: Update firmware and ramdisk
+      shell: bash
+      run: |
+        cd ../job_render
+        # If local ramdisk was not found, fallback to stable kerneltest ramdisk
+        if [ -z "${{ steps.process_urls.outputs.local_ramdisk_url }}" ]; then
+          echo "Local ramdisk URL not found. Using stable kerneltest ramdisk fallback."
+          ramdisk_url="$(aws s3 presign s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz --expires 7600)"
+          docker run -i --rm \
+            --user "$(id -u):$(id -g)" \
+            --workdir="$PWD" \
+            -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+            -e ramdisk_url="$ramdisk_url" \
+            ${{ inputs.docker_image }} \
+            jq '.artifacts.ramdisk = env.ramdisk_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+        else
+          echo "Local ramdisk URL present; already set in cloudData.json."
+        fi
 
         # Optional board-specific firmware initramfs
         if [ -n "${{ env.FIRMWARE }}" ]; then
