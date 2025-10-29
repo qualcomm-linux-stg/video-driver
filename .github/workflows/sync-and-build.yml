@@ -1,3 +1,192 @@
+# # name: Sync and Build
+
+# on:
+#   workflow_dispatch:
+#   workflow_call:
+#     inputs:
+#       docker_image:
+#         description: Docker image to use for the build
+#         required: false
+#         type: string
+#         default: kmake-image:ver.1.0
+#       build_matrix:
+#         description: Build matrix for multi target builds
+#         type: string
+#         required: true
+
+# permissions:
+#   packages: read
+
+# jobs:
+#   sync-and-build:
+#     runs-on: 
+#       group: GHA-video-Stg-SelfHosted-RG
+#       labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
+
+#     steps:
+#       - name: Pull Docker image
+#         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+#         with:
+#           image: ${{ inputs.docker_image }}
+      
+#       - name: Sync codebase
+#         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@final-changes
+#         with:
+#           event_name: ${{ github.event_name }}
+#           pr_ref: ${{ github.event.pull_request.head.ref }}
+#           pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
+#           base_ref: ${{ github.ref_name }}
+#           caller_workflow: build
+
+#       - name: Build workspace
+#         uses: qualcomm-linux-stg/video-driver/.github/actions/build@final-changes
+#         with:
+#           docker_image: kmake-image:ver.1.0
+#           workspace_path: ${{ github.workspace }}
+
+#       - name: Generate Iris test app
+#         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@final-changes
+#         with:
+#           docker_image: kmake-image:ver.1.0
+        
+#       - name: Download firmware file from s3
+#         shell: bash
+#         run: |
+#           mkdir -p ${{ github.workspace }}/downloads
+#           echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
+#           aws s3 sync s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/ ${{ github.workspace }}/downloads
+#           echo "✅ Download complete"
+
+#       - name: Download the video-contents for testing
+#         shell: bash 
+#         run: |
+#           mkdir -p ${{ github.workspace }}/downloads
+#           mkdir -p ${{ github.workspace }}/downloads/video_clips_iris
+#           echo "Downloading the video-content files"
+#           wget https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz -O ${{ github.workspace }}/downloads/video_clips_iris.tar.gz
+#           tar -xvzf ${{ github.workspace }}/downloads/video_clips_iris.tar.gz -C  ${{ github.workspace }}/downloads/video_clips_iris
+      
+#       - name: Prepare /data/vendor/iris_test_app and list contents
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           data_dir="${{ github.workspace }}/kobj/tar-install/data/vendor/iris_test_app"
+#           mkdir -p "$data_dir"
+
+#           # Copy test app, firmware blob, and video clips into data/vendor/iris_test_app
+#           cp v4l-video-test-app/build/iris_v4l2_test "$data_dir"/
+#           cp downloads/vpu20_1v.mbn "$data_dir"/
+#           cp downloads/video_clips_iris.tar.gz  "$data_dir"/
+
+#           echo "📂 Contents of $data_dir:"
+#           ls -lh "$data_dir"
+#           #echo "📂 Contents of $data_dir/video_clips_iris:"
+#           #ls -lh "$data_dir/video_clips_iris" || true
+      
+#       - name: Create compressed kernel ramdisk archives for all machines
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           # Define target folders
+#           for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+#             echo "📁 Creating archive for $machine"
+
+#             # Create the machine-specific directory
+#             mkdir -p "$machine"
+
+#             # Generate the compressed cpio archive from lib/modules and data
+#             cd kobj/tar-install
+#             find lib/modules data | cpio -o -H newc -R +0:+0 | gzip -9 > "../../$machine/local-kernel-ramdisk.cpio.gz"
+#             cd - > /dev/null
+
+#             # Confirm the archive was created
+#             echo "📦 Archive for $machine:"
+#             ls -lh "$machine/local-kernel-ramdisk.cpio.gz"
+#           done
+      
+#       - name: Copy the common local-kernel-ramdisk to workspace
+#         shell: bash
+#         run: |
+#           set -e
+#           src="${{ github.workspace }}/qcs9100-ride-sx/local-kernel-ramdisk.cpio.gz"
+#           dest="${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
+#           if [ ! -f "$src" ]; then
+#             echo "❌ Not found: $src"
+#             exit 1
+#           fi
+#           cp "$src" "$dest"
+#           echo "✅ Copied: $src -> $dest"
+#           ls -lh "${{ github.workspace }}/"local-kernel-ramdisk.cpio.gz
+            
+#       - name: Final contents of each machine directory
+#         shell: bash
+#         run: |
+#           for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
+#             echo "📁 Final contents of $machine:"
+#             ls -lh ${{ github.workspace }}/$machine
+#             echo ""
+#           done
+
+#       - name: Append Image/Vmlinux/per-machine DTBs and common ramdisk to S3 upload list
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+#           workspace=${{ github.workspace }}
+#           file_list="$workspace/artifacts/file_list.txt"
+#           mkdir -p "$workspace/artifacts"
+#           touch "$file_list"
+#           ramdisk="$workspace/local-kernel-ramdisk.cpio.gz"
+
+#           # Ensure the list exists (created by your packaging step)
+#           if [ ! -f "$file_list" ]; then
+#             echo "❌ Missing $file_list. Ensure the packaging step ran successfully."
+#             exit 1
+#           fi
+
+#           # Ensure the common ramdisk exists
+#           if [ ! -f "$ramdisk" ]; then
+#             echo "❌ Missing common ramdisk at: $ramdisk"
+#             exit 1
+#           fi
+
+#           # Package lib/modules (xz-compressed)
+#           mod_root="$workspace/kobj/tar-install/lib/modules"
+#           if [ ! -d "$mod_root" ]; then
+#             echo "❌ Missing directory: $mod_root"
+#             exit 1
+#           fi
+#           tar -C "$workspace/kobj/tar-install" -cJf "$workspace/modules.tar.xz" lib/modules
+#           echo "$workspace/modules.tar.xz" >> "$file_list"
+#           echo "✅ Queued for upload: $workspace/modules.tar.xz"
+
+#           # Queue common kernel artifacts
+#           IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
+#           VMLINUX_PATH="$workspace/kobj/vmlinux"
+#           for f in "$IMAGE_PATH" "$VMLINUX_PATH" "$ramdisk"; do
+#             if [ ! -f "$f" ]; then
+#               echo "❌ Missing expected file: $f"
+#               exit 1
+#             fi
+#             echo "$f" >> "$file_list"
+#             echo "✅ Queued for upload: $f"
+#           done
+
+#           # Loop through all machines from the build_matrix input
+#           machines='${{ inputs.build_matrix }}'
+#           for machine in $(echo "$machines" | jq -r '.[].machine'); do
+#             echo "$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb" >> "$file_list"
+#           done
+
+#           echo "----- Files queued for S3 upload -----"
+#           cat "$file_list"
+          
+#       - name: Upload all artifacts to S3
+#         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@final-changes
+#         with:
+#           s3_bucket: qli-stg-video-gh-artifacts
+#           local_file: ${{ github.workspace }}/artifacts/file_list.txt
+#           mode: multi-upload
+#           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
 # name: Sync and Build
 
 on:
@@ -49,23 +238,26 @@ jobs:
         with:
           docker_image: kmake-image:ver.1.0
         
-      - name: Download firmware file from s3
+      - name: Download firmware file from S3
         shell: bash
         run: |
-          mkdir -p ${{ github.workspace }}/downloads
+          set -euo pipefail
+          mkdir -p "${{ github.workspace }}/downloads"
           echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
-          aws s3 sync s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/ ${{ github.workspace }}/downloads
+          aws s3 sync "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/" "${{ github.workspace }}/downloads"
           echo "✅ Download complete"
+          [ -f "${{ github.workspace }}/downloads/vpu20_1v.mbn" ] || { echo "❌ Missing vpu20_1v.mbn"; exit 1; }
 
       - name: Download the video-contents for testing
         shell: bash 
         run: |
-          mkdir -p ${{ github.workspace }}/downloads
-          mkdir -p ${{ github.workspace }}/downloads/video_clips_iris
+          set -euo pipefail
+          mkdir -p "${{ github.workspace }}/downloads"
           echo "Downloading the video-content files"
-          wget https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz -O ${{ github.workspace }}/downloads/video_clips_iris.tar.gz
-          tar -xvzf ${{ github.workspace }}/downloads/video_clips_iris.tar.gz -C  ${{ github.workspace }}/downloads/video_clips_iris
-      
+          wget -q https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz \
+               -O "${{ github.workspace }}/downloads/video_clips_iris.tar.gz"
+          [ -f "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" ] || { echo "❌ Failed to download video_clips_iris.tar.gz"; exit 1; }
+
       - name: Prepare /data/vendor/iris_test_app and list contents
         shell: bash
         run: |
@@ -73,108 +265,114 @@ jobs:
           data_dir="${{ github.workspace }}/kobj/tar-install/data/vendor/iris_test_app"
           mkdir -p "$data_dir"
 
-          # Copy test app, firmware blob, and video clips into data/vendor/iris_test_app
-          cp v4l-video-test-app/build/iris_v4l2_test "$data_dir"/
-          cp downloads/vpu20_1v.mbn "$data_dir"/
-          cp downloads/video_clips_iris.tar.gz  "$data_dir"/
+          # Copy test app, firmware blob, and video clips tar into data/vendor/iris_test_app
+          cp "v4l-video-test-app/build/iris_v4l2_test" "$data_dir/"
+          cp "${{ github.workspace }}/downloads/vpu20_1v.mbn" "$data_dir/"
+          cp "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" "$data_dir/"
 
           echo "📂 Contents of $data_dir:"
           ls -lh "$data_dir"
-          #echo "📂 Contents of $data_dir/video_clips_iris:"
-          #ls -lh "$data_dir/video_clips_iris" || true
-      
+
       - name: Create compressed kernel ramdisk archives for all machines
         shell: bash
         run: |
           set -euo pipefail
-          # Define target folders
           for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
             echo "📁 Creating archive for $machine"
-
-            # Create the machine-specific directory
             mkdir -p "$machine"
-
-            # Generate the compressed cpio archive from lib/modules and data
-            cd kobj/tar-install
-            find lib/modules data | cpio -o -H newc -R +0:+0 | gzip -9 > "../../$machine/local-kernel-ramdisk.cpio.gz"
+            cd "${{ github.workspace }}/kobj/tar-install"
+            find lib/modules data | cpio -o -H newc -R +0:+0 | gzip -9 > "${{ github.workspace }}/$machine/local-kernel-ramdisk.cpio.gz"
             cd - > /dev/null
-
-            # Confirm the archive was created
             echo "📦 Archive for $machine:"
-            ls -lh "$machine/local-kernel-ramdisk.cpio.gz"
+            ls -lh "${{ github.workspace }}/$machine/local-kernel-ramdisk.cpio.gz"
           done
       
       - name: Copy the common local-kernel-ramdisk to workspace
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           src="${{ github.workspace }}/qcs9100-ride-sx/local-kernel-ramdisk.cpio.gz"
           dest="${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
-          if [ ! -f "$src" ]; then
-            echo "❌ Not found: $src"
-            exit 1
-          fi
+          [ -f "$src" ] || { echo "❌ Not found: $src"; exit 1; }
           cp "$src" "$dest"
           echo "✅ Copied: $src -> $dest"
-          ls -lh "${{ github.workspace }}/"local-kernel-ramdisk.cpio.gz
+          ls -lh "$dest"
             
       - name: Final contents of each machine directory
         shell: bash
         run: |
+          set -euo pipefail
           for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
             echo "📁 Final contents of $machine:"
-            ls -lh ${{ github.workspace }}/$machine
+            ls -lh "${{ github.workspace }}/$machine" || true
             echo ""
           done
+
+      - name: Validate build_matrix and jq
+        shell: bash
+        run: |
+          set -euo pipefail
+          machines_json='${{ inputs.build_matrix }}'
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "❌ jq is not installed on this runner. Please install jq."
+            exit 1
+          fi
+          echo "$machines_json" | jq -e . >/dev/null
+          [ "$(echo "$machines_json" | jq length)" -gt 0 ] || { echo "❌ build_matrix is empty"; exit 1; }
+          echo "✅ build_matrix is valid JSON"
 
       - name: Append Image/Vmlinux/per-machine DTBs and common ramdisk to S3 upload list
         shell: bash
         run: |
           set -euo pipefail
-          workspace=${{ github.workspace }}
+          workspace="${{ github.workspace }}"
           file_list="$workspace/artifacts/file_list.txt"
           mkdir -p "$workspace/artifacts"
-          touch "$file_list"
-          ramdisk="$workspace/local-kernel-ramdisk.cpio.gz"
 
-          # Ensure the list exists (created by your packaging step)
-          if [ ! -f "$file_list" ]; then
-            echo "❌ Missing $file_list. Ensure the packaging step ran successfully."
-            exit 1
-          fi
+          # Fresh file_list
+          : > "$file_list"
 
-          # Ensure the common ramdisk exists
-          if [ ! -f "$ramdisk" ]; then
-            echo "❌ Missing common ramdisk at: $ramdisk"
-            exit 1
-          fi
-
-          # Package lib/modules (xz-compressed)
+          # Package lib/modules (xz-compressed) — exclude risky symlinks
           mod_root="$workspace/kobj/tar-install/lib/modules"
-          if [ ! -d "$mod_root" ]; then
-            echo "❌ Missing directory: $mod_root"
-            exit 1
+          [ -d "$mod_root" ] || { echo "❌ Missing directory: $mod_root"; exit 1; }
+          tar -C "$workspace/kobj/tar-install" \
+              --exclude='lib/modules/*/build' \
+              --exclude='lib/modules/*/source' \
+              --numeric-owner --owner=0 --group=0 \
+              -cJf "$workspace/modules.tar.xz" lib/modules
+
+          # Safety checks on the tar
+          if tar -Jtvf "$workspace/modules.tar.xz" | grep -q ' -> '; then
+            echo "❌ Symlinks found in modules archive (should be none)"; exit 1
           fi
-          tar -C "$workspace/kobj/tar-install" -cJf "$workspace/modules.tar.xz" lib/modules
+          if tar -Jtf "$workspace/modules.tar.xz" | grep -Eq '^/|(^|/)\.\.(/|$)'; then
+            echo "❌ Unsafe paths found in modules archive"; exit 1
+          fi
+
           echo "$workspace/modules.tar.xz" >> "$file_list"
           echo "✅ Queued for upload: $workspace/modules.tar.xz"
 
-          # Queue common kernel artifacts
+          # Common kernel artifacts
           IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
           VMLINUX_PATH="$workspace/kobj/vmlinux"
-          for f in "$IMAGE_PATH" "$VMLINUX_PATH" "$ramdisk"; do
-            if [ ! -f "$f" ]; then
-              echo "❌ Missing expected file: $f"
-              exit 1
-            fi
+          RAMDISK_PATH="$workspace/local-kernel-ramdisk.cpio.gz"
+          for f in "$IMAGE_PATH" "$VMLINUX_PATH" "$RAMDISK_PATH"; do
+            [ -f "$f" ] || { echo "❌ Missing expected file: $f"; exit 1; }
             echo "$f" >> "$file_list"
             echo "✅ Queued for upload: $f"
           done
 
-          # Loop through all machines from the build_matrix input
+          # Loop through all machines from the build_matrix input and add DTBs
           machines='${{ inputs.build_matrix }}'
           for machine in $(echo "$machines" | jq -r '.[].machine'); do
-            echo "$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb" >> "$file_list"
+            dtb="$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb"
+            if [ -f "$dtb" ]; then
+              echo "$dtb" >> "$file_list"
+              echo "✅ Queued for upload: $dtb"
+            else
+              echo "❌ Missing DTB: $dtb"
+              exit 1
+            fi
           done
 
           echo "----- Files queued for S3 upload -----"
