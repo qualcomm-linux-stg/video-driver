@@ -114,50 +114,6 @@ jobs:
           cp "$src" "$dest"
           echo "✅ Copied: $src -> $dest"
           ls -lh "${{ github.workspace }}/"local-kernel-ramdisk.cpio.gz
-
-      
-      - name: Download meta-qcom stable initramfs artifacts from S3
-        shell: bash
-        run: |
-          mkdir -p ${{ github.workspace }}/downloads
-          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/linux-stg/video-driver/artifacts/initramfs/"
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz ${{ github.workspace }}/downloads/
-          echo "✅ All initramfs files downloaded to: ${{ github.workspace }}/downloads"
-
-
-      - name: 📦 Decompress ramdisk files and rename .cpio.gz files
-        shell: bash
-        run: |
-          cd ${{ github.workspace }}/downloads
-          echo "📂 Decompressing and renaming .cpio.gz files..."
-
-          gunzip -c initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz > firmware-qcs8300-ride-sx.cpio
-          gunzip -c initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz > firmware-qcs6490-rb3gen2.cpio
-          gunzip -c initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz > firmware-qcs9100-ride-sx.cpio
-          gunzip -c initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz > kerneltest.cpio
-
-          echo "✅ Decompression complete."
-
-      - name: 🗂️ Organize decompressed files into target directories
-        shell: bash
-        run: |
-          cd ${{ github.workspace }}/downloads
-
-          mkdir -p ../qcs9100-ride-sx ../qcs8300-ride-sx ../qcs6490-rb3gen2
-
-          cp firmware-qcs9100-ride-sx.cpio ../qcs9100-ride-sx/
-          cp kerneltest.cpio ../qcs9100-ride-sx/
-
-          cp firmware-qcs8300-ride-sx.cpio ../qcs8300-ride-sx/
-          cp kerneltest.cpio ../qcs8300-ride-sx/
-
-          cp firmware-qcs6490-rb3gen2.cpio ../qcs6490-rb3gen2/
-          cp kerneltest.cpio ../qcs6490-rb3gen2/
-
-          echo "✅ Files copied to target directories."
             
       - name:  Final contents of each machine directory
         shell: bash
