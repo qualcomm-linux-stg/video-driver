@@ -80,8 +80,8 @@ jobs:
 
           echo "📂 Contents of $data_dir:"
           ls -lh "$data_dir"
-          echo "📂 Contents of $data_dir/video_clips_iris:"
-          ls -lh "$data_dir/video_clips_iris" || true
+          #echo "📂 Contents of $data_dir/video_clips_iris:"
+          #ls -lh "$data_dir/video_clips_iris" || true
       
       - name: Create compressed kernel ramdisk archives for all machines
         shell: bash
