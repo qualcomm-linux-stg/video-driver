@@ -130,6 +130,8 @@ jobs:
           set -euo pipefail
           workspace=${{ github.workspace }}
           file_list="$workspace/artifacts/file_list.txt"
+          mkdir -p "$workspace/artifacts"
+          touch "$file_list"
           ramdisk="$workspace/local-kernel-ramdisk.cpio.gz"
 
           # Ensure the list exists (created by your packaging step)
