@@ -27,7 +27,6 @@ jobs:
           pr_ref: ${{ github.event.pull_request.head.ref }}
           pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
           base_ref: ${{ github.ref_name }}
-          caller_workflow: build
 
       - name: Load Parameters
         id: loading
