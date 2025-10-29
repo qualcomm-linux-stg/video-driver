@@ -98,27 +98,9 @@ jobs:
 
           cp -r downloads/video_clips_iris kobj/tar-install/lib/modules/$firmware_version/updates/
 
-          # Print contents of the updates directory
+          # Print contents of the updated directory
           echo "📂 Contents of updates directory:"
           ls -lh kobj/tar-install/lib/modules/$firmware_version/updates/
-          
-          #  Create the updates directory if it doesn't exist
-          # firmware_version=$(ls kobj/tar-install/lib/modules/)
-          # mkdir -p "kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates"
-
-          #  Copy iris_vpu.ko to the updates directory
-          # cp video-driver/iris_vpu.ko kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
-
-          #  Copy iris_v4l2_test into the updates directory
-          # cp v4l-video-test-app/build/iris_v4l2_test kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
-
-          # cp downloads/vpu20_1v.mbn kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
-
-          # cp downloads/video_clips_iris/720p_AVC.h264 kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
-
-          #  Print contents of the updates directory
-          # echo "📂 Contents of updates directory:"
-          # ls -lh kobj/tar-install/lib/modules/6.17.0-00264-g7c504609df4a/updates/
       
       - name: Create compressed kernel ramdisk archives for all machines
         run: |
