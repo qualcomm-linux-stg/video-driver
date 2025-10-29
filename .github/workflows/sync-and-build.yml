@@ -175,7 +175,7 @@ jobs:
           # Loop through all machines from the build_matrix input
           machines='${{ inputs.build_matrix }}'
           for machine in $(echo "$machines" | jq -r '.[].machine'); do
-            echo "$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb" >> $workspace/../artifacts/file_list.txt
+            echo "$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb" >> "$file_list"
           done
 
           echo "----- Files queued for S3 upload -----"
