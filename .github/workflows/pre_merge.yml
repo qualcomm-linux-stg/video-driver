@@ -6,12 +6,12 @@ description: |
 on:
   push:
     branches:
-      - workflow_2
+      - final-test
   workflow_dispatch:
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches:
-      - workflow_2
+      - final-test
     paths-ignore:
       - '.github/**'
 
@@ -21,20 +21,14 @@ permissions:
 
 jobs:
   build:
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@workflow_2
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@final-test
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
 
-  # test:
-  #   needs: build
-  #   uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
-  #   secrets: inherit
-  #   with:
-  #     docker_image: 
   lava-test:
     needs: build
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@workflow_2
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@final-test
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
