@@ -51,5 +51,5 @@ runs:
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
-            make -C ../kobj M=$(pwd) VIDEO_KERNEL_ROOT=$(pwd) modules
+            make -C ${{ inputs.workspace_path }}/kobj M=$(pwd) VIDEO_KERNEL_ROOT=$(pwd) modules
           "
