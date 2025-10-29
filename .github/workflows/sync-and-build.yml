@@ -30,7 +30,7 @@ jobs:
           image: ${{ inputs.docker_image }}
       
       - name: Sync codebase
-        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@final-test
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@final-changes
         with:
           event_name: ${{ github.event_name }}
           pr_ref: ${{ github.event.pull_request.head.ref }}
@@ -39,13 +39,13 @@ jobs:
           caller_workflow: build
 
       - name: Build workspace
-        uses: qualcomm-linux-stg/video-driver/.github/actions/build@final-test
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@final-changes
         with:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
       - name: Generate Iris test app
-        uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@final-test
+        uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@final-changes
         with:
           docker_image: kmake-image:ver.1.0
         
@@ -181,7 +181,7 @@ jobs:
           cat "$file_list"
           
       - name: Upload all artifacts to S3
-        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@final-test
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@final-changes
         with:
           s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
