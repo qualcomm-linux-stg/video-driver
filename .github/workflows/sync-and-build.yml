@@ -75,11 +75,13 @@ jobs:
           set -euo pipefail
           data_dir="${{ github.workspace }}/kobj/tar-install/data/vendor/iris_test_app"
           mkdir -p "$data_dir"
-
+          firmware_version=$(ls kobj/tar-install/lib/modules/)
+          mkdir -p "kobj/tar-install/lib/modules/$firmware_version/updates
+          cp video-driver/iris_vpu.ko kobj/tar-install/lib/modules/$firmware_version/updates/
           # Copy test app, firmware blob, and video clips tar into data/vendor/iris_test_app
           cp "v4l-video-test-app/build/iris_v4l2_test" "$data_dir/"
           cp "${{ github.workspace }}/downloads/vpu20_1v.mbn" "$data_dir/"
-          cp video-driver/iris_vpu.ko "$data_dir/"
+          #cp video-driver/iris_vpu.ko "$data_dir/"
           cp "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" "$data_dir/"
 
           echo "📂 Contents of $data_dir:"
