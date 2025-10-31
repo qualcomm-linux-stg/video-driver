@@ -21,7 +21,7 @@ jobs:
   sync-and-build:
     runs-on: 
       group: GHA-video-Stg-SelfHosted-RG
-      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
+      labels: [self-hosted, video-prd-u2204-x64-large-od-ephem]
 
     steps:
       - name: Pull Docker image
@@ -30,7 +30,7 @@ jobs:
           image: ${{ inputs.docker_image }}
       
       - name: Sync codebase
-        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@workflow_3
+        uses: qualcomm-linux/video-driver/.github/actions/sync@video.qclinux.0.0
         with:
           event_name: ${{ github.event_name }}
           pr_ref: ${{ github.event.pull_request.head.ref }}
@@ -39,13 +39,13 @@ jobs:
           caller_workflow: build
 
       - name: Build workspace
-        uses: qualcomm-linux-stg/video-driver/.github/actions/build@workflow_3
+        uses: qualcomm-linux/video-driver/.github/actions/build@video.qclinux.0.0
         with:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
       - name: Generate Iris test app
-        uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@workflow_3
+        uses: qualcomm-linux/video-driver/.github/actions/generate_iris_test_app@video.qclinux.0.0
         with:
           docker_image: kmake-image:ver.1.0
         
@@ -54,8 +54,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
-          aws s3 sync "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/" "${{ github.workspace }}/downloads"
+          echo "📥 Syncing files from S3 path: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/"
+          aws s3 sync "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/" "${{ github.workspace }}/downloads"
           echo "✅ Download complete"
           [ -f "${{ github.workspace }}/downloads/vpu20_1v.mbn" ] || { echo "❌ Missing vpu20_1v.mbn"; exit 1; }
 
@@ -117,26 +117,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/"
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
-          echo "✅ All initramfs files downloaded to: ${{ github.workspace }}/downloads"
+          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/"
+          aws s3 cp s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
+          echo " All initramfs files downloaded to: ${{ github.workspace }}/downloads"
 
-      - name: 📦 Decompress ramdisk files and rename .cpio.gz files
+      - name: Decompress ramdisk files and rename .cpio.gz files
         shell: bash
         run: |
           set -euo pipefail
           cd "${{ github.workspace }}/downloads"
-          echo "📂 Decompressing and renaming .cpio.gz files..."
-
-          gunzip -c initramfs-firmware-qcs8300-ride-image-qcom-armv8a.cpio.gz > firmware-qcs8300-ride-sx.cpio
-          gunzip -c initramfs-firmware-rb3gen2-image-qcom-armv8a.cpio.gz > firmware-qcs6490-rb3gen2.cpio
-          gunzip -c initramfs-firmware-sa8775p-ride-image-qcom-armv8a.cpio.gz > firmware-qcs9100-ride-sx.cpio
+          echo " Decompressing and renaming .cpio.gz files..."
           gunzip -c initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz > kerneltest.cpio
 
-      - name: 🔀 Merge and repackage initramfs
+      - name: Merge and repackage initramfs
         shell: bash
         run: |
           set -euo pipefail
@@ -176,7 +169,7 @@ jobs:
 
           # Cleanup
           rm -rf temp_merge kerneltest.cpio local-kernel-ramdisk.cpio
-          echo "✅ Final archive: $workspace/combineramdisk/video-merged.cpio.gz"
+          echo "Final archive: $workspace/combineramdisk/video-merged.cpio.gz"
           ls -lh "$workspace/combineramdisk/video-merged.cpio.gz"
 
       - name: Final contents of each machine directory
@@ -184,7 +177,7 @@ jobs:
         run: |
           set -euo pipefail
           for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-            echo "📁 Final contents of $machine:"
+            echo "Final contents of $machine:"
             ls -lh "${{ github.workspace }}/$machine" || true
             echo ""
           done
@@ -262,9 +255,54 @@ jobs:
           cat "$file_list"
           
       - name: Upload all artifacts to S3
-        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@workflow_3
+        uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@video.qclinux.0.0
         with:
-          s3_bucket: qli-stg-video-gh-artifacts
+          s3_bucket: qli-prd-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
+
+      
+      - name: Clean up
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          ws="${{ github.workspace }}"
+          rm -rf "$ws/artqifacts" || true
+          rm -rf "$ws/combineramdisk" || true
+          rm -rf "$ws/downloads" || true
+          rm -rf "$ws/kobj" || true
+          rm -rf "$ws/qcs9100-ride-sx" || true
+          rm -rf "$ws/qcs8300-ride-sx" || true
+          rm -rf "$ws/qcs6490-rb3gen2" || true
+          rm -f "$ws/modules.tar.xz" || true
+          rm -f "$ws/local-kernel-ramdisk.cpio.gz" || true
+          
+          
+      - name: Update summary
+        if: success() || failure()
+        shell: bash
+        run: |
+          status="${{ steps.build_workspace.outcome }}"
+          if [ "$status" = "success" ]; then
+            summary=":heavy_check_mark: Build Success"
+          else
+            summary=":x: Build Failed"
+          fi
+
+          ws="${{ github.workspace }}"
+          file_list="$ws/artifacts/file_list.txt"
+
+          {
+            echo "<details><summary><i>Build Summary</i></summary>"
+            echo "$summary"
+            if [ -f "$file_list" ]; then
+              echo ""
+              echo "Artifacts queued for upload:"
+              while IFS= read -r line; do
+                echo "- $line"
+              done < "$file_list"
+            fi
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"    
