@@ -10,13 +10,6 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Checkout
-      uses: actions/checkout@v5
-      with:
-        repository: quic/v4l-video-test-app
-        fetch-depth: 0
-        path: v4l-video-test-app
-
     - name: Install tools and build iris_v4l2_test inside Docker
       shell: bash
       run: |
@@ -25,14 +18,32 @@ runs:
         GROUP_ID=$(id -g)
         docker run \
           --rm \
-          --user ${USER_ID}:${GROUP_ID} \
           -v $PWD:/workspace \
           -w /workspace \
           --privileged \
           ${{ inputs.docker_image }} \
           bash -c '
             set -e
+            echo "🔧 Installing missing build tools..."
+            apt-get update
+            apt-get install -y \
+              cmake \
+              gcc-aarch64-linux-gnu \
+              g++-aarch64-linux-gnu \
+              libc6-dev-arm64-cross \
+              binutils-aarch64-linux-gnu \
+              make \
+              pkg-config \
+              libtool \
+              autoconf \
+              automake \
+              libssl-dev \
+              libcurl4-openssl-dev \
+              git
+            echo "✅ Tools installed successfully."
             echo "📦 Cloning v4l-video-test-app..."
+            rm -rf v4l-video-test-app
+            git clone https://github.com/quic/v4l-video-test-app.git
             cd v4l-video-test-app
             echo "🔧 Patching compiler paths..."
             sed -i -e "s|set(CMAKE_C_COMPILER .*aarch64.*gcc)|set(CMAKE_C_COMPILER /usr/bin/aarch64-linux-gnu-gcc)|" \

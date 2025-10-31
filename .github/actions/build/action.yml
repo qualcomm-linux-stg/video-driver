@@ -13,43 +13,31 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: debug
-      shell: bash
-      run: |
-        set +x
-        pwd
-        ls -la
-        ls -la kernel/
-        ls -la video-driver/
-
     - name: Build kernel
       shell: bash
       run: |
-        cd kernel
-        docker run -i --rm \
+        docker run --rm \
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/kernel" \
           --user $(id -u):$(id -g) \
-          --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
-            make O=../kobj defconfig
-            make O=../kobj -j$(nproc)
-            make O=../kobj -j$(nproc) dir-pkg INSTALL_MOD_STRIP=1
+            make O=../kobj ARCH=arm64 defconfig &&
+            make O=../kobj -j\$(nproc) &&
+            make O=../kobj -j\$(nproc) dir-pkg INSTALL_MOD_STRIP=1
           "
-        cd ${{ github.workspace }}
-        ls -la
 
     - name: Build video-driver
       shell: bash
       run: |
-        cd video-driver
-        docker run -i --rm \
+        docker run --rm \
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/video-driver" \
           --user $(id -u):$(id -g) \
-          --privileged \
           ${{ inputs.docker_image }} \
           bash -c "
-            make -C ${{ inputs.workspace_path }}/kobj M=$(pwd) VIDEO_KERNEL_ROOT=$(pwd) modules
+            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=aarch64-linux-gnu-gcc-13 \
+              -C ${{ inputs.workspace_path }}/kobj \
+              M=\$(pwd) VIDEO_KERNEL_ROOT=\$(pwd) modules
           "
+
