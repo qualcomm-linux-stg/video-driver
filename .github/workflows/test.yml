@@ -50,7 +50,7 @@ jobs:
           path: ${{ github.workspace }}
 
       - name: Clone lava job render scripts
-        run: cd .. && git clone https://github.com/qualcomm-linux-stg/job_render
+        run: cd .. && git clone https://github.com/qualcomm-linux/job_render
 
       - name: Extract the LAVA machine name
         id: get_lavaname
