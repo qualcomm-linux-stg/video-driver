@@ -1,81 +1,43 @@
-name: Build
-description: Build the project using a Docker container
+name: Build Workspace
+description: |
+  Builds kernel and video-driver using a Docker image.
 
 inputs:
   docker_image:
-    description: Docker image to use for the build job
+    description: Docker image to use
     required: true
-
-  kas_file:
-    description: KAS file to use for the build job
+  workspace_path:
+    description: Path to workspace directory
     required: true
-
-  build_command:
-    description: Command to run for the build
-    required: false
-    default: "bitbake core-image-base"
 
 runs:
   using: "composite"
   steps:
-    - name: patch and Build ${{ env.machine }}
+    - name: Build kernel
       shell: bash
       run: |
-        set -e
-
-        USER_ID=$(id -u)
-        GROUP_ID=$(id -g)
-        USER=$(whoami)
-        WORKSPACE=${{ github.workspace }}/..
-        USER_HOME="/home/$USER"
-
-        echo "::group::$(printf '__________ %-100s' 'Build Process' | tr ' ' _)"
-
-        docker run \
-          --rm \
-          --user ${USER_ID}:${GROUP_ID} \
-          -v ${WORKSPACE}:${USER_HOME}/workspace \
-          -w ${USER_HOME}/workspace \
-          --privileged \
+        docker run --rm \
+          -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
+          -w "${{ inputs.workspace_path }}/kernel" \
+          --user $(id -u):$(id -g) \
           ${{ inputs.docker_image }} \
           bash -c "
-            set -e
-            cd video-driver
-            echo '🔄 Cloning meta-qcom...'
-            rm -rf meta-qcom
-            git clone https://github.com/qualcomm-linux/meta-qcom.git
-            bash ci/patch_srcrev.sh
-            echo '🚀 Running initial BitBake build...'
-            if ! kas shell ${{ inputs.kas_file }} -c '
-              umask 022
-              ${{ inputs.build_command }}
-            '; then
-              echo '❌ Initial build failed. Checking for krb5 fetch error...'
-              ERROR_LOG=\$(find ${{ github.workspace }}/build/tmp/work -name \"log.do_fetch.*\" | grep krb5 || true)
-              if [[ -n \"\$ERROR_LOG\" ]]; then
-                echo '⚠️ krb5 fetch error detected. Injecting sources...'
-                mkdir -p build/downloads
-                if [[ -f sources/krb5-1.21.3.tar.gz && -f sources/krb5-1.21.3.tar.gz.done ]]; then
-                  cp sources/krb5-1.21.3.tar.gz build/downloads/
-                  cp sources/krb5-1.21.3.tar.gz.done build/downloads/
-                  echo '🔁 Retrying BitBake build...'
-                  kas shell ${{ inputs.kas_file }} -c '
-                    umask 022
-                    ${{ inputs.build_command }}
-                  '
-                else
-                  echo '❌ krb5 source files not found in sources/. Exiting.'
-                  exit 1
-                fi
-              else
-                echo '❌ Build failed, but not due to krb5 fetch. Exiting.'
-                exit 1
-              fi
-            fi
-            echo '📍 Current working directory:'
-            pwd
-
-            echo '📁 Listing built image files...'
-            ls -lh build/tmp/deploy/images || echo '⚠️ No images found.'
+            make O=../kobj ARCH=arm64 defconfig &&
+            make O=../kobj -j\$(nproc) &&
+            make O=../kobj -j\$(nproc) dir-pkg INSTALL_MOD_STRIP=1
           "
-        echo "::endgroup::"
+
+    - name: Build video-driver
+      shell: bash
+      run: |
+        docker run --rm \
+          -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
+          -w "${{ inputs.workspace_path }}/video-driver" \
+          --user $(id -u):$(id -g) \
+          ${{ inputs.docker_image }} \
+          bash -c "
+            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=aarch64-linux-gnu-gcc-13 \
+              -C ${{ inputs.workspace_path }}/kobj \
+              M=\$(pwd) VIDEO_KERNEL_ROOT=\$(pwd) modules
+          "
+
