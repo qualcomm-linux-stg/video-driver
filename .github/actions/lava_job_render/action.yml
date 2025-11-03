@@ -34,6 +34,7 @@ runs:
           const modulesTarUrl = findUrlByFilename('modules.tar.xz');
           const imageUrl = findUrlByFilename('Image');
           const mergedRamdiskUrl = findUrlByFilename('video-merged.cpio.gz');
+          const vmlinuxUrl = findUrlByFilename('vmlinux');
 
           // DTB is expected to be "<MACHINE>.dtb"
           const dtbFilename = `${process.env.MACHINE}.dtb`;
@@ -41,13 +42,16 @@ runs:
 
           core.setOutput('modules_url', modulesTarUrl || '');
           core.setOutput('image_url', imageUrl || '');
+          core.setOutput('vmlinux_url', vmlinuxUrl || '');
           core.setOutput('dtb_url', dtbUrl || '');
           core.setOutput('merged_ramdisk_url', mergedRamdiskUrl || '');
 
           console.log(`Modules URL: ${modulesTarUrl}`);
           console.log(`Image URL: ${imageUrl}`);
+          console.log(`Vmlinux URL: ${vmlinuxUrl}`);
           console.log(`Dtb URL: ${dtbUrl}`);
           console.log(`Merged Ramdisk URL: ${mergedRamdiskUrl}`);
+
 
     - name: Create metadata.json
       id: create_metadata
@@ -71,12 +75,13 @@ runs:
         s3_bucket: qli-stg-video-gh-artifacts
         mode: single-upload
 
-    - name: Create template json (cloudData.json)
+       - name: Create template json (cloudData.json)
       shell: bash
       run: |
-        echo "Populating cloudData.json with kernel, modules, metadata, ramdisk"
+        echo "Populating cloudData.json with kernel, vmlinux, modules, metadata, ramdisk"
         metadata_url="${{ steps.upload_metadata.outputs.presigned_url }}"
         image_url="${{ steps.process_urls.outputs.image_url }}"
+        vmlinux_url="${{ steps.process_urls.outputs.vmlinux_url }}"
         modules_url="${{ steps.process_urls.outputs.modules_url }}"
         merged_ramdisk_url="${{ steps.process_urls.outputs.merged_ramdisk_url }}"
 
@@ -99,6 +104,15 @@ runs:
           -e image_url="$image_url" \
           ${{ inputs.docker_image }} \
           jq '.artifacts.kernel = env.image_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+
+        # vmlinux (set only if present)
+        docker run -i --rm \
+          --user "$(id -u):$(id -g)" \
+          --workdir="$PWD" \
+          -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
+          -e vmlinux_url="$vmlinux_url" \
+          ${{ inputs.docker_image }} \
+          sh -c 'if [ -n "$vmlinux_url" ]; then jq ".artifacts.vmlinux = env.vmlinux_url" data/cloudData.json > temp.json && mv temp.json data/cloudData.json; fi'
 
         # modules
         docker run -i --rm \

@@ -202,13 +202,17 @@ jobs:
 
           # Kernel Image + merged video ramdisk (no vmlinux, no local ramdisk)
           IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
+          VMLINUX_PATH="$workspace/kobj/vmlinux"
           MERGED_PATH="$workspace/combineramdisk/video-merged.cpio.gz"
 
           [ -f "$IMAGE_PATH" ] || { echo "❌ Missing expected file: $IMAGE_PATH"; exit 1; }
+          [ -f "$VMLINUX_PATH" ] || { echo "❌ Missing expected file: $VMLINUX_PATH"; exit 1; }
           [ -f "$MERGED_PATH" ] || { echo "❌ Missing merged cpio: $MERGED_PATH"; exit 1; }
 
           echo "$IMAGE_PATH" >> "$file_list"
           echo "✅ Queued for upload: $IMAGE_PATH"
+          echo "$VMLINUX_PATH" >> "$file_list"
+          echo "✅ Queued for upload: $VMLINUX_PATH"
           echo "$MERGED_PATH" >> "$file_list"
           echo "✅ Queued for upload: $MERGED_PATH"
 
