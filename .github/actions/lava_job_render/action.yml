@@ -75,7 +75,7 @@ runs:
         s3_bucket: qli-stg-video-gh-artifacts
         mode: single-upload
 
-       - name: Create template json (cloudData.json)
+    - name: Create template json (cloudData.json)
       shell: bash
       run: |
         echo "Populating cloudData.json with kernel, vmlinux, modules, metadata, ramdisk"
