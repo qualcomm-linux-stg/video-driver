@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
           echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/"
-          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
           echo " All initramfs files downloaded to: ${{ github.workspace }}/downloads"
 
       - name: Decompress ramdisk files and rename .cpio.gz files
@@ -155,16 +155,6 @@ jobs:
           rm -rf temp_merge kerneltest.cpio local-kernel-ramdisk.cpio
           echo "Final archive: $workspace/combineramdisk/video-merged.cpio.gz"
           ls -lh "$workspace/combineramdisk/video-merged.cpio.gz"
-
-      - name: Final contents of each machine directory
-        shell: bash
-        run: |
-          set -euo pipefail
-          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-            echo "Final contents of $machine:"
-            ls -lh "${{ github.workspace }}/$machine" || true
-            echo ""
-          done
 
       - name: Validate build_matrix and jq
         shell: bash
@@ -257,9 +247,6 @@ jobs:
           rm -rf "$ws/combineramdisk" || true
           rm -rf "$ws/downloads" || true
           rm -rf "$ws/kobj" || true
-          rm -rf "$ws/qcs9100-ride-sx" || true
-          rm -rf "$ws/qcs8300-ride-sx" || true
-          rm -rf "$ws/qcs6490-rb3gen2" || true
           rm -f "$ws/modules.tar.xz" || true
           rm -f "$ws/local-kernel-ramdisk.cpio.gz" || true
           
