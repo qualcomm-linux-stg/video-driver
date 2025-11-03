@@ -38,7 +38,7 @@ jobs:
           fetch-depth: 0
 
       - name: Pull docker image
-        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        uses: qualcomm-linux-stg/kernel-config/.github/actions/pull_docker_image@main
         with:
           image: ${{ inputs.docker_image }}
 
@@ -50,7 +50,7 @@ jobs:
           path: ${{ github.workspace }}
 
       - name: Clone lava job render scripts
-        run: cd .. && git clone https://github.com/qualcomm-linux/job_render
+        run: cd .. && git clone https://github.com/qualcomm-linux-stg/job_render
 
       - name: Extract the LAVA machine name
         id: get_lavaname
@@ -72,7 +72,7 @@ jobs:
 
       - name: Create lava job definition
         id: create_job_definition
-        uses: qualcomm-linux/video-driver/.github/actions/lava_job_render@video.qclinux.0.0
+        uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@check
         with:
           docker_image: ${{ inputs.docker_image }}
         env:
