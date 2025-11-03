@@ -9,11 +9,16 @@ on:
         description: Build matrix
         value: ${{ jobs.loading.outputs.build_matrix }}
 
+      full_matrix:
+        description: Full Matrix containing lava description
+        value: ${{ jobs.loading.outputs.full_matrix }}
+
 jobs:
   loading:
     runs-on: ubuntu-latest
     outputs:
       build_matrix: ${{ steps.loading.outputs.build_matrix }}
+      full_matrix: ${{ steps.loading.outputs.full_matrix }}
     steps:
       - name: Sync codebase
         uses: qualcomm-linux/video-driver/.github/actions/sync@video.qclinux.0.0
