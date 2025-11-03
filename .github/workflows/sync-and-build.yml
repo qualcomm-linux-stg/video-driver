@@ -21,7 +21,7 @@ jobs:
   sync-and-build:
     runs-on: 
       group: GHA-video-Stg-SelfHosted-RG
-      labels: [self-hosted, video-prd-u2204-x64-large-od-ephem]
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
 
     steps:
       - name: Pull Docker image
