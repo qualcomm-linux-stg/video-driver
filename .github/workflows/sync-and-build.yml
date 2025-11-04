@@ -95,7 +95,7 @@ jobs:
           find lib/modules data | cpio -o -H newc --owner=0:0 | gzip -9 > "${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
           cd - > /dev/null
           ls -lh "${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
-    
+     
       - name: Download meta-qcom stable initramfs artifacts from S3
         shell: bash
         run: |
@@ -103,7 +103,7 @@ jobs:
           mkdir -p "${{ github.workspace }}/downloads"
           echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/"
           aws s3 cp s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
-          echo "Initramfs files downloaded to: ${{ github.workspace }}/downloads"
+          echo "Initramfs file downloaded to: ${{ github.workspace }}/downloads"
 
       - name: Decompress ramdisk files and rename .cpio.gz files
         shell: bash
