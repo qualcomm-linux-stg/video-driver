@@ -87,30 +87,14 @@ jobs:
           echo "📂 Contents of $data_dir:"
           ls -lh "$data_dir"
 
-      - name: Create compressed kernel ramdisk archives for all machines
+      - name: Create compressed kernel ramdisk archives
         shell: bash
         run: |
           set -euo pipefail
-          for machine in qcs9100-ride-sx qcs8300-ride-sx qcs6490-rb3gen2; do
-            echo "📁 Creating archive for $machine"
-            mkdir -p "$machine"
-            cd "${{ github.workspace }}/kobj/tar-install"
-            find lib/modules data | cpio -o -H newc --owner=0:0 | gzip -9 > "${{ github.workspace }}/$machine/local-kernel-ramdisk.cpio.gz"
-            cd - > /dev/null
-            echo "📦 Archive for $machine:"
-            ls -lh "${{ github.workspace }}/$machine/local-kernel-ramdisk.cpio.gz"
-          done
-      
-      - name: Copy the common local-kernel-ramdisk to workspace
-        shell: bash
-        run: |
-          set -euo pipefail
-          src="${{ github.workspace }}/qcs9100-ride-sx/local-kernel-ramdisk.cpio.gz"
-          dest="${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
-          [ -f "$src" ] || { echo "❌ Not found: $src"; exit 1; }
-          cp "$src" "$dest"
-          echo "✅ Copied: $src -> $dest"
-          ls -lh "$dest"
+          cd "${{ github.workspace }}/kobj/tar-install"
+          find lib/modules data | cpio -o -H newc --owner=0:0 | gzip -9 > "${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
+          cd - > /dev/null
+          ls -lh "${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
      
       - name: Download meta-qcom stable initramfs artifacts from S3
         shell: bash
@@ -119,7 +103,7 @@ jobs:
           mkdir -p "${{ github.workspace }}/downloads"
           echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/"
           aws s3 cp s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
-          echo " All initramfs files downloaded to: ${{ github.workspace }}/downloads"
+          echo "Initramfs file downloaded to: ${{ github.workspace }}/downloads"
 
       - name: Decompress ramdisk files and rename .cpio.gz files
         shell: bash
@@ -216,15 +200,19 @@ jobs:
           echo "$workspace/modules.tar.xz" >> "$file_list"
           echo "✅ Queued for upload: $workspace/modules.tar.xz"
 
-          # Kernel Image + merged video ramdisk (no vmlinux, no local ramdisk)
+          # Kernel Image + merged video ramdisk (no local ramdisk)
           IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
+          VMLINUX_PATH="$workspace/kobj/vmlinux"
           MERGED_PATH="$workspace/combineramdisk/video-merged.cpio.gz"
 
           [ -f "$IMAGE_PATH" ] || { echo "❌ Missing expected file: $IMAGE_PATH"; exit 1; }
+          [ -f "$VMLINUX_PATH" ] || { echo "❌ Missing expected file: $VMLINUX_PATH"; exit 1; }
           [ -f "$MERGED_PATH" ] || { echo "❌ Missing merged cpio: $MERGED_PATH"; exit 1; }
 
           echo "$IMAGE_PATH" >> "$file_list"
           echo "✅ Queued for upload: $IMAGE_PATH"
+          echo "$VMLINUX_PATH" >> "$file_list"
+          echo "✅ Queued for upload: $VMLINUX_PATH"
           echo "$MERGED_PATH" >> "$file_list"
           echo "✅ Queued for upload: $MERGED_PATH"
 
@@ -263,9 +251,6 @@ jobs:
           rm -rf "$ws/combineramdisk" || true
           rm -rf "$ws/downloads" || true
           rm -rf "$ws/kobj" || true
-          rm -rf "$ws/qcs9100-ride-sx" || true
-          rm -rf "$ws/qcs8300-ride-sx" || true
-          rm -rf "$ws/qcs6490-rb3gen2" || true
           rm -f "$ws/modules.tar.xz" || true
           rm -f "$ws/local-kernel-ramdisk.cpio.gz" || true
           
