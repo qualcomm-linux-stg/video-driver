@@ -6,21 +6,21 @@ description: |
 on:
   push:
     branches:
-      - video.qclinux.0.0
+      - check_pr
   workflow_dispatch:
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches:
-      - video.qclinux.0.0
+      - check_pr
 
 jobs:
   loading:
-    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@check_pr
     secrets: inherit
 
   build:
     needs: loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@check_pr
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
@@ -28,7 +28,7 @@ jobs:
 
   lava-test:
     needs: [loading, build]
-    uses: qualcomm-linux/video-driver/.github/workflows/test.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@check_pr
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0

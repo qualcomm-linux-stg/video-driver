@@ -20,17 +20,17 @@ permissions:
 jobs:
   sync-and-build:
     runs-on: 
-      group: GHA-video-Prd-SelfHosted-RG
-      labels: [self-hosted, video-prd-u2204-x64-large-od-ephem]
+      group: GHA-video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
 
     steps:
       - name: Pull Docker image
-        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        uses: qualcomm-linux-stg/kernel-config/.github/actions/pull_docker_image@main
         with:
           image: ${{ inputs.docker_image }}
       
       - name: Sync codebase
-        uses: qualcomm-linux/video-driver/.github/actions/sync@video.qclinux.0.0
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@check_pr
         with:
           event_name: ${{ github.event_name }}
           pr_ref: ${{ github.event.pull_request.head.ref }}
@@ -39,13 +39,13 @@ jobs:
           caller_workflow: build
 
       - name: Build workspace
-        uses: qualcomm-linux/video-driver/.github/actions/build@video.qclinux.0.0
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@check_pr
         with:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
       - name: Generate Iris test app
-        uses: qualcomm-linux/video-driver/.github/actions/generate_iris_test_app@video.qclinux.0.0
+        uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@check_pr
         with:
           docker_image: kmake-image:ver.1.0
         
@@ -54,8 +54,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "📥 Syncing files from S3 path: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/"
-          aws s3 sync "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/" "${{ github.workspace }}/downloads"
+          echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
+          aws s3 sync "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/" "${{ github.workspace }}/downloads"
           echo "✅ Download complete"
           [ -f "${{ github.workspace }}/downloads/vpu20_1v.mbn" ] || { echo "❌ Missing vpu20_1v.mbn"; exit 1; }
 
@@ -101,8 +101,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/"
-          aws s3 cp s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
+          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/"
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
           echo "Initramfs files downloaded to: ${{ github.workspace }}/downloads"
 
       - name: Decompress ramdisk files and rename .cpio.gz files
@@ -233,9 +233,9 @@ jobs:
           cat "$file_list"
           
       - name: Upload all artifacts to S3
-        uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@video.qclinux.0.0
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@check_pr
         with:
-          s3_bucket: qli-prd-video-gh-artifacts
+          s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
