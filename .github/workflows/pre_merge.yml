@@ -6,31 +6,31 @@ description: |
 on:
   push:
     branches:
-      - video.qclinux.0.0
+      - final-chnages
   workflow_dispatch:
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches:
-      - video.qclinux.0.0
+      - final-chnages
 
 jobs:
   loading:
-    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@final-chnages
     secrets: inherit
 
   build:
     needs: loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@final-chnages
     secrets: inherit
     with:
-      docker_image: kmake-image:ver.1.0
+      docker_image: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
 
   lava-test:
     needs: [loading, build]
-    uses: qualcomm-linux/video-driver/.github/workflows/test.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@final-chnages
     secrets: inherit
     with:
-      docker_image: kmake-image:ver.1.0
+      docker_image: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       full_matrix: ${{ needs.loading.outputs.full_matrix }}

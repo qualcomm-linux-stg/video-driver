@@ -5,10 +5,12 @@ description: |
 inputs:
   docker_image:
     description: Docker image to use
-    required: true
+    required: false
+    default: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
   workspace_path:
     description: Path to workspace directory
-    required: true
+    required: false
+    default: ${{ github.workspace }}
 
 runs:
   using: "composite"
