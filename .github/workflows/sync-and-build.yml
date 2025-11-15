@@ -8,7 +8,7 @@
 #         description: Docker image to use for the build
 #         required: false
 #         type: string
-#         default: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
+#         default: ghcr.io/qualcomm-linux-stg/videodriver-image:ver.1.0
 #       build_matrix:
 #         description: Build matrix for multi target builds
 #         type: string
@@ -42,13 +42,13 @@
 #       - name: Build workspace
 #         uses: qualcomm-linux-stg/video-driver/.github/actions/build@final-chnages
 #         with:
-#           docker_image: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
+#           docker_image: ghcr.io/qualcomm-linux-stg/videodriver-image:ver.1.0
 #           workspace_path: ${{ github.workspace }}
 
 #       - name: Generate Iris test app
 #         uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@final-chnages
 #         with:
-#           docker_image: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
+#           docker_image: ghcr.io/qualcomm-linux-stg/videodriver-image:ver.1.0
         
 #       - name: Download firmware file from S3
 #         shell: bash
@@ -292,7 +292,7 @@ on:
         description: Docker image to use for the build
         required: false
         type: string
-        default: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
+        default: ghcr.io/qualcomm-linux-stg/videodriver-image:ver.1.0
       build_matrix:
         description: Build matrix for multi target builds
         type: string
