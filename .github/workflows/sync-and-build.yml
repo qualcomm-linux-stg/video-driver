@@ -305,7 +305,7 @@ permissions:
 jobs:
   sync-and-build:
     runs-on: 
-      group: GHA-video-Stg-SelfHosted-RG
+      group: GHA-Video-Stg-SelfHosted-RG
       labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
 
     steps:
