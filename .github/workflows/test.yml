@@ -8,7 +8,7 @@ on:
         description: Docker image
         type: string
         required: true
-        default: ghcr.io/qualcomm-linux-stg/videodriver-image:ver.1.0
+        default: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
       build_matrix:
         description: Build matrix for multi target builds (stringified JSON)
         type: string

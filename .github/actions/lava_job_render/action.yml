@@ -3,7 +3,7 @@ inputs:
   docker_image:
     description: Docker image
     required: true
-    default: kmake-image:ver.1.0
+    default: ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0
 
 runs:
   using: "composite"

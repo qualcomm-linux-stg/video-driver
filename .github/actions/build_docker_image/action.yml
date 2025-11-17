@@ -20,7 +20,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        IMAGE="ghcr.io/qualcomm-linux-stg/videodriver-image:ver.1.0"
+        IMAGE="ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0"
         echo "Pulling ${IMAGE} ..."
         docker pull "${IMAGE}"
 
@@ -28,6 +28,6 @@ runs:
       id: out
       shell: bash
       run: |
-        IMAGE="ghcr.io/qualcomm-linux-stg/videodriver-image:ver.1.0"
+        IMAGE="ghcr.io/qualcomm-linux-stg/video-driver-image:ver.1.0"
         echo "image_name=${IMAGE}" >> "$GITHUB_OUTPUT"
         echo "Pulled image: ${IMAGE}"
