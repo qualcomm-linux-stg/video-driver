@@ -44,10 +44,15 @@ jobs:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
-      - name: Generate Iris test app
-        uses: qualcomm-linux/video-driver/.github/actions/generate_iris_test_app@video.qclinux.0.0
-        with:
-          docker_image: kmake-image:ver.1.0
+      - name: Download iris_test_app from the s3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${{github.workspace }}/v4l-video-test-app/build/"
+          echo " syncing files from s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/"
+          aws s3 sync "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/" "${{ github.workspace }}/v4l-video-test-app/build/"
+          echo " ✅ Download complete"
+          ls ${{ github.workspace }}/v4l-video-test-app/build/
         
       - name: Download firmware file from S3
         shell: bash
