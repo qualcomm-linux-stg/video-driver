@@ -6,7 +6,6 @@
 
 #include <linux/soc/qcom/llcc-qcom.h>
 
-#include <media/v4l2_vidc_extensions.h>
 #include "msm_vidc_qcm6490.h"
 #include "msm_vidc_platform.h"
 #include "msm_vidc_debug.h"

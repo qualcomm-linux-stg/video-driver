@@ -23,6 +23,7 @@
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-memops.h>
 #include <media/videobuf2-v4l2.h>
+#include <media/v4l2_vidc_extensions.h>
 
 struct msm_vidc_inst;
 

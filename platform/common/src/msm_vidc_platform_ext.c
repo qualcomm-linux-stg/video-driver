@@ -3,7 +3,6 @@
  * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#include <media/v4l2_vidc_extensions.h>
 #include "msm_vidc_platform_ext.h"
 #include "hfi_packet.h"
 #include "hfi_property.h"

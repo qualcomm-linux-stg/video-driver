@@ -7,7 +7,6 @@
 #ifndef _MSM_VIDC_H_
 #define _MSM_VIDC_H_
 
-#include <linux/videodev2.h>
 #include <media/media-device.h>
 
 union msm_v4l2_cmd {
