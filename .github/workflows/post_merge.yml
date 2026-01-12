@@ -1,0 +1,32 @@
+name: post_merge_weekly
+description: |
+  Runs post-merge CI for the video-driver repository on a weekly schedule.
+  Reuses loading, build and test workflows.
+
+on:
+  schedule:
+    # Every Monday and Thursday at 02:30 UTC (8:00 AM IST)
+    - cron: "30 2 * * 1,4"
+  workflow_dispatch:
+
+jobs:
+  loading:
+    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
+    secrets: inherit
+
+  build:
+    needs: loading
+    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.0.0
+    secrets: inherit
+    with:
+      docker_image: kmake-image:ver.1.0
+      build_matrix: ${{ needs.loading.outputs.build_matrix }}
+
+  lava-test:
+    needs: [loading, build]
+    uses: qualcomm-linux/video-driver/.github/workflows/test.yml@video.qclinux.0.0
+    secrets: inherit
+    with:
+      docker_image: kmake-image:ver.1.0
+      build_matrix: ${{ needs.loading.outputs.build_matrix }}
+      full_matrix: ${{ needs.loading.outputs.full_matrix }}
