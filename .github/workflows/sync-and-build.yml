@@ -20,17 +20,17 @@ permissions:
 jobs:
   sync-and-build:
     runs-on: 
-      group: GHA-video-Prd-SelfHosted-RG
-      labels: [self-hosted, video-prd-u2204-x64-large-od-ephem]
+      group: GHA-video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
 
     steps:
       - name: Pull Docker image
-        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        uses: qualcomm-linux-stg/kernel-config/.github/actions/pull_docker_image@main
         with:
           image: ${{ inputs.docker_image }}
       
       - name: Sync codebase
-        uses: qualcomm-linux/video-driver/.github/actions/sync@video.qclinux.0.0
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@video.qclinux.0.0
         with:
           event_name: ${{ github.event_name }}
           pr_ref: ${{ github.event.pull_request.head.ref }}
@@ -39,28 +39,23 @@ jobs:
           caller_workflow: build
 
       - name: Build workspace
-        uses: qualcomm-linux/video-driver/.github/actions/build@video.qclinux.0.0
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@video.qclinux.0.0
         with:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
-      - name: Download iris_test_app from the s3
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "${{github.workspace }}/v4l-video-test-app/build/"
-          echo " syncing files from s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/"
-          aws s3 sync "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/" "${{ github.workspace }}/v4l-video-test-app/build/"
-          echo " ✅ Download complete"
-          ls ${{ github.workspace }}/v4l-video-test-app/build/
+      - name: Generate Iris test app
+        uses: qualcomm-linux-stg/video-driver/.github/actions/generate_iris_test_app@video.qclinux.0.0
+        with:
+          docker_image: kmake-image:ver.1.0
         
       - name: Download firmware file from S3
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "📥 Syncing files from S3 path: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/"
-          aws s3 sync "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/" "${{ github.workspace }}/downloads"
+          echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
+          aws s3 sync "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/" "${{ github.workspace }}/downloads"
           echo "✅ Download complete"
           [ -f "${{ github.workspace }}/downloads/vpu20_1v.mbn" ] || { echo "❌ Missing vpu20_1v.mbn"; exit 1; }
 
@@ -80,21 +75,19 @@ jobs:
           set -euo pipefail
           data_dir="${{ github.workspace }}/kobj/tar-install/data/vendor/iris_test_app"
           mkdir -p "$data_dir"
-          data_dir2="${{ github.workspace }}/kobj/tar-install/data/vendor/iris_test_app/firmware"
-          mkdir -p "$data_dir2"
           firmware_version=$(ls kobj/tar-install/lib/modules/)
           mkdir -p "kobj/tar-install/lib/modules/$firmware_version/updates"
           cp video-driver/iris_vpu.ko kobj/tar-install/lib/modules/$firmware_version/updates/
           # Copy test app, firmware blob, and video clips tar into data/vendor/iris_test_app
           cp "v4l-video-test-app/build/iris_v4l2_test" "$data_dir/"
-          cp "${{ github.workspace }}/downloads/vpu20_1v.mbn" "$data_dir2/"
+          cp "${{ github.workspace }}/downloads/vpu20_1v.mbn" "$data_dir/"
           #cp video-driver/iris_vpu.ko "$data_dir/"
           cp "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" "$data_dir/"
 
           echo "📂 Contents of $data_dir:"
           ls -lh "$data_dir"
 
-      - name: Create compressed kernel ramdisk archives
+      - name: Create compressed kernel ramdisk archives for all machines
         shell: bash
         run: |
           set -euo pipefail
@@ -102,15 +95,15 @@ jobs:
           find lib/modules data | cpio -o -H newc --owner=0:0 | gzip -9 > "${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
           cd - > /dev/null
           ls -lh "${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
-    
+
       - name: Download meta-qcom stable initramfs artifacts from S3
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/"
-          aws s3 cp s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
-          echo "Initramfs files downloaded to: ${{ github.workspace }}/downloads"
+          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/"
+          aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
+          echo " All initramfs files downloaded to: ${{ github.workspace }}/downloads"
 
       - name: Decompress ramdisk files and rename .cpio.gz files
         shell: bash
@@ -213,10 +206,10 @@ jobs:
           MERGED_PATH="$workspace/combineramdisk/video-merged.cpio.gz"
 
           [ -f "$IMAGE_PATH" ] || { echo "❌ Missing expected file: $IMAGE_PATH"; exit 1; }
-          [ -f "$VMLINUX_PATH" ] || { echo "❌ Missing expected file: $VMLINUX_PATH"; exit 1; }
           [ -f "$MERGED_PATH" ] || { echo "❌ Missing merged cpio: $MERGED_PATH"; exit 1; }
 
           echo "$IMAGE_PATH" >> "$file_list"
+          echo "✅ Queued for upload: $IMAGE_PATH"
           echo "✅ Queued for upload: $IMAGE_PATH"
           echo "$VMLINUX_PATH" >> "$file_list"
           echo "✅ Queued for upload: $VMLINUX_PATH"
@@ -240,9 +233,9 @@ jobs:
           cat "$file_list"
           
       - name: Upload all artifacts to S3
-        uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@video.qclinux.0.0
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@video.qclinux.0.0
         with:
-          s3_bucket: qli-prd-video-gh-artifacts
+          s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}

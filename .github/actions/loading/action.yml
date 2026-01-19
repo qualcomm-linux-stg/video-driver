@@ -21,24 +21,68 @@ runs:
         script: |
           const fs = require('fs');
           const path = require('path');
-          const targetsPath = path.join(process.env.GITHUB_WORKSPACE, 'video-driver', 'ci', 'MACHINES.json');
-          let targets;
-          try {
-            if (!fs.existsSync(targetsPath)) {
-              core.setFailed(`MACHINES.json not found at ${targetsPath}`);
-              return;
-            }
-            targets = JSON.parse(fs.readFileSync(targetsPath, 'utf-8'));
-          } catch (err) {
-            core.setFailed(`Failed to load or parse MACHINES.json: ${err.message}`);
-            return;
-          }
-          // Build matrix: machine, firmware
-          const build_matrix = Object.values(targets).map(({ machine, firmware }) => ({ machine, firmware }));
-          core.setOutput('build_matrix', JSON.stringify(build_matrix));
-          console.log("Build Matrix:", build_matrix);
 
-          // Full matrix: machine, firmware, lavaname
-          const full_matrix = Object.values(targets).map(({ machine, firmware, lavaname }) => ({ machine, firmware, lavaname }));
-          core.setOutput('full_matrix', JSON.stringify(full_matrix));
-          console.log("Full Matrix:", full_matrix);
+          try {
+            // 1. Define both possible paths for MACHINES.json
+            // Path 1: Inside a 'video-driver' subdirectory (Common in Pre-Merge/PRs)
+            const pathWithSubdir = path.join(process.env.GITHUB_WORKSPACE, 'video-driver', 'ci', 'MACHINES.json');
+            // Path 2: Directly at the root (Common in Post-Merge/Scheduled runs)
+            const pathAtRoot = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.json');
+
+            let targetsPath;
+
+            // 2. Check which path actually exists
+            if (fs.existsSync(pathWithSubdir)) {
+              console.log(`Configuration found in subdirectory: ${pathWithSubdir}`);
+              targetsPath = pathWithSubdir;
+            } else if (fs.existsSync(pathAtRoot)) {
+              console.log(`Configuration found at root: ${pathAtRoot}`);
+              targetsPath = pathAtRoot;
+            } else {
+              // If neither exists, fail with a clear error
+              throw new Error(`MACHINES.json not found.\nChecked:\n1. ${pathWithSubdir}\n2. ${pathAtRoot}`);
+            }
+
+            // 3. Read and Parse the JSON
+            const machines = JSON.parse(fs.readFileSync(targetsPath, 'utf8'));
+
+            // 4. Logic for Filtering (Pre-Merge vs Post-Merge)
+            // We define the allow-list here since we aren't modifying the JSON file
+            const PREMERGE_ALLOW_LIST = ['qcs6490-rb3gen2']; 
+            
+            let filtered_targets = [];
+            const workflowName = process.env.GITHUB_WORKFLOW || '';
+
+            // Check if this is a Pre-Merge workflow
+            if (workflowName.includes('pre_merge')) {
+              console.log(`Workflow '${workflowName}' detected as Pre-Merge.`);
+              console.log(`Filtering targets. Allowed: ${PREMERGE_ALLOW_LIST.join(', ')}`);
+              
+              filtered_targets = machines.filter(m => PREMERGE_ALLOW_LIST.includes(m.target));
+            } else {
+              console.log(`Workflow '${workflowName}' detected as Post-Merge (or other).`);
+              console.log('Using ALL targets from MACHINES.json.');
+              
+              filtered_targets = machines;
+            }
+
+            // 5. Construct the Matrices
+            const build_matrix = {
+              include: filtered_targets.map(m => ({
+                target: m.target,
+                firmware: m.firmware
+              }))
+            };
+
+            const full_matrix = {
+              include: filtered_targets
+            };
+
+            // 6. Set Outputs
+            console.log('::set-output name=build_matrix::' + JSON.stringify(build_matrix));
+            console.log('::set-output name=full_matrix::' + JSON.stringify(full_matrix));
+
+          } catch (error) {
+            console.error(error.message);
+            process.exit(1);
+          }

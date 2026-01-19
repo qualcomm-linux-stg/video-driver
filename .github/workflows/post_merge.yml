@@ -5,18 +5,17 @@ description: |
 
 on:
   schedule:
-    # Every Monday and Thursday at 02:30 UTC (8:00 AM IST)
-    - cron: "30 2 * * 1,4"
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 jobs:
   loading:
-    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
     secrets: inherit
 
   build:
     needs: loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.0.0
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
@@ -24,7 +23,7 @@ jobs:
 
   lava-test:
     needs: [loading, build]
-    uses: qualcomm-linux/video-driver/.github/workflows/test.yml@video.qclinux.0.0
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@video.qclinux.0.0
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
