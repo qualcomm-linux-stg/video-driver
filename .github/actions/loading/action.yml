@@ -21,7 +21,7 @@ runs:
         script: |
           const fs = require('fs');
           const path = require('path');
-          const core = require('@actions/core');
+          //const core = require('@actions/core');
 
           try {
             // 1. Locate MACHINES.json dynamically
