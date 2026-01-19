@@ -5,7 +5,7 @@ description: |
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -28,4 +28,4 @@ jobs:
     with:
       docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
-      full_matrix: ${{ needs.loading.outputs.full_matrix }}
+      full_matrix: ${{ needs.loading.outputs.full_matrix }

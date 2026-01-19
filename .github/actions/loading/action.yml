@@ -1,85 +1,56 @@
----
-name: Load Parameters
-description: Load parameters for the build job
+name: loading
+description: |
+  Loads build parameters (build_matrix and full_matrix) from ci/MACHINES.json
+  for use in subsequent jobs.
 
-outputs:
-  build_matrix:
-    description: Build matrix
-    value: ${{ steps.set-matrix.outputs.build_matrix }}
+on:
+  workflow_call:
+    outputs:
+      build_matrix:
+        description: Build matrix
+        value: ${{ jobs.load-parameters.outputs.build_matrix }}
+      full_matrix:
+        description: Full matrix containing lava details
+        value: ${{ jobs.load-parameters.outputs.full_matrix }}
 
-  full_matrix:
-    description: full matrix containing lava devails
-    value: ${{ steps.set-matrix.outputs.full_matrix }}
+jobs:
+  load-parameters:
+    runs-on: ubuntu-latest
+    outputs:
+      build_matrix: ${{ steps.set-matrix.outputs.build_matrix }}
+      full_matrix: ${{ steps.set-matrix.outputs.full_matrix }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: video-driver   # ensures repo is always at $GITHUB_WORKSPACE/video-driver
 
-runs:
-  using: "composite"
-  steps:
-    - name: Set Build Matrix
-      id: set-matrix
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          const path = require('path');
-          //const core = require('@actions/core');
-
-          try {
-            // 1. Locate MACHINES.json dynamically
-            // Checks both root and subdirectory to handle different checkout depths
-            const workspace = process.env.GITHUB_WORKSPACE;
-            const pathInSubdir = path.join(workspace, 'video-driver', 'ci', 'MACHINES.json');
-            const pathAtRoot = path.join(workspace, 'ci', 'MACHINES.json');
-
-            let jsonPath;
-
-            if (fs.existsSync(pathAtRoot)) {
-              jsonPath = pathAtRoot;
-            } else if (fs.existsSync(pathInSubdir)) {
-              jsonPath = pathInSubdir;
-            } else {
-              throw new Error(`MACHINES.json not found. Checked: \n1. ${pathAtRoot} \n2. ${pathInSubdir}`);
+      - name: Set Build Matrix
+        id: set-matrix
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const targetsPath = path.join(process.env.GITHUB_WORKSPACE, 'video-driver', 'ci', 'MACHINES.json');
+            let targets;
+            try {
+              if (!fs.existsSync(targetsPath)) {
+                core.setFailed(`MACHINES.json not found at ${targetsPath}`);
+                return;
+              }
+              targets = JSON.parse(fs.readFileSync(targetsPath, 'utf-8'));
+            } catch (err) {
+              core.setFailed(`Failed to load or parse MACHINES.json: ${err.message}`);
+              return;
             }
 
-            console.log(`Loading targets from: ${jsonPath}`);
+            // Build matrix: machine, firmware
+            const build_matrix = Object.values(targets).map(({ machine, firmware }) => ({ machine, firmware }));
+            core.setOutput('build_matrix', JSON.stringify(build_matrix));
+            console.log("Build Matrix:", build_matrix);
 
-            // 2. Read and Parse JSON
-            const rawData = fs.readFileSync(jsonPath);
-            const machinesMap = JSON.parse(rawData);
-            
-            // Convert Dictionary to Array (since your JSON is an Object of Objects)
-            const machines = Object.values(machinesMap);
-
-            let buildMatrix = [];
-            let fullMatrix = [];
-
-            // 3. Generate Matrices (No Filtering)
-            machines.forEach(entry => {
-              console.log(`Adding target: ${entry.target}`);
-
-              // Add to Build Matrix (Minimal params for matrix strategy)
-              buildMatrix.push({
-                target: entry.target,
-                machine: entry.machine,
-                firmware: entry.firmware
-              });
-
-              // Add to Full Matrix (All params)
-              fullMatrix.push({
-                target: entry.target,
-                machine: entry.machine,
-                firmware: entry.firmware,
-                lavaname: entry.lavaname,
-                buildid: entry.buildid,
-                firmwareid: entry.firmwareid
-              });
-            });
-
-            // 4. Output to GitHub Actions
-            core.setOutput('build_matrix', JSON.stringify(buildMatrix));
-            core.setOutput('full_matrix', JSON.stringify(fullMatrix));
-
-            console.log(`Successfully generated matrix with ${buildMatrix.length} targets.`);
-
-          } catch (error) {
-            core.setFailed(error.message);
-          }
+            // Full matrix: machine, firmware, lavaname
+            const full_matrix = Object.values(targets).map(({ machine, firmware, lavaname }) => ({ machine, firmware, lavaname }));
+            core.setOutput('full_matrix', JSON.stringify(full_matrix));
+            console.log("Full Matrix:", full_matrix);
