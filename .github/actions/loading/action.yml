@@ -21,68 +21,78 @@ runs:
         script: |
           const fs = require('fs');
           const path = require('path');
+          const core = require('@actions/core');
 
           try {
-            // 1. Define both possible paths for MACHINES.json
-            // Path 1: Inside a 'video-driver' subdirectory (Common in Pre-Merge/PRs)
-            const pathWithSubdir = path.join(process.env.GITHUB_WORKSPACE, 'video-driver', 'ci', 'MACHINES.json');
-            // Path 2: Directly at the root (Common in Post-Merge/Scheduled runs)
-            const pathAtRoot = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.json');
+            // 1. Locate MACHINES.json dynamically
+            // Checks if the code is in the root workspace or a 'video-driver' subdirectory
+            // This handles differences between 'pull_request' (merged code) and 'schedule' (clean checkout)
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const pathInSubdir = path.join(workspace, 'video-driver', 'ci', 'MACHINES.json');
+            const pathAtRoot = path.join(workspace, 'ci', 'MACHINES.json');
 
-            let targetsPath;
+            let jsonPath;
 
-            // 2. Check which path actually exists
-            if (fs.existsSync(pathWithSubdir)) {
-              console.log(`Configuration found in subdirectory: ${pathWithSubdir}`);
-              targetsPath = pathWithSubdir;
-            } else if (fs.existsSync(pathAtRoot)) {
-              console.log(`Configuration found at root: ${pathAtRoot}`);
-              targetsPath = pathAtRoot;
+            if (fs.existsSync(pathAtRoot)) {
+              jsonPath = pathAtRoot;
+            } else if (fs.existsSync(pathInSubdir)) {
+              jsonPath = pathInSubdir;
             } else {
-              // If neither exists, fail with a clear error
-              throw new Error(`MACHINES.json not found.\nChecked:\n1. ${pathWithSubdir}\n2. ${pathAtRoot}`);
+              // Fail if we can't find the config file
+              throw new Error(`MACHINES.json not found. Checked: \n1. ${pathAtRoot} \n2. ${pathInSubdir}`);
             }
 
-            // 3. Read and Parse the JSON
-            const machines = JSON.parse(fs.readFileSync(targetsPath, 'utf8'));
+            console.log(`Found MACHINES.json at: ${jsonPath}`);
 
-            // 4. Logic for Filtering (Pre-Merge vs Post-Merge)
-            // We define the allow-list here since we aren't modifying the JSON file
-            const PREMERGE_ALLOW_LIST = ['qcs6490-rb3gen2']; 
-            
-            let filtered_targets = [];
-            const workflowName = process.env.GITHUB_WORKFLOW || '';
+            // 2. Read and Parse JSON
+            const rawData = fs.readFileSync(jsonPath);
+            const machines = JSON.parse(rawData);
 
-            // Check if this is a Pre-Merge workflow
-            if (workflowName.includes('pre_merge')) {
-              console.log(`Workflow '${workflowName}' detected as Pre-Merge.`);
-              console.log(`Filtering targets. Allowed: ${PREMERGE_ALLOW_LIST.join(', ')}`);
-              
-              filtered_targets = machines.filter(m => PREMERGE_ALLOW_LIST.includes(m.target));
-            } else {
-              console.log(`Workflow '${workflowName}' detected as Post-Merge (or other).`);
-              console.log('Using ALL targets from MACHINES.json.');
-              
-              filtered_targets = machines;
+            // 3. Determine if we should filter (Check workflow name)
+            // If the workflow name contains 'pre_merge', we filter. Otherwise (post_merge), we run everything.
+            const workflowName = process.env.GITHUB_WORKFLOW || "";
+            const isPreMerge = workflowName.toLowerCase().includes("pre_merge");
+
+            console.log(`Current Workflow: ${workflowName}`);
+            console.log(`Mode: ${isPreMerge ? "PRE-MERGE (Filtering for 'premerge': true)" : "POST-MERGE (Running all targets)"}`);
+
+            let buildMatrix = [];
+            let fullMatrix = [];
+
+            // 4. Generate Matrices
+            machines.forEach(machine => {
+              // FILTER LOGIC:
+              // If we are in pre_merge mode, skip any machine that does NOT have "premerge": true
+              if (isPreMerge && machine.premerge !== true) {
+                return; 
+              }
+
+              // Add to Build Matrix (Common)
+              buildMatrix.push({
+                target: machine.name,
+                arch: machine.arch,
+                variant: machine.variant
+              });
+
+              // Add to Full Matrix
+              fullMatrix.push({
+                target: machine.name,
+                arch: machine.arch,
+                variant: machine.variant,
+                tests: machine.tests || []
+              });
+            });
+
+            // 5. Output to GitHub Actions
+            if (buildMatrix.length === 0) {
+                console.warn("WARNING: Matrix is empty! Check if MACHINES.json has 'premerge': true flags.");
             }
 
-            // 5. Construct the Matrices
-            const build_matrix = {
-              include: filtered_targets.map(m => ({
-                target: m.target,
-                firmware: m.firmware
-              }))
-            };
+            core.setOutput('build_matrix', JSON.stringify(buildMatrix));
+            core.setOutput('full_matrix', JSON.stringify(fullMatrix));
 
-            const full_matrix = {
-              include: filtered_targets
-            };
-
-            // 6. Set Outputs
-            console.log('::set-output name=build_matrix::' + JSON.stringify(build_matrix));
-            console.log('::set-output name=full_matrix::' + JSON.stringify(full_matrix));
+            console.log(`Generated matrix with ${buildMatrix.length} targets.`);
 
           } catch (error) {
-            console.error(error.message);
-            process.exit(1);
+            core.setFailed(error.message);
           }
