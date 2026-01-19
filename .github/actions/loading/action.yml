@@ -25,8 +25,7 @@ runs:
 
           try {
             // 1. Locate MACHINES.json dynamically
-            // Checks if the code is in the root workspace or a 'video-driver' subdirectory
-            // This handles differences between 'pull_request' (merged code) and 'schedule' (clean checkout)
+            // Checks both root and subdirectory to handle different checkout depths
             const workspace = process.env.GITHUB_WORKSPACE;
             const pathInSubdir = path.join(workspace, 'video-driver', 'ci', 'MACHINES.json');
             const pathAtRoot = path.join(workspace, 'ci', 'MACHINES.json');
@@ -38,60 +37,48 @@ runs:
             } else if (fs.existsSync(pathInSubdir)) {
               jsonPath = pathInSubdir;
             } else {
-              // Fail if we can't find the config file
               throw new Error(`MACHINES.json not found. Checked: \n1. ${pathAtRoot} \n2. ${pathInSubdir}`);
             }
 
-            console.log(`Found MACHINES.json at: ${jsonPath}`);
+            console.log(`Loading targets from: ${jsonPath}`);
 
             // 2. Read and Parse JSON
             const rawData = fs.readFileSync(jsonPath);
-            const machines = JSON.parse(rawData);
-
-            // 3. Determine if we should filter (Check workflow name)
-            // If the workflow name contains 'pre_merge', we filter. Otherwise (post_merge), we run everything.
-            const workflowName = process.env.GITHUB_WORKFLOW || "";
-            const isPreMerge = workflowName.toLowerCase().includes("pre_merge");
-
-            console.log(`Current Workflow: ${workflowName}`);
-            console.log(`Mode: ${isPreMerge ? "PRE-MERGE (Filtering for 'premerge': true)" : "POST-MERGE (Running all targets)"}`);
+            const machinesMap = JSON.parse(rawData);
+            
+            // Convert Dictionary to Array (since your JSON is an Object of Objects)
+            const machines = Object.values(machinesMap);
 
             let buildMatrix = [];
             let fullMatrix = [];
 
-            // 4. Generate Matrices
-            machines.forEach(machine => {
-              // FILTER LOGIC:
-              // If we are in pre_merge mode, skip any machine that does NOT have "premerge": true
-              if (isPreMerge && machine.premerge !== true) {
-                return; 
-              }
+            // 3. Generate Matrices (No Filtering)
+            machines.forEach(entry => {
+              console.log(`Adding target: ${entry.target}`);
 
-              // Add to Build Matrix (Common)
+              // Add to Build Matrix (Minimal params for matrix strategy)
               buildMatrix.push({
-                target: machine.name,
-                arch: machine.arch,
-                variant: machine.variant
+                target: entry.target,
+                machine: entry.machine,
+                firmware: entry.firmware
               });
 
-              // Add to Full Matrix
+              // Add to Full Matrix (All params)
               fullMatrix.push({
-                target: machine.name,
-                arch: machine.arch,
-                variant: machine.variant,
-                tests: machine.tests || []
+                target: entry.target,
+                machine: entry.machine,
+                firmware: entry.firmware,
+                lavaname: entry.lavaname,
+                buildid: entry.buildid,
+                firmwareid: entry.firmwareid
               });
             });
 
-            // 5. Output to GitHub Actions
-            if (buildMatrix.length === 0) {
-                console.warn("WARNING: Matrix is empty! Check if MACHINES.json has 'premerge': true flags.");
-            }
-
+            // 4. Output to GitHub Actions
             core.setOutput('build_matrix', JSON.stringify(buildMatrix));
             core.setOutput('full_matrix', JSON.stringify(fullMatrix));
 
-            console.log(`Generated matrix with ${buildMatrix.length} targets.`);
+            console.log(`Successfully generated matrix with ${buildMatrix.length} targets.`);
 
           } catch (error) {
             core.setFailed(error.message);
