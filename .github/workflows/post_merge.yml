@@ -11,16 +11,12 @@ on:
 
 jobs:
   loading:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          path: video-driver   # ensures repo is placed at $GITHUB_WORKSPACE/video-driver
-
-      - name: Call loading workflow
-        uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
-        secrets: inherit
+    # Correctly calling the reusable workflow at the Job level
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
+    secrets: inherit
+    # OPTIONAL: If loading.yml accepts a branch input, uncomment and use this lines below
+    # with:
+    #   ref: video.qclinux.0.0
 
   build:
     needs: loading
