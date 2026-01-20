@@ -3,7 +3,6 @@ description: Load required parameters for the subsequent jobs
 
 on:
   workflow_call:
-    # Added inputs section so post_merge can pass the branch name
     inputs:
       target_branch:
         description: "Branch to checkout (optional)"
@@ -25,17 +24,32 @@ jobs:
       build_matrix: ${{ steps.loading.outputs.build_matrix }}
       full_matrix: ${{ steps.loading.outputs.full_matrix }}
     steps:
-      - name: Sync codebase
+      # SCENARIO 1: Pull Request (Pre-Merge)
+      # Uses your custom sync action to merge PR code with base
+      - name: Sync codebase (PR)
+        if: github.event_name == 'pull_request'
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@video.qclinux.0.0
         with:
           event_name: ${{ github.event_name }}
           pr_ref: ${{ github.event.pull_request.head.ref }}
           pr_repo: ${{ github.event.pull_request.head.repo.full_name }}
-          # LOGIC FIX: If target_branch is provided (Post Merge), use it.
-          # Otherwise use the default ref (Per Merge).
-          base_ref: ${{ inputs.target_branch || github.ref_name }}
+          base_ref: ${{ github.ref_name }}
 
+      # SCENARIO 2: Schedule or Manual (Post-Merge)
+      # Uses standard checkout because there is no PR to sync
+      - name: Checkout Code (Schedule)
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          # Use the input branch if provided, otherwise default to current ref
+          ref: ${{ inputs.target_branch || github.ref_name }}
+          # Check out into 'video-driver' folder so the script finds the nested path
+          path: video-driver
+
+      # Step to debug content (Optional, can be removed later)
+      - name: Debug Workspace
+        run: ls -R
+      
       - name: Load Parameters
         id: loading
-        # This calls your composite action (the JS file you provided)
         uses: qualcomm-linux-stg/video-driver/.github/actions/loading@video.qclinux.0.0
