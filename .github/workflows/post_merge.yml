@@ -1,22 +1,18 @@
-name: post_merge_weekly
-description: |
-  Runs post-merge CI for the video-driver repository on a frequent schedule.
-  Reuses loading, build and test workflows.
+name: Post Merge Weekly
 
 on:
   schedule:
-    # Every 5 minutes (UTC)
-    - cron: "*/5 * * * *"
-  workflow_dispatch:
+    - cron: '*/5 * * * *'  # Runs every 5 minutes in IST/UTC
+  workflow_dispatch:       # Allows manual testing
 
 jobs:
   loading:
-    # Correctly calling the reusable workflow at the Job level
+    # Use the reusable workflow from your specific branch
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
     secrets: inherit
-    # OPTIONAL: If loading.yml accepts a branch input, uncomment and use this lines below
-    # with:
-    #   ref: video.qclinux.0.0
+    with:
+      # CRITICAL FIX: Force the checkout to use your branch, not the default branch
+      ref: video.qclinux.0.0
 
   build:
     needs: loading
