@@ -2,17 +2,17 @@ name: Post Merge Weekly
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Runs every 5 minutes in IST/UTC
-  workflow_dispatch:       # Allows manual testing
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
   loading:
-    # Use the reusable workflow from your specific branch
+    # We call the reusable workflow
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
     secrets: inherit
     with:
-      # CRITICAL FIX: Force the checkout to use your branch, not the default branch
-      ref: video.qclinux.0.0
+      # We pass the specific branch we want to build
+      target_branch: video.qclinux.0.0
 
   build:
     needs: loading
