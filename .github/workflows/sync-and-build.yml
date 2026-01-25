@@ -38,22 +38,21 @@ jobs:
           base_ref: ${{ github.ref_name }}
           caller_workflow: build
 
-      # --- ADDED STEP: FIX PERMISSIONS ---
-      - name: Fix Permissions for Docker Build
-        shell: bash
-        run: |
-          echo "🔧 Adjusting workspace permissions..."
-          # Ensure the workspace is writable by the Docker container user
-          # Using sudo to override if files were created by root in previous steps
-          sudo chmod -R 777 ${{ github.workspace }} || chmod -R 777 ${{ github.workspace }}
-          echo "✅ Permissions fixed."
-      # -----------------------------------
-
       - name: Build workspace
-        uses: qualcomm-linux-stg/video-driver/.github/actions/build@video.qclinux.0.0
+        # CHANGED: Use local path to pick up the fix in action.yml
+        uses: ./.github/actions/build
         with:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
+
+      # ADDED: Fix ownership of files created by Docker (root) so the runner can process them
+      - name: Fix Workspace Ownership
+        if: always()
+        shell: bash
+        run: |
+          echo "🔧 Fixing file ownership..."
+          sudo chown -R $(id -u):$(id -g) ${{ github.workspace }}
+          echo "✅ Ownership fixed."
 
       - name: Download iris_test_app from the s3
         shell: bash
@@ -96,10 +95,8 @@ jobs:
           firmware_version=$(ls kobj/tar-install/lib/modules/)
           mkdir -p "kobj/tar-install/lib/modules/$firmware_version/updates"
           cp video-driver/iris_vpu.ko kobj/tar-install/lib/modules/$firmware_version/updates/
-          # Copy test app, firmware blob, and video clips tar into data/vendor/iris_test_app
           cp "v4l-video-test-app/build/iris_v4l2_test" "$data_dir/"
           cp "${{ github.workspace }}/downloads/vpu20_1v.mbn" "$data_dir2/"
-          #cp video-driver/iris_vpu.ko "$data_dir/"
           cp "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" "$data_dir/"
 
           echo "📂 Contents of $data_dir:"
@@ -207,7 +204,6 @@ jobs:
               --numeric-owner --owner=0 --group=0 \
               -cJf "$workspace/modules.tar.xz" lib/modules
 
-          # Safety checks on the tar
           if tar -Jtvf "$workspace/modules.tar.xz" | grep -q ' -> '; then
             echo "❌ Symlinks found in modules archive (should be none)"; exit 1
           fi
@@ -218,7 +214,6 @@ jobs:
           echo "$workspace/modules.tar.xz" >> "$file_list"
           echo "✅ Queued for upload: $workspace/modules.tar.xz"
 
-          # Kernel Image + merged video ramdisk (no local ramdisk)
           IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
           VMLINUX_PATH="$workspace/kobj/vmlinux"
           MERGED_PATH="$workspace/combineramdisk/video-merged.cpio.gz"
@@ -234,7 +229,6 @@ jobs:
           echo "$MERGED_PATH" >> "$file_list"
           echo "✅ Queued for upload: $MERGED_PATH"
 
-          # Loop through all machines from the build_matrix input and add DTBs
           machines='${{ inputs.build_matrix }}'
           for machine in $(echo "$machines" | jq -r '.[].machine'); do
             dtb="$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb"
@@ -258,20 +252,20 @@ jobs:
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}
 
-      
       - name: Clean up
         if: always()
         shell: bash
         run: |
           set -euo pipefail
+          # FIX: Force cleanup even if files are owned by root
           ws="${{ github.workspace }}"
-          rm -rf "$ws/artqifacts" || true
-          rm -rf "$ws/combineramdisk" || true
-          rm -rf "$ws/downloads" || true
-          rm -rf "$ws/kobj" || true
-          rm -f "$ws/modules.tar.xz" || true
-          rm -f "$ws/local-kernel-ramdisk.cpio.gz" || true
-          
+          echo "🧹 Cleaning up..."
+          sudo rm -rf "$ws/artqifacts" || true
+          sudo rm -rf "$ws/combineramdisk" || true
+          sudo rm -rf "$ws/downloads" || true
+          sudo rm -rf "$ws/kobj" || true
+          sudo rm -f "$ws/modules.tar.xz" || true
+          sudo rm -f "$ws/local-kernel-ramdisk.cpio.gz" || true
           
       - name: Update summary
         if: success() || failure()

@@ -16,10 +16,11 @@ runs:
     - name: Build kernel
       shell: bash
       run: |
+        # Running as root to avoid permission issues. 
+        # Ownership will be fixed in the calling workflow.
         docker run --rm \
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/kernel" \
-          --user $(id -u):$(id -g) \
           ${{ inputs.docker_image }} \
           bash -c "
             make O=../kobj ARCH=arm64 defconfig &&
@@ -33,11 +34,9 @@ runs:
         docker run --rm \
           -v "${{ inputs.workspace_path }}:${{ inputs.workspace_path }}" \
           -w "${{ inputs.workspace_path }}/video-driver" \
-          --user $(id -u):$(id -g) \
           ${{ inputs.docker_image }} \
           bash -c "
             make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=aarch64-linux-gnu-gcc-13 \
               -C ${{ inputs.workspace_path }}/kobj \
               M=\$(pwd) VIDEO_KERNEL_ROOT=\$(pwd) modules
           "
-
