@@ -38,6 +38,17 @@ jobs:
           base_ref: ${{ github.ref_name }}
           caller_workflow: build
 
+      # --- ADDED STEP: FIX PERMISSIONS ---
+      - name: Fix Permissions for Docker Build
+        shell: bash
+        run: |
+          echo "🔧 Adjusting workspace permissions..."
+          # Ensure the workspace is writable by the Docker container user
+          # Using sudo to override if files were created by root in previous steps
+          sudo chmod -R 777 ${{ github.workspace }} || chmod -R 777 ${{ github.workspace }}
+          echo "✅ Permissions fixed."
+      # -----------------------------------
+
       - name: Build workspace
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@video.qclinux.0.0
         with:
@@ -287,4 +298,4 @@ jobs:
               done < "$file_list"
             fi
             echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"    
+          } >> "$GITHUB_STEP_SUMMARY"
