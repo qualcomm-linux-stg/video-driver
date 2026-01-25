@@ -46,6 +46,11 @@ jobs:
           # Check out into 'video-driver' folder so the script finds the nested path
           path: video-driver
 
+      # FIX: Adjust permissions so the Docker build container can write to the directory
+      - name: Fix Permissions for Docker
+        if: github.event_name != 'pull_request'
+        run: chmod -R 777 video-driver
+
       # Step to debug content (Optional, can be removed later)
       - name: Debug Workspace
         run: ls -R
