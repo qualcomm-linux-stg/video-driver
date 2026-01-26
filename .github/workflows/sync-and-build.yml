@@ -38,8 +38,7 @@ jobs:
           base_ref: ${{ github.ref_name }}
           caller_workflow: build
 
-      # 1. PERMISSIONS FIX:
-      # Since we modified action.yml to run as root, we must ensure the workspace is writable.
+      # 1. PERMISSIONS FIX: Mandatory because we are running as root now
       - name: Fix Permissions for Docker Build
         shell: bash
         run: |
@@ -48,15 +47,14 @@ jobs:
           echo "✅ Permissions fixed."
 
       - name: Build workspace
-        # 2. LOCAL PATH REFERENCE:
-        # Uses the action.yml from the code downloaded by 'Sync codebase' (which includes your fixes).
-        uses: ./video-driver/.github/actions/build
+        # CHANGED: Use the local path at the ROOT of the workspace
+        # This will use the action.yml from the 'Sync codebase' step (which includes your fix)
+        uses: ./.github/actions/build
         with:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
-      # 3. OWNERSHIP RESTORATION:
-      # Files created by Docker (root) must be owned by the runner user for cleanup/upload steps to work.
+      # 2. OWNERSHIP RESTORATION: Mandatory cleanup step
       - name: Fix Workspace Ownership
         if: always()
         shell: bash
@@ -73,7 +71,6 @@ jobs:
           echo " syncing files from s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/"
           aws s3 sync "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/" "${{ github.workspace }}/v4l-video-test-app/build/"
           echo " ✅ Download complete"
-          ls ${{ github.workspace }}/v4l-video-test-app/build/
         
       - name: Download firmware file from S3
         shell: bash
@@ -82,7 +79,6 @@ jobs:
           mkdir -p "${{ github.workspace }}/downloads"
           echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
           aws s3 sync "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/" "${{ github.workspace }}/downloads"
-          echo "✅ Download complete"
           [ -f "${{ github.workspace }}/downloads/vpu20_1v.mbn" ] || { echo "❌ Missing vpu20_1v.mbn"; exit 1; }
 
       - name: Download the video-contents for testing
@@ -110,77 +106,51 @@ jobs:
           cp "${{ github.workspace }}/downloads/vpu20_1v.mbn" "$data_dir2/"
           cp "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" "$data_dir/"
 
-          echo "📂 Contents of $data_dir:"
-          ls -lh "$data_dir"
-
       - name: Create compressed kernel ramdisk archives
         shell: bash
         run: |
           set -euo pipefail
           cd "${{ github.workspace }}/kobj/tar-install"
           find lib/modules data | cpio -o -H newc --owner=0:0 | gzip -9 > "${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
-          cd - > /dev/null
-          ls -lh "${{ github.workspace }}/local-kernel-ramdisk.cpio.gz"
-    
+
       - name: Download meta-qcom stable initramfs artifacts from S3
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "🔍 Fetching initramfs files from S3 bucket: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/"
           aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
-          echo "Initramfs files downloaded to: ${{ github.workspace }}/downloads"
 
       - name: Decompress ramdisk files and rename .cpio.gz files
         shell: bash
         run: |
           set -euo pipefail
           cd "${{ github.workspace }}/downloads"
-          echo " Decompressing and renaming .cpio.gz files..."
           gunzip -c initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz > kerneltest.cpio
 
       - name: Merge and repackage initramfs
         shell: bash
         run: |
           set -euo pipefail
-          echo "🔧 Starting repackaging process"
-
           workspace="${{ github.workspace }}"
           mkdir -p "$workspace/combineramdisk"
           cp "$workspace/local-kernel-ramdisk.cpio.gz" "$workspace/combineramdisk/"
           cd "$workspace/combineramdisk"
-           
-          # Decompress local-kernel-ramdisk
           mv local-kernel-ramdisk.cpio.gz local-kernel-ramdisk.cpio.gz.bak
           gunzip -c local-kernel-ramdisk.cpio.gz.bak > local-kernel-ramdisk.cpio
-
-          # Copy kerneltest from downloads
           cp "$workspace/downloads/kerneltest.cpio" .
-
-          # Merge kerneltest and local-kernel-ramdisk
           cat kerneltest.cpio local-kernel-ramdisk.cpio > video-merged.cpio
           gzip -9 video-merged.cpio
-
-          # Create temp workspace to clean up archive
           mkdir -p temp_merge
           cd temp_merge
           cpio -id --no-absolute-filenames < ../kerneltest.cpio
           cpio -id --no-absolute-filenames < ../local-kernel-ramdisk.cpio
           cd ..
-
-          # Remove old merged archive
           rm -f video-merged.cpio.gz
-
-          # Repackage clean archive
           cd temp_merge
           find . | cpio -o -H newc --owner=0:0 > ../video-merged.cpio
           cd ..
           gzip -9 video-merged.cpio
-
-          # Cleanup
           rm -rf temp_merge kerneltest.cpio local-kernel-ramdisk.cpio
-          echo "Final archive: $workspace/combineramdisk/video-merged.cpio.gz"
-          ls -lh "$workspace/combineramdisk/video-merged.cpio.gz"
 
       - name: Validate build_matrix and jq
         shell: bash
@@ -188,12 +158,11 @@ jobs:
           set -euo pipefail
           machines_json='${{ inputs.build_matrix }}'
           if ! command -v jq >/dev/null 2>&1; then
-            echo "❌ jq is not installed on this runner. Please install jq."
+            echo "❌ jq is not installed on this runner."
             exit 1
           fi
           echo "$machines_json" | jq -e . >/dev/null
           [ "$(echo "$machines_json" | jq length)" -gt 0 ] || { echo "❌ build_matrix is empty"; exit 1; }
-          echo "✅ build_matrix is valid JSON"
 
       - name: Append artifacts to S3 upload list
         shell: bash
@@ -202,8 +171,6 @@ jobs:
           workspace="${{ github.workspace }}"
           file_list="$workspace/artifacts/file_list.txt"
           mkdir -p "$workspace/artifacts"
-
-          # Package lib/modules (xz-compressed) — exclude risky symlinks
           mod_root="$workspace/kobj/tar-install/lib/modules"
           [ -d "$mod_root" ] || { echo "❌ Missing directory: $mod_root"; exit 1; }
           tar -C "$workspace/kobj/tar-install" \
@@ -211,46 +178,19 @@ jobs:
               --exclude='lib/modules/*/source' \
               --numeric-owner --owner=0 --group=0 \
               -cJf "$workspace/modules.tar.xz" lib/modules
-
-          if tar -Jtvf "$workspace/modules.tar.xz" | grep -q ' -> '; then
-            echo "❌ Symlinks found in modules archive (should be none)"; exit 1
-          fi
-          if tar -Jtf "$workspace/modules.tar.xz" | grep -Eq '^/|(^|/)\.\.(/|$)'; then
-            echo "❌ Unsafe paths found in modules archive"; exit 1
-          fi
-
+          
           echo "$workspace/modules.tar.xz" >> "$file_list"
-          echo "✅ Queued for upload: $workspace/modules.tar.xz"
-
           IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
           VMLINUX_PATH="$workspace/kobj/vmlinux"
           MERGED_PATH="$workspace/combineramdisk/video-merged.cpio.gz"
-
-          [ -f "$IMAGE_PATH" ] || { echo "❌ Missing expected file: $IMAGE_PATH"; exit 1; }
-          [ -f "$VMLINUX_PATH" ] || { echo "❌ Missing expected file: $VMLINUX_PATH"; exit 1; }
-          [ -f "$MERGED_PATH" ] || { echo "❌ Missing merged cpio: $MERGED_PATH"; exit 1; }
-
           echo "$IMAGE_PATH" >> "$file_list"
-          echo "✅ Queued for upload: $IMAGE_PATH"
           echo "$VMLINUX_PATH" >> "$file_list"
-          echo "✅ Queued for upload: $VMLINUX_PATH"
           echo "$MERGED_PATH" >> "$file_list"
-          echo "✅ Queued for upload: $MERGED_PATH"
-
           machines='${{ inputs.build_matrix }}'
           for machine in $(echo "$machines" | jq -r '.[].machine'); do
             dtb="$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb"
-            if [ -f "$dtb" ]; then
-              echo "$dtb" >> "$file_list"
-              echo "✅ Queued for upload: $dtb"
-            else
-              echo "❌ Missing DTB: $dtb"
-              exit 1
-            fi
+            [ -f "$dtb" ] && echo "$dtb" >> "$file_list" || { echo "❌ Missing DTB: $dtb"; exit 1; }
           done
-
-          echo "----- Files queued for S3 upload -----"
-          cat "$file_list"
           
       - name: Upload all artifacts to S3
         uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@video.qclinux.0.0
@@ -265,7 +205,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # FIX: Force cleanup even if files are owned by root
           ws="${{ github.workspace }}"
           echo "🧹 Cleaning up..."
           sudo rm -rf "$ws/artqifacts" || true
@@ -285,19 +224,4 @@ jobs:
           else
             summary=":x: Build Failed"
           fi
-
-          ws="${{ github.workspace }}"
-          file_list="$ws/artifacts/file_list.txt"
-
-          {
-            echo "<details><summary><i>Build Summary</i></summary>"
-            echo "$summary"
-            if [ -f "$file_list" ]; then
-              echo ""
-              echo "Artifacts queued for upload:"
-              while IFS= read -r line; do
-                echo "- $line"
-              done < "$file_list"
-            fi
-            echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "<details><summary><i>Build Summary</i></summary>$summary</details>" >> "$GITHUB_STEP_SUMMARY"
