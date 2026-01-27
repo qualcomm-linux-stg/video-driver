@@ -38,7 +38,7 @@ jobs:
           base_ref: ${{ github.ref_name }}
           caller_workflow: build
 
-      # 1. PERMISSIONS FIX: Mandatory because we are running as root now
+      # 1. PERMISSIONS FIX: Mandatory because Docker runs as root
       - name: Fix Permissions for Docker Build
         shell: bash
         run: |
@@ -47,14 +47,14 @@ jobs:
           echo "✅ Permissions fixed."
 
       - name: Build workspace
-        # CHANGED: Use the local path at the ROOT of the workspace
-        # This will use the action.yml from the 'Sync codebase' step (which includes your fix)
-        uses: ./.github/actions/build
+        # CHANGED: Using remote reference to fix 'action.yml not found'
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@video.qclinux.0.0
         with:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
       # 2. OWNERSHIP RESTORATION: Mandatory cleanup step
+      # Must run always() to ensure cleanup happens even if build fails
       - name: Fix Workspace Ownership
         if: always()
         shell: bash
@@ -207,7 +207,8 @@ jobs:
           set -euo pipefail
           ws="${{ github.workspace }}"
           echo "🧹 Cleaning up..."
-          sudo rm -rf "$ws/artqifacts" || true
+          # Fixed typo: artqifacts -> artifacts
+          sudo rm -rf "$ws/artifacts" || true
           sudo rm -rf "$ws/combineramdisk" || true
           sudo rm -rf "$ws/downloads" || true
           sudo rm -rf "$ws/kobj" || true
