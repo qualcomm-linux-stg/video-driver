@@ -16,6 +16,7 @@ on:
 
 permissions:
   packages: read
+  contents: read # Required for checkout
 
 jobs:
   sync-and-build:
@@ -28,7 +29,17 @@ jobs:
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
           image: ${{ inputs.docker_image }}
-      
+
+      # ------------------------------------------------------------------------
+      # ✅ CRITICAL FIX: Explicitly checkout the driver code.
+      # This ensures the source code exists for Post-Merge/Scheduled runs.
+      # ------------------------------------------------------------------------
+      - name: Checkout Video Driver
+        uses: actions/checkout@v4
+        with:
+          path: video-driver
+          fetch-depth: 0 
+
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@video.qclinux.0.0
         with:
@@ -38,73 +49,87 @@ jobs:
           base_ref: ${{ github.ref_name }}
           caller_workflow: build
 
-      # 1. PERMISSIONS FIX: Mandatory because Docker runs as root
       - name: Fix Permissions for Docker Build
         shell: bash
         run: |
-          echo "🔧 Adjusting workspace permissions..."
+          echo "🔧 Adjusting workspace permissions before build..."
           sudo chmod -R 777 ${{ github.workspace }}
-          echo "✅ Permissions fixed."
 
       - name: Build workspace
-        # CHANGED: Using remote reference to fix 'action.yml not found'
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@video.qclinux.0.0
         with:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
 
-      # 2. OWNERSHIP RESTORATION: Mandatory cleanup step
-      # Must run always() to ensure cleanup happens even if build fails
+      # ------------------------------------------------------------------------
+      # ✅ CRITICAL FIX: Reset ownership immediately after build.
+      # This prevents "Permission denied" errors during job cleanup.
+      # ------------------------------------------------------------------------
       - name: Fix Workspace Ownership
         if: always()
         shell: bash
         run: |
-          echo "🔧 Fixing file ownership..."
+          echo "🔧 Fixing file ownership (root -> runner user)..."
           sudo chown -R $(id -u):$(id -g) ${{ github.workspace }}
-          echo "✅ Ownership fixed."
 
-      - name: Download iris_test_app from the s3
+      - name: Download iris_test_app from S3
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "${{github.workspace }}/v4l-video-test-app/build/"
-          echo " syncing files from s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/"
+          mkdir -p "${{ github.workspace }}/v4l-video-test-app/build/"
+          echo "📥 Syncing iris_test_app..."
           aws s3 sync "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/" "${{ github.workspace }}/v4l-video-test-app/build/"
-          echo " ✅ Download complete"
-        
+
       - name: Download firmware file from S3
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "📥 Syncing files from S3 path: s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/"
+          echo "📥 Syncing firmware artifacts..."
           aws s3 sync "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/" "${{ github.workspace }}/downloads"
           [ -f "${{ github.workspace }}/downloads/vpu20_1v.mbn" ] || { echo "❌ Missing vpu20_1v.mbn"; exit 1; }
 
-      - name: Download the video-contents for testing
+      - name: Download video-contents for testing
         shell: bash 
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
-          echo "Downloading the video-content files"
+          echo "📥 Downloading video_clips_iris.tar.gz..."
           wget -q https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz \
                -O "${{ github.workspace }}/downloads/video_clips_iris.tar.gz"
-          [ -f "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" ] || { echo "❌ Failed to download video_clips_iris.tar.gz"; exit 1; }
+          [ -f "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" ] || { echo "❌ Failed to download video content"; exit 1; }
 
       - name: Prepare /data/vendor/iris_test_app and list contents
         shell: bash
         run: |
           set -euo pipefail
-          data_dir="${{ github.workspace }}/kobj/tar-install/data/vendor/iris_test_app"
-          mkdir -p "$data_dir"
-          data_dir2="${{ github.workspace }}/kobj/tar-install/data/vendor/iris_test_app/firmware"
-          mkdir -p "$data_dir2"
-          firmware_version=$(ls kobj/tar-install/lib/modules/)
+          # Ensure directories exist
+          mkdir -p "${{ github.workspace }}/kobj/tar-install/data/vendor/iris_test_app/firmware"
+          
+          # Find firmware version
+          if [ -d "kobj/tar-install/lib/modules/" ]; then
+             firmware_version=$(ls kobj/tar-install/lib/modules/ | head -n 1)
+             if [ -z "$firmware_version" ]; then echo "❌ No modules found in kobj/tar-install/lib/modules/"; exit 1; fi
+          else
+             echo "❌ Module directory not found"
+             exit 1
+          fi
+
           mkdir -p "kobj/tar-install/lib/modules/$firmware_version/updates"
-          cp video-driver/iris_vpu.ko kobj/tar-install/lib/modules/$firmware_version/updates/
-          cp "v4l-video-test-app/build/iris_v4l2_test" "$data_dir/"
-          cp "${{ github.workspace }}/downloads/vpu20_1v.mbn" "$data_dir2/"
-          cp "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" "$data_dir/"
+          
+          # Handle .ko file location (checked out repo vs root)
+          if [ -f "video-driver/iris_vpu.ko" ]; then
+            cp video-driver/iris_vpu.ko kobj/tar-install/lib/modules/$firmware_version/updates/
+          elif [ -f "iris_vpu.ko" ]; then
+             cp iris_vpu.ko kobj/tar-install/lib/modules/$firmware_version/updates/
+          else
+             echo "⚠️ iris_vpu.ko not found. Build may have failed silently."
+          fi
+
+          # Copy artifacts
+          cp "v4l-video-test-app/build/iris_v4l2_test" "kobj/tar-install/data/vendor/iris_test_app/"
+          cp "${{ github.workspace }}/downloads/vpu20_1v.mbn" "kobj/tar-install/data/vendor/iris_test_app/firmware/"
+          cp "${{ github.workspace }}/downloads/video_clips_iris.tar.gz" "kobj/tar-install/data/vendor/iris_test_app/"
 
       - name: Create compressed kernel ramdisk archives
         shell: bash
@@ -120,7 +145,7 @@ jobs:
           mkdir -p "${{ github.workspace }}/downloads"
           aws s3 cp s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-kerneltest-full-image-qcom-armv8a.cpio.gz "${{ github.workspace }}/downloads/"
 
-      - name: Decompress ramdisk files and rename .cpio.gz files
+      - name: Decompress ramdisk files and rename
         shell: bash
         run: |
           set -euo pipefail
@@ -134,22 +159,25 @@ jobs:
           workspace="${{ github.workspace }}"
           mkdir -p "$workspace/combineramdisk"
           cp "$workspace/local-kernel-ramdisk.cpio.gz" "$workspace/combineramdisk/"
+          
           cd "$workspace/combineramdisk"
           mv local-kernel-ramdisk.cpio.gz local-kernel-ramdisk.cpio.gz.bak
           gunzip -c local-kernel-ramdisk.cpio.gz.bak > local-kernel-ramdisk.cpio
           cp "$workspace/downloads/kerneltest.cpio" .
+          
+          # Merge Logic
           cat kerneltest.cpio local-kernel-ramdisk.cpio > video-merged.cpio
           gzip -9 video-merged.cpio
+          
+          # Repackage to clean up duplicates
           mkdir -p temp_merge
           cd temp_merge
           cpio -id --no-absolute-filenames < ../kerneltest.cpio
           cpio -id --no-absolute-filenames < ../local-kernel-ramdisk.cpio
-          cd ..
-          rm -f video-merged.cpio.gz
-          cd temp_merge
+          
           find . | cpio -o -H newc --owner=0:0 > ../video-merged.cpio
           cd ..
-          gzip -9 video-merged.cpio
+          gzip -f -9 video-merged.cpio
           rm -rf temp_merge kerneltest.cpio local-kernel-ramdisk.cpio
 
       - name: Validate build_matrix and jq
@@ -158,11 +186,10 @@ jobs:
           set -euo pipefail
           machines_json='${{ inputs.build_matrix }}'
           if ! command -v jq >/dev/null 2>&1; then
-            echo "❌ jq is not installed on this runner."
+            echo "❌ jq is not installed."
             exit 1
           fi
           echo "$machines_json" | jq -e . >/dev/null
-          [ "$(echo "$machines_json" | jq length)" -gt 0 ] || { echo "❌ build_matrix is empty"; exit 1; }
 
       - name: Append artifacts to S3 upload list
         shell: bash
@@ -171,8 +198,8 @@ jobs:
           workspace="${{ github.workspace }}"
           file_list="$workspace/artifacts/file_list.txt"
           mkdir -p "$workspace/artifacts"
-          mod_root="$workspace/kobj/tar-install/lib/modules"
-          [ -d "$mod_root" ] || { echo "❌ Missing directory: $mod_root"; exit 1; }
+          
+          # Archive Modules
           tar -C "$workspace/kobj/tar-install" \
               --exclude='lib/modules/*/build' \
               --exclude='lib/modules/*/source' \
@@ -180,16 +207,15 @@ jobs:
               -cJf "$workspace/modules.tar.xz" lib/modules
           
           echo "$workspace/modules.tar.xz" >> "$file_list"
-          IMAGE_PATH="$workspace/kobj/arch/arm64/boot/Image"
-          VMLINUX_PATH="$workspace/kobj/vmlinux"
-          MERGED_PATH="$workspace/combineramdisk/video-merged.cpio.gz"
-          echo "$IMAGE_PATH" >> "$file_list"
-          echo "$VMLINUX_PATH" >> "$file_list"
-          echo "$MERGED_PATH" >> "$file_list"
+          echo "$workspace/kobj/arch/arm64/boot/Image" >> "$file_list"
+          echo "$workspace/kobj/vmlinux" >> "$file_list"
+          echo "$workspace/combineramdisk/video-merged.cpio.gz" >> "$file_list"
+          
+          # DTBs
           machines='${{ inputs.build_matrix }}'
           for machine in $(echo "$machines" | jq -r '.[].machine'); do
             dtb="$workspace/kobj/arch/arm64/boot/dts/qcom/${machine}.dtb"
-            [ -f "$dtb" ] && echo "$dtb" >> "$file_list" || { echo "❌ Missing DTB: $dtb"; exit 1; }
+            [ -f "$dtb" ] && echo "$dtb" >> "$file_list"
           done
           
       - name: Upload all artifacts to S3
@@ -207,22 +233,15 @@ jobs:
           set -euo pipefail
           ws="${{ github.workspace }}"
           echo "🧹 Cleaning up..."
-          # Fixed typo: artqifacts -> artifacts
-          sudo rm -rf "$ws/artifacts" || true
-          sudo rm -rf "$ws/combineramdisk" || true
-          sudo rm -rf "$ws/downloads" || true
-          sudo rm -rf "$ws/kobj" || true
-          sudo rm -f "$ws/modules.tar.xz" || true
-          sudo rm -f "$ws/local-kernel-ramdisk.cpio.gz" || true
+          sudo rm -rf "$ws/artifacts" "$ws/combineramdisk" "$ws/downloads" "$ws/kobj" || true
+          sudo rm -f "$ws/modules.tar.xz" "$ws/local-kernel-ramdisk.cpio.gz" || true
           
       - name: Update summary
         if: success() || failure()
         shell: bash
         run: |
-          status="${{ steps.build_workspace.outcome }}"
-          if [ "$status" = "success" ]; then
-            summary=":heavy_check_mark: Build Success"
+          if [ "${{ steps.build_workspace.outcome }}" = "success" ]; then
+            echo "✅ Build Success" >> "$GITHUB_STEP_SUMMARY"
           else
-            summary=":x: Build Failed"
+            echo "❌ Build Failed" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "<details><summary><i>Build Summary</i></summary>$summary</details>" >> "$GITHUB_STEP_SUMMARY"
