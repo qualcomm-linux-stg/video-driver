@@ -45,6 +45,11 @@ jobs:
           ref: ${{ inputs.target_branch || github.ref_name }}
           # Check out into 'video-driver' folder so the script finds the nested path
           path: video-driver
+      
+      # # FIX: Adjust permissions so the Docker build container can write to the directory
+      # - name: Fix Permissions for Docker
+      #   if: github.event_name != 'pull_request'
+      #   run: chmod -R 777 video-driver    
                 
       - name: Load Parameters
         id: loading
