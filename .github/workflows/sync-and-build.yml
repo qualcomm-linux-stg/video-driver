@@ -60,12 +60,12 @@ jobs:
           docker_image: kmake-image:ver.1.0
           workspace_path: ${{ github.workspace }}
       
-      # - name: Fix Workspace Ownership
-      #   if: always()
-      #   shell: bash
-      #   run: |
-      #     echo "🔧 Fixing file ownership (root -> runner user)..."
-      #     sudo chown -R $(id -u):$(id -g) ${{ github.workspace }}
+      - name: Fix Workspace Ownership
+        if: always()
+        shell: bash
+        run: |
+          echo "🔧 Fixing file ownership (root -> runner user)..."
+          sudo chown -R $(id -u):$(id -g) ${{ github.workspace }}
 
       - name: Download iris_test_app from the s3
         shell: bash
