@@ -10,9 +10,6 @@ jobs:
     # We call the reusable workflow
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
     secrets: inherit
-    with:
-      # We pass the specific branch we want to build
-      target_branch: video.qclinux.0.0
 
   build:
     needs: loading
