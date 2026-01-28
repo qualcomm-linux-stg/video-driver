@@ -28,16 +28,13 @@ jobs:
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
           image: ${{ inputs.docker_image }}
-    
-	    # ------------------------------------------------------------------------
+          
+      # ------------------------------------------------------------------------
       # ✅ CRITICAL FIX: Explicitly checkout the driver code.
       # This ensures the source code exists for Post-Merge/Scheduled runs.
       # ------------------------------------------------------------------------
       - name: Checkout Video Driver
-        uses: actions/checkout@v4
-        with:
-          path: video-driver
-          fetch-depth: 0 
+        uses: actions/checkout@v4    
 
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@video.qclinux.0.0
