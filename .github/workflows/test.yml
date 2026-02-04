@@ -1,5 +1,5 @@
 name: _test
-description: Run tests on LAVA
+description: Run tests on LAVA and generate summary
 
 on:
   workflow_call:
@@ -91,6 +91,22 @@ jobs:
           echo "Lava Job: $job_url"
           echo "JOB_ID=$job_id" >> $GITHUB_ENV
 
+      # ------------------------------------------------------------------------
+      # NEW STEP: Save Job ID to JSON for the Summary Job
+      # ------------------------------------------------------------------------
+      - name: Save Job ID for Reporting
+        if: always()
+        run: |
+          # Save ID and Machine Name to a JSON file
+          echo "{\"id\": \"$JOB_ID\", \"machine\": \"${{ matrix.build_matrix.machine }}\"}" > lava-job-${{ matrix.build_matrix.machine }}.json
+
+      - name: Upload Job ID Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lava-job-data-${{ matrix.build_matrix.machine }}
+          path: lava-job-${{ matrix.build_matrix.machine }}.json
+
       - name: Check lava job results
         id: check_job
         run: |
@@ -177,23 +193,150 @@ jobs:
             exit 1
           fi
 
-      - name: Update summary
-        if: success() || failure()
+  # ------------------------------------------------------------------------
+  # NEW JOB: Generate Summary
+  # Aggregates results from all matrix runs and publishes a table
+  # ------------------------------------------------------------------------
+  generate-summary:
+    needs: test
+    if: always() # Run even if one of the tests failed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all Job IDs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lava-job-data-*
+          merge-multiple: true
+          path: artifacts
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq curl
+
+      - name: Generate LAVA Test Job Summary
+        id: generate
         shell: bash
+        env:
+          # Configuration for your specific LAVA instance
+          LAVA_URL: "https://lava-oss.qualcomm.com"
+          LAVA_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
+          SUMMARY_FILE: step-summary.md
         run: |
-          if [ "${{ steps.create_job_definition.conclusion }}" == 'failure' ]; then
-            status=":x: Test job failed"
-          else
-            status="${{ steps.check_job.outputs.summary }}"
-            job_url="${{ steps.submit_job.outputs.job_url }}"
-            job_id="${{ steps.submit_job.outputs.job_id }}"
-          fi
-          SUMMARY='
-          <details><summary><i>'${status}'</i></summary>
-          <br>
-          JOB ID: <a href="'${job_url}'">'${job_id}'</a>
-          </details>
-          '
-          echo -e "$SUMMARY" >> $GITHUB_STEP_SUMMARY
-          # JOB_INFO="- [Job $job_id on ${{ matrix.build_matrix.machine }}]($job_url)"
-          # echo -e "$JOB_INFO" > job_info.md
+          # 1. FETCH DATA AND BUILD JSON STRUCTURE
+          #    This loop queries the API for each Job ID found in artifacts
+          INPUT=$(for TESTJOB in $(find artifacts -name "lava-job-*.json")
+          do
+              JOB_ID=$(cat "${TESTJOB}" | jq -r ".id")
+              AUTH_HEADER="Authorization: Token $LAVA_TOKEN"
+              
+              # Fetch Job Details
+              JOB_DETAILS=$(curl -s -H "$AUTH_HEADER" "$LAVA_URL/api/v0.2/jobs/$JOB_ID/")
+              JOB_STATE=$(echo "$JOB_DETAILS" | jq -r ".state // empty")
+              JOB_DEVICE_TYPE=$(echo "$JOB_DETAILS" | jq -r ".requested_device_type // empty")
+              
+              if [ -z "$JOB_DEVICE_TYPE" ] || [ "$JOB_DEVICE_TYPE" = "null" ]; then 
+                  JOB_DEVICE_TYPE="unknown-$JOB_ID"
+              fi
+
+              TEST_RESULTS="{}"
+
+              if [ "${JOB_STATE}" = "Finished" ]; then
+                  # Fetch Suites
+                  JOB_SUITES=$(curl -s -H "$AUTH_HEADER" "$LAVA_URL/api/v0.2/jobs/$JOB_ID/suites/")
+                  
+                  # Iterate through suites to find test cases
+                  TEST_RESULTS=$(for SUITE in $(echo "$JOB_SUITES" | jq -r -c ".results[]?")
+                  do
+                      SUITE_NAME=$(echo "$SUITE" | jq -r ".name")
+                      SUITE_ID=$(echo "$SUITE" | jq -r ".id")
+                      SUITE_TESTS=$(curl -s -H "$AUTH_HEADER" "$LAVA_URL/api/v0.2/jobs/$JOB_ID/suites/$SUITE_ID/tests/")
+                      
+                      if [ "$SUITE_NAME" != "lava" ]; then
+                          # Normal Test Suites
+                          TEST_NAME=$(echo "$SUITE_TESTS" | jq -r -c ".results[] | .name")
+                          TEST_RESULT=$(echo "$SUITE_TESTS" | jq -r -c ".results[] | .result")
+                          TEST_URL="$LAVA_URL/results/$JOB_ID/$SUITE_ID"
+                          
+                          # Construct JSON Object
+                          TEST_RESULT_OBJ=$(jq --arg url "$TEST_URL" --arg result "$TEST_RESULT" -n -c '$ARGS.named')
+                          if [ -n "$TEST_NAME" ]; then
+                              jq -n -c --arg key "$TEST_NAME" --argjson value "$TEST_RESULT_OBJ" '$ARGS.named'
+                          fi
+                      else
+                          # "lava" suite usually implies the boot/provisioning process
+                          TEST_NAME="boot"
+                          TEST_URL="$LAVA_URL/results/$JOB_ID"
+                          TEST_RESULT_OBJ=$(jq --arg url "$TEST_URL" --arg result "pass" -n -c '$ARGS.named')
+                          jq -n -c --arg key "$TEST_NAME" --argjson value "$TEST_RESULT_OBJ" '$ARGS.named'
+                      fi
+                  done | jq -s -c --sort-keys 'from_entries')
+              fi
+              
+              echo "{\"key\": \"$JOB_DEVICE_TYPE\", \"value\": $TEST_RESULTS}" | jq -c .
+          done | jq -s -c 'reduce .[] as $i ({}; .[$i.key] = ((.[$i.key] // {}) + $i.value))')
+
+          # 2. GENERATE MARKDOWN TABLE
+          
+          DEVICES=$(echo "$INPUT" | jq -r 'keys[]' | sort)
+          RESULTS=$(echo "$INPUT" | jq -r '.[] | keys[]?' | sort -u)
+
+          echo "### LAVA Test Summary" > $SUMMARY_FILE
+          echo "" >> $SUMMARY_FILE
+
+          # Table Header
+          printf "| Test Case |" >> $SUMMARY_FILE
+          for D in $DEVICES; do printf " %s |" "$D" >> $SUMMARY_FILE; done
+          echo "" >> $SUMMARY_FILE
+
+          # Table Separator
+          printf "| :--- |" >> $SUMMARY_FILE
+          for _ in $DEVICES; do printf " :---: |" >> $SUMMARY_FILE; done
+          echo "" >> $SUMMARY_FILE
+
+          # Table Body
+          for R in $RESULTS; do
+            printf "| **%s** |" "$R" >> $SUMMARY_FILE
+            for D in $DEVICES; do
+              VALUE=$(echo "$INPUT" | jq -r --arg d "$D" --arg r "$R" '.[$d][$r].result // ""')
+              URL=$(echo "$INPUT" | jq -r --arg d "$D" --arg r "$R" '.[$d][$r].url // ""')
+              
+              ICON=":no_entry_sign:"
+              if [ "${VALUE}" = "pass" ]; then ICON=":white_check_mark:"; fi
+              if [ "${VALUE}" = "fail" ]; then ICON=":x:"; fi
+              if [ "${VALUE}" = "skip" ]; then ICON=":warning:"; fi
+              
+              if [ -n "$URL" ] && [ "$URL" != "null" ]; then
+                 printf " [%s](%s) |" "$ICON" "$URL" >> $SUMMARY_FILE
+              else
+                 printf " %s |" "$ICON" >> $SUMMARY_FILE
+              fi
+            done
+            echo "" >> $SUMMARY_FILE
+          done
+
+          # 3. JOB DETAILS LIST
+          echo "" >> $SUMMARY_FILE
+          echo "#### Job Details" >> $SUMMARY_FILE
+          echo "| Job ID | Device | State | Health | Link |" >> $SUMMARY_FILE
+          echo "| :--- | :--- | :--- | :--- | :--- |" >> $SUMMARY_FILE
+
+          for TESTJOB in $(find artifacts -name "lava-job-*.json"); do
+              JOB_ID=$(cat "${TESTJOB}" | jq -r ".id")
+              AUTH_HEADER="Authorization: Token $LAVA_TOKEN"
+              JOB_DETAILS=$(curl -s -H "$AUTH_HEADER" "$LAVA_URL/api/v0.2/jobs/$JOB_ID/")
+              
+              HEALTH=$(echo "$JOB_DETAILS" | jq -r ".health")
+              STATE=$(echo "$JOB_DETAILS" | jq -r ".state")
+              DEVICE=$(echo "$JOB_DETAILS" | jq -r ".requested_device_type")
+              URL="$LAVA_URL/results/$JOB_ID"
+              
+              echo "| $JOB_ID | $DEVICE | $STATE | $HEALTH | [View]($URL) |" >> $SUMMARY_FILE
+          done
+
+          # 4. PUBLISH TO GITHUB SUMMARY
+          cat $SUMMARY_FILE >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Summary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lava-summary-report
+          path: step-summary.md
