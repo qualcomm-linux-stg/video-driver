@@ -252,15 +252,18 @@ jobs:
                       
                       if [ "$SUITE_NAME" != "lava" ]; then
                           # Normal Test Suites
-                          TEST_NAME=$(echo "$SUITE_TESTS" | jq -r -c ".results[] | .name")
-                          TEST_RESULT=$(echo "$SUITE_TESTS" | jq -r -c ".results[] | .result")
-                          TEST_URL="$LAVA_URL/results/$JOB_ID/$SUITE_ID"
-                          
-                          # Construct JSON Object
-                          TEST_RESULT_OBJ=$(jq --arg url "$TEST_URL" --arg result "$TEST_RESULT" -n -c '$ARGS.named')
-                          if [ -n "$TEST_NAME" ]; then
-                              jq -n -c --arg key "$TEST_NAME" --argjson value "$TEST_RESULT_OBJ" '$ARGS.named'
-                          fi
+                          # FIX: Loop through each result item individually to handle multiple tests per suite (e.g., base + overlay)
+                          echo "$SUITE_TESTS" | jq -c ".results[]" | while read -r TEST_ITEM; do
+                              T_NAME=$(echo "$TEST_ITEM" | jq -r ".name")
+                              T_RESULT=$(echo "$TEST_ITEM" | jq -r ".result")
+                              TEST_URL="$LAVA_URL/results/$JOB_ID/$SUITE_ID"
+                              
+                              # Construct JSON Object
+                              TEST_RESULT_OBJ=$(jq --arg url "$TEST_URL" --arg result "$T_RESULT" -n -c '$ARGS.named')
+                              if [ -n "$T_NAME" ]; then
+                                  jq -n -c --arg key "$T_NAME" --argjson value "$TEST_RESULT_OBJ" '$ARGS.named'
+                              fi
+                          done
                       else
                           # "lava" suite usually implies the boot/provisioning process
                           TEST_NAME="boot"
