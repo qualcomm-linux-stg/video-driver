@@ -22,7 +22,7 @@
     "target": "qcs8300-ride",
     "buildid": "QCS8300.LE.1.0-00137-STD.PROD-1",
     "firmwareid": "qcs8300-ride"
-  }
+  }, 
   "qcs615-ride": {
     "machine": "qcs615-ride",
     "firmware": "qcs615-ride",
