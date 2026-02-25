@@ -23,4 +23,14 @@
     "buildid": "QCS8300.LE.1.0-00137-STD.PROD-1",
     "firmwareid": "qcs8300-ride"
   }
+  "qcs615-ride": {
+    "machine": "qcs615-ride",
+    "firmware": "qcs615-ride",
+    "lavaname": "qcs615-ride",
+    "target": "qcs615-ride",
+    "buildid": "QCS615.LE.1.0-00016-STD.PROD-1",
+    "firmwareid": "qcs615-ride"
+  }
+
+
 }
