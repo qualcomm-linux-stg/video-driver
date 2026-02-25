@@ -66,9 +66,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo ${{github.workspace }}
           mkdir -p "${{github.workspace }}/v4l-video-test-app/build/"
           echo " syncing files from s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/"
-          aws s3 cp "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/" "${{ github.workspace }}/v4l-video-test-app/build/"
+          aws s3 cp "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/" "${{ github.workspace }}/v4l-video-test-app/build/" --recursive
           echo " ✅ Download complete"
           ls ${{ github.workspace }}/v4l-video-test-app/build/
         
@@ -78,7 +79,7 @@ jobs:
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/downloads"
           echo "📥 Syncing files from S3 path: s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/"
-          aws s3 cp "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/" "${{ github.workspace }}/downloads"
+          aws s3 cp "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/artifacts/vpu20_1v.mbn" "${{ github.workspace }}/downloads"
           echo "✅ Download complete"
           [ -f "${{ github.workspace }}/downloads/vpu20_1v.mbn" ] || { echo "❌ Missing vpu20_1v.mbn"; exit 1; }
 
