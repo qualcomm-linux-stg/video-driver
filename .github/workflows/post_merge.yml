@@ -10,12 +10,12 @@ on:
 
 jobs:
   loading:
-    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
+    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
     secrets: inherit
 
   build:
     needs: loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.main.stage
+    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.0.0
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
@@ -23,7 +23,7 @@ jobs:
 
   lava-test:
     needs: [loading, build]
-    uses: qualcomm-linux/video-driver/.github/workflows/test.yml@video.qclinux.main.stage
+    uses: qualcomm-linux/video-driver/.github/workflows/test.yml@video.qclinux.0.0
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
