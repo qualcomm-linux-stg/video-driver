@@ -1,0 +1,30 @@
+name: UAPI and Driver Checks
+
+on:
+  pull_request:
+    # Optional: limit to main branch
+    branches: video.qclinux.main.stage
+
+jobs:
+  uapi-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine base and head SHAs
+        id: shas
+        run: |
+          # PR base commit
+          echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          # PR head (current) commit
+          echo "head_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Run UAPI + driver checks
+        run: |
+          export BASE_SHA="${{ steps.shas.outputs.base_sha }}"
+          export HEAD_SHA="${{ steps.shas.outputs.head_sha }}"
+          ./ci/check-uapi-and-driver.sh
