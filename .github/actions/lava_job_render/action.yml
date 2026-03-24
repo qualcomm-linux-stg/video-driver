@@ -71,7 +71,7 @@ runs:
       uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@video.qclinux.main.stage
       with:
         local_file: ../job_render/data/metadata.json
-        s3_bucket: qli-prd-video-gh-artifacts
+        s3_bucket: qli-stg-video-gh-artifacts
         mode: single-upload
 
     - name: Create template json (cloudData.json)
