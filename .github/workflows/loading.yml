@@ -29,7 +29,7 @@ jobs:
       # Uses your custom sync action to merge PR code with base
       - name: Sync codebase (PR)
         if: github.event_name == 'pull_request'
-        uses: qualcomm-linux/video-driver/.github/actions/sync@video.qclinux.main.stage
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@video.qclinux.main.stage
         with:
           event_name: ${{ github.event_name }}
           pr_ref: ${{ github.event.pull_request.head.ref }}
@@ -49,4 +49,4 @@ jobs:
                 
       - name: Load Parameters
         id: loading
-        uses: qualcomm-linux/video-driver/.github/actions/loading@video.qclinux.main.stage
+        uses: qualcomm-linux-stg/video-driver/.github/actions/loading@video.qclinux.main.stage
