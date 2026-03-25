@@ -34,7 +34,7 @@
   "sm8750-mtp": {
   "machine": "sm8750-mtp",
   "firmware": "sm8750-mtp",
-  "lavaname": "pakala",
+  "lavaname": "sm8750-mtp",
   "target": "sm8750-mtp",
   "buildid": "YOUR_BUILD_ID",
   "firmwareid": "sm8750-mtp"
