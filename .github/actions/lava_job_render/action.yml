@@ -74,7 +74,7 @@ runs:
         s3_bucket: qli-stg-video-gh-artifacts
         mode: single-upload
 
-    - name: Create template json (cloudData.json)
+    - name: Create template json cloudData.json
       shell: bash
       run: |
         echo "Populating cloudData.json with kernel, vmlinux, modules, metadata, ramdisk"
@@ -134,7 +134,9 @@ runs:
     - name: Update firmware and ramdisk
       shell: bash
       run: |
+        set -euo pipefail
         cd ../job_render
+
         # Fallback to stable kerneltest ramdisk only if merged ramdisk is not available
         if [ -z "${{ steps.process_urls.outputs.merged_ramdisk_url }}" ]; then
           echo "Merged ramdisk not found. Using stable kerneltest ramdisk fallback."
@@ -152,7 +154,19 @@ runs:
 
         # Optional board-specific firmware initramfs
         if [ -n "${{ env.FIRMWARE }}" ]; then
-          firmware_url="$(aws s3 presign s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/initramfs-firmware-${{ env.FIRMWARE }}-image-qcom-armv8a.cpio.gz --expires 7600)"
+          case "${{ env.FIRMWARE }}" in
+            sm8750-mtp)
+              FW_FILE="initramfs-firmware-dragonboard410c-image-sm8750-mtp.cpio.gz"
+              ;;
+            *)
+              FW_FILE="initramfs-firmware-${{ env.FIRMWARE }}-image-qcom-armv8a.cpio.gz"
+              ;;
+          esac
+
+          echo "Using firmware file: $FW_FILE"
+
+          firmware_url="$(aws s3 presign s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/artifacts/initramfs/${FW_FILE} --expires 7600)"
+
           docker run -i --rm \
             --user "$(id -u):$(id -g)" \
             --workdir="$PWD" \
@@ -160,6 +174,8 @@ runs:
             -e firmware_url="$firmware_url" \
             ${{ inputs.docker_image }} \
             jq '.artifacts.firmware = env.firmware_url' data/cloudData.json > temp.json && mv temp.json data/cloudData.json
+        else
+          echo "No FIRMWARE provided; skipping firmware artifact update."
         fi
 
     - name: Create lava_job_definition

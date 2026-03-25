@@ -30,5 +30,13 @@
     "target": "qcs615-ride",
     "buildid": "QCS615.LE.1.0-00016-STD.PROD-1",
     "firmwareid": "qcs615-ride"
-  }
+  },
+  "sm8750-mtp": {
+  "machine": "sm8750-mtp",
+  "firmware": "sm8750-mtp",
+  "lavaname": "pakala",
+  "target": "sm8750-mtp",
+  "buildid": "YOUR_BUILD_ID",
+  "firmwareid": "sm8750-mtp"
+}
 }
