@@ -1,9 +1,9 @@
 name: Qualcomm Preflight Checks
 on:
   pull_request_target:
-    branches: [ video.qclinux.main.stage ]
+    branches: [ video.qclinux.main.clone ]
   push:
-    branches: [ video.qclinux.main.stage ]
+    branches: [ video.qclinux.main.clone ]
   workflow_dispatch:
 
 permissions:
