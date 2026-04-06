@@ -109,90 +109,123 @@ jobs:
 
       - name: Check lava job results
         id: check_job
+        shell: bash
         run: |
+          set -uo pipefail
+
           STATE=""
           START_TIME=$(date +%s)
+          TIMEOUT_SECONDS=$((2 * 60 * 60))
 
           # Wait for job to finish
           while [ "$STATE" != "Finished" ]; do
-            state=$(docker run -i --rm --workdir="$PWD" -v "$(dirname $PWD)":"$(dirname $PWD)" \
+            JOB_INFO=$(docker run -i --rm --workdir="$PWD" -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
               ${{ inputs.docker_image }} sh -c \
               "lavacli identities add --token ${{ secrets.LAVA_OSS_TOKEN }} \
-                 --uri https://lava-oss.qualcomm.com/RPC2 \
-                 --username ${{ secrets.LAVA_OSS_USER }} production && \
-               lavacli -i production jobs show $JOB_ID" | grep state)
+                --uri https://lava-oss.qualcomm.com/RPC2 \
+                --username ${{ secrets.LAVA_OSS_USER }} production && \
+              lavacli -i production jobs show $JOB_ID")
 
-            STATE=$(echo "$state" | cut -d':' -f2 | sed 's/^ *//;s/ *$//')
-            echo "Current status: $STATE"
+            STATE=$(echo "$JOB_INFO" | awk -F': *' 'tolower($1)=="state"{print $2; exit}')
+            echo "Current status: ${STATE:-UNKNOWN}"
 
             CURRENT_TIME=$(date +%s)
-            ELAPSED_TIME=$(((CURRENT_TIME - START_TIME)/3600))
-            if [ $ELAPSED_TIME -ge 2 ]; then
+            ELAPSED_SECONDS=$((CURRENT_TIME - START_TIME))
+
+            if [ "$ELAPSED_SECONDS" -ge "$TIMEOUT_SECONDS" ]; then
               echo "Timeout: 2 hours exceeded."
               summary=":x: Lava job exceeded time limit."
-              echo "summary=$summary" >> $GITHUB_OUTPUT
+              echo "summary=$summary" >> "$GITHUB_OUTPUT"
               exit 1
             fi
-            sleep 30
+
+            if [ "$STATE" != "Finished" ]; then
+              sleep 30
+            fi
           done
 
-          # Check job health
-          health=$(docker run -i --rm --workdir="$PWD" -v "$(dirname $PWD)":"$(dirname $PWD)" \
-            ${{ inputs.docker_image }} sh -c \
-            "lavacli identities add --token ${{ secrets.LAVA_OSS_TOKEN }} \
-               --uri https://lava-oss.qualcomm.com/RPC2 \
-               --username ${{ secrets.LAVA_OSS_USER }} production && \
-             lavacli -i production jobs show $JOB_ID" | grep Health)
+          # Check job health from the final JOB_INFO
+          HEALTH=$(echo "$JOB_INFO" | awk -F': *' 'tolower($1)=="health"{print $2; exit}')
+          echo "Health: ${HEALTH:-UNKNOWN}"
 
-          HEALTH=$(echo "$health" | cut -d':' -f2 | sed 's/^ *//;s/ *$//')
-          echo "Health: $HEALTH"
-
-          if [[ "$HEALTH" != "Complete" ]]; then
+          if [ "${HEALTH:-}" != "Complete" ]; then
             echo "Lava job health is not Complete."
-            summary=":x: Lava job failed (Health: $HEALTH)."
-            echo "summary=$summary" >> $GITHUB_OUTPUT
+            summary=":x: Lava job failed (Health: ${HEALTH:-UNKNOWN})."
+            echo "summary=$summary" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           # Fetch detailed results once
-          docker run -i --rm --workdir="$PWD" -v "$(dirname $PWD)":"$(dirname $PWD)" \
+          docker run -i --rm --workdir="$PWD" -v "$(dirname "$PWD")":"$(dirname "$PWD")" \
             ${{ inputs.docker_image }} sh -c \
             "lavacli identities add --token ${{ secrets.LAVA_OSS_TOKEN }} \
-               --uri https://lava-oss.qualcomm.com/RPC2 \
-               --username ${{ secrets.LAVA_OSS_USER }} production && \
-             lavacli -i production results $JOB_ID" > lava_results.txt
+              --uri https://lava-oss.qualcomm.com/RPC2 \
+              --username ${{ secrets.LAVA_OSS_USER }} production && \
+            lavacli -i production results $JOB_ID" > lava_results.txt
 
           echo "=== LAVA RESULTS (first 200 lines) ==="
           head -200 lava_results.txt || true
 
-          # Decide pass/fail based ONLY on 0_video_pre-merge-tests / Video_V4L2_Runner
-          if awk '
-            # track whether we are inside definition: 0_video_pre-merge-tests
-            /^definition: 0_video_pre-merge-tests$/ { in_def=1; next }
-            /^definition:/ && $2 != "0_video_pre-merge-tests" { in_def=0 }
-
-            # inside that definition, track Video_V4L2_Runner case and its result
-            in_def && /^case: Video_V4L2_Runner$/ { in_case=1; next }
-            in_def && in_case && /^result:/ {
-              if ($2 == "fail") {
-                print "Found FAIL for 0_video_pre-merge-tests / Video_V4L2_Runner";
-                exit 1;
-              }
-              in_case=0;  # reset for next block
+          # Check ONLY:
+          # definition: 0_video_pre-merge-tests
+          # case: Video_V4L2_Runner
+          awk -F': *' '
+            $1 == "definition" {
+              in_def = ($2 == "0_video_pre-merge-tests")
+              next
             }
-            END { exit 0 }
-          ' lava_results.txt; then
-            echo "Lava job passed (0_video_pre-merge-tests base + overlay)."
-            summary=":heavy_check_mark: Lava job passed."
-            echo "summary=$summary" >> $GITHUB_OUTPUT
-            exit 0
-          else
-            echo "Lava job failed in 0_video_pre-merge-tests / Video_V4L2_Runner."
-            summary=":x: Lava job failed."
-            echo "summary=$summary" >> $GITHUB_OUTPUT
-            exit 1
-          fi
 
+            in_def && $1 == "case" {
+              in_case = ($2 == "Video_V4L2_Runner")
+              next
+            }
+
+            in_def && in_case && $1 == "result" {
+              found_case = 1
+              result = $2
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", result)
+
+              if (result == "fail") {
+                print "Found FAIL for 0_video_pre-merge-tests / Video_V4L2_Runner"
+                exit 1
+              }
+
+              if (result == "pass") {
+                print "Found PASS for 0_video_pre-merge-tests / Video_V4L2_Runner"
+                exit 0
+              }
+
+              print "Unexpected result for 0_video_pre-merge-tests / Video_V4L2_Runner: " result
+              exit 2
+            }
+
+            END {
+              if (!found_case) {
+                print "Target testcase not found: 0_video_pre-merge-tests / Video_V4L2_Runner"
+                exit 3
+              }
+            }
+          ' lava_results.txt
+
+          RESULT_STATUS=$?
+
+          if [ "$RESULT_STATUS" -eq 0 ]; then
+            echo "Lava job passed."
+            summary=":heavy_check_mark: Lava job passed."
+            echo "summary=$summary" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$RESULT_STATUS" -eq 1 ]; then
+            echo "Lava job failed in 0_video_pre-merge-tests / Video_V4L2_Runner."
+            summary=":x: Lava job failed in 0_video_pre-merge-tests / Video_V4L2_Runner."
+            echo "summary=$summary" >> "$GITHUB_OUTPUT"
+            exit 1
+          else
+            echo "Could not determine testcase result cleanly."
+            summary=":x: Unable to determine LAVA testcase result."
+            echo "summary=$summary" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi 
+          
   # ------------------------------------------------------------------------
   # NEW JOB: Generate Summary
   # Aggregates results from all matrix runs and publishes a table
