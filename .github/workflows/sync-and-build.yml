@@ -31,7 +31,7 @@ jobs:
           
       # ------------------------------------------------------------------------
       # ✅ CRITICAL FIX: Explicitly checkout the driver code.
-      # This ensures the source code exists for Post-Merge/Scheduled runs.
+      # This ensures the source code exists for Post-Merge/Scheduled run.
       # ------------------------------------------------------------------------
       - name: Checkout Video Driver
         uses: actions/checkout@v4
