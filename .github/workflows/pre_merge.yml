@@ -15,7 +15,7 @@ on:
 jobs:
   loading:
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
-    # ⚠️ No "secrets: inherit" here — loading doesn't need secrets
+    # ⚠️ No "secrets: inherit" here — loading doesn't need secret
 
   build:
     needs: loading
