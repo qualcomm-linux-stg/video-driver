@@ -1,0 +1,24 @@
+name: lava_trigger
+description: |
+  Triggers LAVA tests using privileged token. 
+  Does NOT checkout PR code — safe for secrets.
+
+on:
+  pull_request_target:                   # ✅ Only this workflow uses pull_request_target
+    types: [opened, synchronize, reopened]
+    branches:
+      - video.qclinux.main.stage
+
+jobs:
+  loading:
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
+    # ✅ OK to use secrets here ONLY IF loading.yml does NOT checkout/build PR HEAD code
+
+  lava-test:
+    needs: [loading]
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@video.qclinux.main.stage
+    secrets: inherit                     # ✅ Safe — test.yml only submits LAVA job, no build
+    with:
+      docker_image: kmake-image:ver.1.0
+      build_matrix: ${{ needs.loading.outputs.build_matrix }}
+      full_matrix: ${{ needs.loading.outputs.full_matrix }}
