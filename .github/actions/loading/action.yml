@@ -21,37 +21,26 @@ runs:
           const fs = require('fs');
           const path = require('path');
 
-          // 1. Define possible paths for MACHINES.json
-          // Path A: Workspace/video-driver/ci/MACHINES.json (Nested)
-          const pathNested = path.join(process.env.GITHUB_WORKSPACE, 'video-driver', 'ci', 'MACHINES.json');
-          // Path B: Workspace/ci/MACHINES.json (Root)
-          const pathRoot = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.json');
+          // ✅ Single reliable path — always at workspace root (no path: in checkout)
+          const targetsPath = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.json');
 
-          let targetsPath = '';
-
-          // 2. Check which path exists
-          if (fs.existsSync(pathNested)) {
-            console.log(`Found config at nested path: ${pathNested}`);
-            targetsPath = pathNested;
-          } else if (fs.existsSync(pathRoot)) {
-            console.log(`Found config at root path: ${pathRoot}`);
-            targetsPath = pathRoot;
-          } else {
-            // 3. Debugging: If neither exists, list files to help us see what is happening
-            console.log('!!! Error: MACHINES.json not found in expected locations.');
-            console.log(`Checked: ${pathNested}`);
-            console.log(`Checked: ${pathRoot}`);
-            
+          // 1. Check path exists
+          if (!fs.existsSync(targetsPath)) {
+            console.log('!!! Error: MACHINES.json not found.');
+            console.log(`Checked: ${targetsPath}`);
             console.log('--- Workspace Root Contents ---');
             try {
               console.log(fs.readdirSync(process.env.GITHUB_WORKSPACE));
-            } catch (e) { console.log(e.message); }
-
-            core.setFailed(`MACHINES.json not found.`);
+            } catch (e) {
+              console.log(e.message);
+            }
+            core.setFailed('MACHINES.json not found.');
             return;
           }
 
-          // 4. Parse the file
+          console.log(`Found config at: ${targetsPath}`);
+
+          // 2. Parse the file
           let targets;
           try {
             targets = JSON.parse(fs.readFileSync(targetsPath, 'utf-8'));
@@ -60,9 +49,12 @@ runs:
             return;
           }
 
-          // 5. Generate Outputs
+          // 3. Generate Outputs
           const build_matrix = Object.values(targets).map(({ machine, firmware }) => ({ machine, firmware }));
           core.setOutput('build_matrix', JSON.stringify(build_matrix));
 
           const full_matrix = Object.values(targets).map(({ machine, firmware, lavaname }) => ({ machine, firmware, lavaname }));
           core.setOutput('full_matrix', JSON.stringify(full_matrix));
+
+          console.log(`Build matrix: ${JSON.stringify(build_matrix)}`);
+          console.log(`Full matrix: ${JSON.stringify(full_matrix)}`);
