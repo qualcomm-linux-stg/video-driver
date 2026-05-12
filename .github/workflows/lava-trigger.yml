@@ -1,23 +1,25 @@
 name: lava_trigger
 description: |
-  Triggers LAVA tests using privileged token. 
-  Does NOT checkout PR code — safe for secrets.
+  Triggers LAVA tests after pre_merge build succeeds.
+  Uses pull_request_target for privileged token access.
 
 on:
-  pull_request_target:                   # ✅ Only this workflow uses pull_request_target
-    types: [opened, synchronize, reopened]
-    branches:
-      - video.qclinux.main.stage
+  workflow_run:
+    workflows: ["pre_merge"]      # ← Must match the `name:` field in pre_merge.yml exactly
+    types:
+      - completed                  # ← Fires when pre_merge finishes
 
 jobs:
   loading:
+    # ✅ Only run if pre_merge build actually succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
-    # ✅ OK to use secrets here ONLY IF loading.yml does NOT checkout/build PR HEAD code
 
   lava-test:
     needs: [loading]
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@video.qclinux.main.stage
-    secrets: inherit                     # ✅ Safe — test.yml only submits LAVA job, no build
+    secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
