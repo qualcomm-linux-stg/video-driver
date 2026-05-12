@@ -53,6 +53,7 @@ jobs:
           run-id: ${{ inputs.upstream_run_id }}
           merge-multiple: true
           path: ${{ github.workspace }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Clone lava job render scripts
         run: cd .. && git clone https://github.com/qualcomm-linux/job_render
