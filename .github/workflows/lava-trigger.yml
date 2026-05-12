@@ -12,21 +12,17 @@ on:
 
 jobs:
   loading:
-    if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
+    # ✅ Run for ANY event (push or pull_request) as long as pre_merge succeeded
+    if: github.event.workflow_run.conclusion == 'success'
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
 
   lava-test:
     needs: [loading]
-    if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
+    if: github.event.workflow_run.conclusion == 'success'
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@video.qclinux.main.stage
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       full_matrix: ${{ needs.loading.outputs.full_matrix }}
-      # ✅ Pass the pre_merge run-id so test.yml can find the artifact
       upstream_run_id: ${{ github.event.workflow_run.id }}
