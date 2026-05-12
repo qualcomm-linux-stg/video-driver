@@ -1,26 +1,32 @@
 name: lava_trigger
 description: |
   Triggers LAVA tests after pre_merge build succeeds.
-  Uses pull_request_target for privileged token access.
+  Uses workflow_run for privileged token access.
 
 on:
   workflow_run:
-    workflows: ["pre_merge"]      # ← Must match the `name:` field in pre_merge.yml exactly
-    types:
-      - completed                  # ← Fires when pre_merge finishes
+    workflows: ["pre_merge"]
+    types: [completed]
+    branches:
+      - video.qclinux.main.stage
 
 jobs:
   loading:
-    # ✅ Only run if pre_merge build actually succeeded
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
 
   lava-test:
     needs: [loading]
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@video.qclinux.main.stage
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       full_matrix: ${{ needs.loading.outputs.full_matrix }}
+      # ✅ Pass the pre_merge run-id so test.yml can find the artifact
+      upstream_run_id: ${{ github.event.workflow_run.id }}
