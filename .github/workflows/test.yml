@@ -56,7 +56,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Clone lava job render scripts
-        run: cd .. && git clone https://github.com/qualcomm-linux/job_render
+        run: cd .. && git clone https://github.com/Manigurr/job_render.git
 
       - name: Extract the LAVA machine name
         id: get_lavaname
