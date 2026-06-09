@@ -10,8 +10,8 @@ on:
 
 jobs:
   loading:
-    # ✅ Run for ANY event (push or pull_request) as long as pre_merge succeeded
-    if: github.event.workflow_run.conclusion == 'success'
+    # ✅ Only run if pre_merge build actually succeeded.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
 
   lava-test:
