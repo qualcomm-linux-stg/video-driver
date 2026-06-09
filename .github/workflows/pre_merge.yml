@@ -16,10 +16,12 @@ jobs:
   loading:
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
     # ⚠️ No "secrets: inherit" here — loading doesn't need secrets
+    secrets: inherit
 
   build:
     needs: loading
     uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.main.stage
+    secrets: inherit
     # ⚠️ No "secrets: inherit" here — build should not have secret access
     with:
       docker_image: kmake-image:ver.1.0

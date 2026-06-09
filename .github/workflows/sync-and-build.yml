@@ -28,6 +28,7 @@ jobs:
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
           image: ${{ inputs.docker_image }}
+          registry: artifacts.codelinaro.org/clo-420-qli-registry
           
       # ------------------------------------------------------------------------
       # ✅ CRITICAL FIX: Explicitly checkout the driver code.
