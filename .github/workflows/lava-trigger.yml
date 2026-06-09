@@ -11,7 +11,7 @@ on:
 
 jobs:
   loading:
-    # ✅ Only run if pre_merge build actually succeeded
+    # ✅ Only run if pre_merge build actually succeeded.
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main.stage
 
