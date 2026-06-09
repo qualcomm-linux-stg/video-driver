@@ -7,8 +7,6 @@ on:
   workflow_run:
     workflows: ["pre_merge"]
     types: [completed]
-    branches:
-      - video.qclinux.main.stage
 
 jobs:
   loading:
