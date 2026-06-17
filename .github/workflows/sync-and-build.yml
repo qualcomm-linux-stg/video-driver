@@ -1,18 +1,27 @@
-name: _loading
-description: Load required parameters for the subsequent jobs
+name: _build
 
 on:
   workflow_call:
-    outputs:
+    inputs:
+      docker_image:
+        description: Docker image
+        type: string
+        required: true
       build_matrix:
-        description: Build matrix
-        value: ${{ jobs.loading.outputs.build_matrix }}
+        description: Build matrix for multi target builds
+        type: string
+        required: true
 
 jobs:
-  loading:
-    runs-on: ubuntu-latest
-    outputs:
-      build_matrix: ${{ steps.loading.outputs.build_matrix }}
+  build:
+    runs-on:
+      group: GHA-video-Prd-SelfHosted-RG
+      labels: [self-hosted, video-prd-u2204-x64-large-od-ephem]
+    strategy:
+      fail-fast: false
+      matrix:
+        build_matrix: ${{ fromJson(inputs.build_matrix) }}
+
     steps:
       - name: Sync codebase
         uses: qualcomm-linux/video-driver/.github/actions/sync@meta-qcom_full-build
@@ -22,6 +31,98 @@ jobs:
           pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
           base_ref: ${{ github.ref_name }}
 
-      - name: Load Parameters
-        id: loading
-        uses: qualcomm-linux/video-driver/.github/actions/loading@meta-qcom_full-build
+      - name: Build ${{ matrix.build_matrix.machine }}
+        uses: qualcomm-linux/video-driver/.github/actions/build@meta-qcom_full-build
+        with:
+          docker_image: ${{ inputs.docker_image }}
+          kas_file: ${{ matrix.build_matrix.kas_file }}
+          build_command: "bitbake qcom-multimedia-proprietary-image"
+        env:
+          machine: ${{ matrix.build_matrix.machine }}
+
+      - name: Download iris_test_app from S3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ github.workspace }}/v4l-video-test-app/build"
+          echo "Syncing files from s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/"
+          aws s3 sync \
+            "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/" \
+            "${{ github.workspace }}/v4l-video-test-app/build/"
+          echo "✅ Download complete"
+          ls -la "${{ github.workspace }}/v4l-video-test-app/build/"
+
+      - name: Inject Iris test app to rootfs
+        uses: qualcomm-linux/video-driver/.github/actions/inject@meta-qcom_full-build
+        with:
+          docker_image: ${{ inputs.docker_image }}
+          machine: ${{ matrix.build_matrix.machine }}
+
+      - name: Prepare .qcomflash files for S3 upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace="${{ github.workspace }}"
+          machine="${{ matrix.build_matrix.machine }}"
+          symlink_path="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
+
+          if [ ! -L "$symlink_path" ]; then
+            echo "❌ Symlink not found: $symlink_path"
+            exit 1
+          fi
+
+          resolved_dir=$(readlink -f "$symlink_path")
+
+          if [ ! -d "$resolved_dir" ]; then
+            echo "❌ Resolved .qcomflash directory not found: $resolved_dir"
+            exit 1
+          fi
+
+          cd "$resolved_dir"
+          ls -larth
+
+          mkdir -p "$workspace/artifacts"
+          : > "$workspace/artifacts/file_list.txt"
+          : > "$workspace/artifacts/tar_list.txt"
+
+          find "$resolved_dir" -type f -exec realpath {} \; > "$workspace/artifacts/tar_list.txt"
+
+          if [ ! -s "$workspace/artifacts/tar_list.txt" ]; then
+            echo "⚠️ No files found to archive."
+            exit 1
+          fi
+
+          tarball="${machine}_qcomflash_payload.tar.xz"
+          tar -cJf "$tarball" -T "$workspace/artifacts/tar_list.txt"
+          mv "$tarball" "$workspace"
+          echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
+
+          echo "✅ Tarball created: $tarball"
+
+      - name: Upload artifacts to S3
+        id: upload-artifacts
+        uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@meta-qcom_full-build
+        with:
+          s3_bucket: qli-prd-video-gh-artifacts
+          local_file: ${{ github.workspace }}/artifacts/file_list.txt
+          mode: multi-upload
+          upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.build_matrix.machine }}
+
+      - name: Clean up
+        shell: bash
+        run: |
+          rm -rf "${{ github.workspace }}/artifacts"
+          rm -rf "${{ github.workspace }}/build"
+          rm -rf "${{ github.workspace }}/v4l-video-test-app"
+          rm -f "${{ github.workspace }}/modules.tar.xz"
+
+      - name: Update summary
+        if: success() || failure()
+        shell: bash
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            summary=":heavy_check_mark: Build Success for ${{ matrix.build_matrix.machine }}"
+          else
+            summary=":x: Build Failed for ${{ matrix.build_matrix.machine }}"
+          fi
+          echo -e "<details><summary><i>Build Summary</i></summary>\n${summary}\n</details>" >> "$GITHUB_STEP_SUMMARY"
