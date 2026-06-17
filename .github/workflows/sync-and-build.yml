@@ -123,13 +123,14 @@ jobs:
         run: |
           rm -rf "${{ github.workspace }}/artifacts"
           rm -rf "${{ github.workspace }}/build"
+          rm -rf "${{ github.workspace }}/v4l-video-test-app"
           rm -f "${{ github.workspace }}/modules.tar.xz"
 
       - name: Update summary
         if: success() || failure()
         shell: bash
         run: |
-          if [ "${{ job.status }}" == "success" ]; then
+          if [ "${{ job.status }}" = "success" ]; then
             summary=":heavy_check_mark: Build Success for ${{ matrix.build_matrix.machine }}"
           else
             summary=":x: Build Failed for ${{ matrix.build_matrix.machine }}"

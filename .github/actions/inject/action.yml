@@ -23,55 +23,52 @@ runs:
       run: |
         set -euo pipefail
 
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
         MACHINE="${{ inputs.machine }}"
         IMAGE_DIR="build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash"
 
         docker run --rm \
-          --privileged \
+          --user "${USER_ID}:${GROUP_ID}" \
           -v "${PWD}:/workspace" \
           -w /workspace \
           -e "MACHINE=${MACHINE}" \
           -e "IMAGE_DIR=${IMAGE_DIR}" \
           -e "WORKSPACE=/workspace" \
+          --privileged \
           "${{ inputs.docker_image }}" \
-          bash -s <<'EOF'
-        set -euo pipefail
+          bash -lc '
+            set -euo pipefail
 
-        echo "📦 Checking for qcomflash directory..."
-        test -d "$IMAGE_DIR"
-        cd "$IMAGE_DIR"
-        ls -larth
+            echo "📦 Checking for rootfs.img..."
+            cd "$IMAGE_DIR"
+            ls -larth
+            test -f rootfs.img
 
-        echo "📦 Checking for rootfs.img..."
-        test -f rootfs.img
+            mkdir -p /tmp/rootfs
 
-        echo "📦 Checking for iris test app payload..."
-        test -d "$WORKSPACE/v4l-video-test-app/build"
-        ls -la "$WORKSPACE/v4l-video-test-app/build"
+            cleanup() {
+              sudo umount /tmp/rootfs 2>/dev/null || true
+            }
+            trap cleanup EXIT
 
-        mkdir -p /tmp/rootfs
+            echo "🔗 Mounting rootfs image..."
+            sudo mount -o loop rootfs.img /tmp/rootfs
 
-        cleanup() {
-          mountpoint -q /tmp/rootfs && umount /tmp/rootfs || true
-        }
-        trap cleanup EXIT
+            echo "📁 Creating IRIS app directories..."
+            sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
+            sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
 
-        echo "🔗 Mounting rootfs image..."
-        mount -o loop rootfs.img /tmp/rootfs
+            echo "📥 Copying iris-test-app payload from workspace..."
+            sudo cp -a "$WORKSPACE/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
 
-        echo "📁 Creating IRIS app directories..."
-        mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
-        mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
+            echo "🔍 Verifying contents..."
+            sudo ls -larth /tmp/rootfs/data/vendor/iris_test_app
 
-        echo "📥 Copying iris-test-app payload from workspace..."
-        cp -a "$WORKSPACE/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
+            echo "📤 Syncing and unmounting image..."
+            sync
+            sudo umount /tmp/rootfs
+            trap - EXIT
 
-        echo "🔍 Verifying contents..."
-        ls -larth /tmp/rootfs/data/vendor/iris_test_app
-
-        echo "📤 Syncing and unmounting image..."
-        sync
-        umount /tmp/rootfs
-
-        echo "✅ IRIS injection completed for ${MACHINE}"
-        EOF
+            echo "✅ IRIS injection completed for $MACHINE."
+          '

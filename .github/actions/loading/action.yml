@@ -25,7 +25,6 @@ runs:
               core.setFailed(`MACHINES.json not found at ${machineFile}`);
               return;
             }
-
             config = JSON.parse(fs.readFileSync(machineFile, 'utf-8'));
           } catch (err) {
             core.setFailed(`Failed to load or parse MACHINES.json: ${err.message}`);
@@ -37,4 +36,4 @@ runs:
           );
 
           core.setOutput('build_matrix', JSON.stringify(buildMatrix));
-          console.log('Build Matrix:', JSON.stringify(buildMatrix));
+          console.log("Build Matrix:", JSON.stringify(buildMatrix));

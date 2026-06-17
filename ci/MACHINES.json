@@ -1,26 +1,26 @@
 {
   "qcs9100-ride-sx": {
     "machine": "qcs9100-ride-sx",
-    "kas_file": "meta-qcom/ci/qcs9100-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"
+    "kas_file": "ci/qcs9100-ride-sx.yml:ci/qcom-distro.yml"
   },
   "qcs8300-ride-sx": {
     "machine": "qcs8300-ride-sx",
-    "kas_file": "meta-qcom/ci/qcs8300-ride-sx.yml:meta-qcom/ci/qcom-distro.yml"
+    "kas_file": "ci/qcs8300-ride-sx.yml:ci/qcom-distro.yml"
   },
   "qcs6490-rb3gen2-core-kit": {
     "machine": "qcs6490-rb3gen2-core-kit",
-    "kas_file": "meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:meta-qcom/ci/qcom-distro.yml"
+    "kas_file": "ci/qcs6490-rb3gen2-core-kit.yml:ci/qcom-distro.yml"
   },
   "qcs615-ride": {
     "machine": "qcs615-ride",
-    "kas_file": "meta-qcom/ci/qcs615-ride.yml:meta-qcom/ci/qcom-distro.yml"
+    "kas_file": "ci/qcs615-ride.yml:ci/qcom-distro.yml"
   },
   "sm8750-mtp": {
     "machine": "sm8750-mtp",
-    "kas_file": "meta-qcom/ci/sm8750-mtp.yml:meta-qcom/ci/qcom-distro.yml"
+    "kas_file": "ci/sm8750-mtp.yml:ci/qcom-distro.yml"
   },
   "kaanapali-mtp": {
     "machine": "kaanapali-mtp",
-    "kas_file": "meta-qcom/ci/kaanapali-mtp.yml:meta-qcom/ci/qcom-distro.yml"
+    "kas_file": "ci/kaanapali-mtp.yml:ci/qcom-distro.yml"
   }
 }
