@@ -1,0 +1,45 @@
+name: Build
+description: Build the project using a Docker container
+
+inputs:
+  docker_image:
+    description: Docker image to use for the build job
+    required: true
+
+  kas_file:
+    description: KAS file to use for the build job
+    required: true
+
+  build_command:
+    description: Command to run for the build
+    required: false
+    default: "bitbake core-image-base"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Patch and Build ${{ env.machine }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "Machine: ${{ env.machine }}"
+        echo "Docker image: ${{ inputs.docker_image }}"
+        echo "KAS file: ${{ inputs.kas_file }}"
+        echo "Build command: ${{ inputs.build_command }}"
+
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
+
+        docker run --rm \
+          --user "${USER_ID}:${GROUP_ID}" \
+          -v "${PWD}:/workspace" \
+          -w /workspace \
+          -e "MACHINE=${{ env.machine }}" \
+          "${{ inputs.docker_image }}" \
+          bash -c "
+            set -euo pipefail
+            echo 'Starting build for ${MACHINE}'
+            echo 'Using kas file: ${{ inputs.kas_file }}'
+            ${{ inputs.build_command }}
+          "
