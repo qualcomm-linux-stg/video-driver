@@ -23,62 +23,55 @@ runs:
       run: |
         set -euo pipefail
 
-        USER_ID="$(id -u)"
-        GROUP_ID="$(id -g)"
         MACHINE="${{ inputs.machine }}"
         IMAGE_DIR="build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash"
 
         docker run --rm \
-          --user "${USER_ID}:${GROUP_ID}" \
-          -v "${{ github.workspace }}:/workspace" \
+          --privileged \
+          -v "${PWD}:/workspace" \
           -w /workspace \
           -e "MACHINE=${MACHINE}" \
           -e "IMAGE_DIR=${IMAGE_DIR}" \
           -e "WORKSPACE=/workspace" \
-          --privileged \
           "${{ inputs.docker_image }}" \
           bash -s <<'EOF'
-        set -euxo pipefail
+        set -euo pipefail
 
-        SUDO=""
-        if command -v sudo >/dev/null 2>&1; then
-          SUDO="sudo"
-        fi
-
-        echo "📦 Checking for rootfs.img..."
+        echo "📦 Checking for qcomflash directory..."
+        test -d "$IMAGE_DIR"
         cd "$IMAGE_DIR"
         ls -larth
+
+        echo "📦 Checking for rootfs.img..."
         test -f rootfs.img
 
-        echo "📦 Checking for downloaded iris_test_app payload..."
+        echo "📦 Checking for iris test app payload..."
         test -d "$WORKSPACE/v4l-video-test-app/build"
         ls -la "$WORKSPACE/v4l-video-test-app/build"
 
         mkdir -p /tmp/rootfs
-        trap '$SUDO umount /tmp/rootfs 2>/dev/null || true' EXIT
+
+        cleanup() {
+          mountpoint -q /tmp/rootfs && umount /tmp/rootfs || true
+        }
+        trap cleanup EXIT
 
         echo "🔗 Mounting rootfs image..."
-        $SUDO mount -o loop rootfs.img /tmp/rootfs
+        mount -o loop rootfs.img /tmp/rootfs
 
         echo "📁 Creating IRIS app directories..."
-        $SUDO mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
-        $SUDO mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
+        mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
+        mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
 
         echo "📥 Copying iris-test-app payload from workspace..."
-        $SUDO cp -a "$WORKSPACE/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
-
-        if [ -f /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test ]; then
-          $SUDO chmod +x /tmp/rootfs/data/vendor/iris_test_app/iris_v4l2_test
-        fi
-
-        sync
+        cp -a "$WORKSPACE/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
 
         echo "🔍 Verifying contents..."
-        $SUDO ls -larth /tmp/rootfs/data/vendor/iris_test_app
+        ls -larth /tmp/rootfs/data/vendor/iris_test_app
 
-        echo "📤 Unmounting image..."
-        $SUDO umount /tmp/rootfs
-        trap - EXIT
+        echo "📤 Syncing and unmounting image..."
+        sync
+        umount /tmp/rootfs
 
-        echo "✅ IRIS injection completed for $MACHINE."
+        echo "✅ IRIS injection completed for ${MACHINE}"
         EOF

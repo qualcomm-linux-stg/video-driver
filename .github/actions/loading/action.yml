@@ -17,24 +17,24 @@ runs:
           const fs = require('fs');
           const path = require('path');
 
-          const machinesFile = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.json');
+          const machineFile = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.json');
 
-          let machinesConfig;
+          let config;
           try {
-            if (!fs.existsSync(machinesFile)) {
-              core.setFailed(`MACHINES.JSON not found at ${machinesFile}`);
+            if (!fs.existsSync(machineFile)) {
+              core.setFailed(`MACHINES.json not found at ${machineFile}`);
               return;
             }
 
-            machinesConfig = JSON.parse(fs.readFileSync(machinesFile, 'utf-8'));
+            config = JSON.parse(fs.readFileSync(machineFile, 'utf-8'));
           } catch (err) {
             core.setFailed(`Failed to load or parse MACHINES.json: ${err.message}`);
             return;
           }
 
-          const buildMatrix = Object.values(machinesConfig).map(obj =>
+          const buildMatrix = Object.values(config).map(obj =>
             Object.fromEntries(Object.entries(obj))
           );
 
           core.setOutput('build_matrix', JSON.stringify(buildMatrix));
-          console.log('Build Matrix:', JSON.stringify(buildMatrix, null, 2));
+          console.log('Build Matrix:', JSON.stringify(buildMatrix));
