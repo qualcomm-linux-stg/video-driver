@@ -17,7 +17,7 @@ runs:
           const fs = require('fs');
           const path = require('path');
 
-          const machinesFile = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.JSON');
+          const machinesFile = path.join(process.env.GITHUB_WORKSPACE, 'ci', 'MACHINES.json');
 
           let machinesConfig;
           try {
