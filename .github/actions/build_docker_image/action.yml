@@ -1,42 +1,102 @@
-name: Build docker image
-description: Build the Docker image used by the CI build and expose the image name as an output
+name: Build Docker Image
+description: Build docker image from qualcomm-linux/kmake-image repository
 
 inputs:
   image_name:
-    description: Docker image tag/name to build
+    description: Docker image name to create
     required: true
+  repo:
+    description: Repository containing the Dockerfile
+    required: false
+    default: "https://github.com/qualcomm-linux/kmake-image.git"
+  branch:
+    description: Branch or tag to checkout
+    required: false
+    default: "main"
   dockerfile:
-    description: Dockerfile path
+    description: Dockerfile path relative to cloned repo
     required: false
-    default: Dockerfile
+    default: "Dockerfile"
   context:
-    description: Docker build context
+    description: Build context relative to cloned repo
     required: false
-    default: .
+    default: "."
+  http_proxy:
+    description: HTTP proxy for docker build
+    required: false
+    default: ""
+  https_proxy:
+    description: HTTPS proxy for docker build
+    required: false
+    default: ""
+  no_proxy:
+    description: no_proxy for docker build
+    required: false
+    default: ""
 
 outputs:
   image_name:
-    description: Built Docker image name
+    description: Built docker image name
     value: ${{ steps.build.outputs.image_name }}
 
 runs:
   using: "composite"
   steps:
-    - name: Build Docker image
+    - name: Clone kmake-image repo
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        REPO_DIR="${{ runner.temp }}/kmake-image-src"
+        rm -rf "${REPO_DIR}"
+
+        echo "Cloning ${{ inputs.repo }} (branch: ${{ inputs.branch }})"
+        git clone --depth 1 --branch "${{ inputs.branch }}" "${{ inputs.repo }}" "${REPO_DIR}"
+
+        echo "Cloned repository contents:"
+        ls -la "${REPO_DIR}"
+
+    - name: Build docker image
       id: build
       shell: bash
       run: |
         set -euo pipefail
 
         IMAGE_NAME="${{ inputs.image_name }}"
-        DOCKERFILE="${{ inputs.dockerfile }}"
-        CONTEXT="${{ inputs.context }}"
+        REPO_DIR="${{ runner.temp }}/kmake-image-src"
+        DOCKERFILE_PATH="${REPO_DIR}/${{ inputs.dockerfile }}"
+        CONTEXT_PATH="${REPO_DIR}/${{ inputs.context }}"
+
+        if [ ! -f "${DOCKERFILE_PATH}" ]; then
+          echo "❌ Dockerfile not found: ${DOCKERFILE_PATH}"
+          exit 1
+        fi
+
+        if [ ! -d "${CONTEXT_PATH}" ]; then
+          echo "❌ Context path not found: ${CONTEXT_PATH}"
+          exit 1
+        fi
+
+        BUILD_ARGS=()
+        if [ -n "${{ inputs.http_proxy }}" ]; then
+          BUILD_ARGS+=(--build-arg "http_proxy=${{ inputs.http_proxy }}")
+        fi
+        if [ -n "${{ inputs.https_proxy }}" ]; then
+          BUILD_ARGS+=(--build-arg "https_proxy=${{ inputs.https_proxy }}")
+        fi
+        if [ -n "${{ inputs.no_proxy }}" ]; then
+          BUILD_ARGS+=(--build-arg "no_proxy=${{ inputs.no_proxy }}")
+        fi
 
         echo "Building Docker image: ${IMAGE_NAME}"
-        echo "Dockerfile: ${DOCKERFILE}"
-        echo "Context: ${CONTEXT}"
+        echo "Dockerfile: ${DOCKERFILE_PATH}"
+        echo "Context: ${CONTEXT_PATH}"
 
-        docker build -t "${IMAGE_NAME}" -f "${DOCKERFILE}" "${CONTEXT}"
+        docker build \
+          -t "${IMAGE_NAME}" \
+          -f "${DOCKERFILE_PATH}" \
+          "${BUILD_ARGS[@]}" \
+          "${CONTEXT_PATH}"
 
         echo "image_name=${IMAGE_NAME}" >> "${GITHUB_OUTPUT}"
         echo "✅ Docker image built: ${IMAGE_NAME}"

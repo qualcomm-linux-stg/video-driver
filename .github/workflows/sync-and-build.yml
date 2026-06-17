@@ -37,13 +37,27 @@ jobs:
           pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
           base_ref: ${{ github.ref_name }}
       
+          steps:
+      - name: Sync codebase
+        uses: qualcomm-linux/video-driver/.github/actions/sync@meta-qcom_full-build
+        with:
+          event_name: ${{ github.event_name }}
+          pr_ref: ${{ github.event.pull_request.head.ref || '' }}
+          pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
+          base_ref: ${{ github.ref_name }}
+
       - name: Build docker image
         id: docker_build
         uses: qualcomm-linux/video-driver/.github/actions/build_docker_image@meta-qcom_full-build
         with:
           image_name: ${{ inputs.docker_image }}
+          repo: https://github.com/qualcomm-linux/kmake-image.git
+          branch: main
           dockerfile: Dockerfile
           context: .
+          http_proxy: http://proxy.qualcomm.com:8080
+          https_proxy: http://proxy.qualcomm.com:8080
+          no_proxy: localhost,127.0.0.1,.qualcomm.com
 
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux/video-driver/.github/actions/build@meta-qcom_full-build
