@@ -13,12 +13,12 @@ on:
 
 jobs:
   loading:
-    uses: ./.github/workflows/loading.yml
+    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@meta-qcom_full-build
     secrets: inherit
 
   build:
     needs: loading
-    uses: ./.github/workflows/sync-and-build.yml
+    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@meta-qcom_full-build
     secrets: inherit
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}

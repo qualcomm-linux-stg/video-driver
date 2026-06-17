@@ -107,13 +107,14 @@ jobs:
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.build_matrix.machine }}
+        env:
+          machine: ${{ matrix.build_matrix.machine }}
 
       - name: Clean up
         shell: bash
         run: |
           rm -rf "${{ github.workspace }}/artifacts"
           rm -rf "${{ github.workspace }}/build"
-          rm -rf "${{ github.workspace }}/v4l-video-test-app"
           rm -f "${{ github.workspace }}/modules.tar.xz"
 
       - name: Update summary
