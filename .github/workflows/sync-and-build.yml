@@ -23,11 +23,11 @@ jobs:
         build_matrix: ${{ fromJson(inputs.build_matrix) }}
 
     steps:
-      - name: Build docker image
-        id: docker_build
-        uses: qualcomm-linux/video-driver/.github/actions/build_docker_image@meta-qcom_full-build
-        with:
-          image_name: ${{ inputs.docker_image }}
+      # name: Build docker image
+      # id: docker_build
+      # uses: qualcomm-linux/video-driver/.github/actions/build_docker_image@meta-qcom_full-build
+       #with:
+       #  image_name: ${{ inputs.docker_image }}
 
       - name: Sync codebase
         uses: qualcomm-linux/video-driver/.github/actions/sync@meta-qcom_full-build
@@ -36,6 +36,14 @@ jobs:
           pr_ref: ${{ github.event.pull_request.head.ref || '' }}
           pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
           base_ref: ${{ github.ref_name }}
+      
+      - name: Build docker image
+        id: docker_build
+        uses: qualcomm-linux/video-driver/.github/actions/build_docker_image@meta-qcom_full-build
+        with:
+          image_name: ${{ inputs.docker_image }}
+          dockerfile: Dockerfile
+          context: .
 
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux/video-driver/.github/actions/build@meta-qcom_full-build
