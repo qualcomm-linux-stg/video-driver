@@ -1,36 +1,22 @@
 name: pre_merge
-description: |
-  Orchestrates pre-merge CI for the video-driver repository a matrix
-  in the caller workflow. Builds and tests using reusable workflows.
+run-name: Pre Merge Workflow
 
 on:
-  push:
-    branches:
-      - video.qclinux.0.0
   workflow_dispatch:
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches:
-      - video.qclinux.0.0
+      - meta-qcom_full-build
 
 jobs:
   loading:
-    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.0.0
+    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@meta-qcom_full-build
     secrets: inherit
 
   build:
     needs: loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.0.0
+    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@meta-qcom_full-build
     secrets: inherit
     with:
-      docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
-
-  lava-test:
-    needs: [loading, build]
-    uses: qualcomm-linux/video-driver/.github/workflows/test.yml@video.qclinux.0.0
-    secrets: inherit
-    with:
-      docker_image: kmake-image:ver.1.0
-      build_matrix: ${{ needs.loading.outputs.build_matrix }}
-      full_matrix: ${{ needs.loading.outputs.full_matrix }}
+      docker_image: video-image:ver.1.0

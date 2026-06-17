@@ -1,0 +1,42 @@
+name: Build docker image
+description: Build the Docker image used by the CI build and expose the image name as an output
+
+inputs:
+  image_name:
+    description: Docker image tag/name to build
+    required: true
+  dockerfile:
+    description: Dockerfile path
+    required: false
+    default: Dockerfile
+  context:
+    description: Docker build context
+    required: false
+    default: .
+
+outputs:
+  image_name:
+    description: Built Docker image name
+    value: ${{ steps.build.outputs.image_name }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build Docker image
+      id: build
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        IMAGE_NAME="${{ inputs.image_name }}"
+        DOCKERFILE="${{ inputs.dockerfile }}"
+        CONTEXT="${{ inputs.context }}"
+
+        echo "Building Docker image: ${IMAGE_NAME}"
+        echo "Dockerfile: ${DOCKERFILE}"
+        echo "Context: ${CONTEXT}"
+
+        docker build -t "${IMAGE_NAME}" -f "${DOCKERFILE}" "${CONTEXT}"
+
+        echo "image_name=${IMAGE_NAME}" >> "${GITHUB_OUTPUT}"
+        echo "✅ Docker image built: ${IMAGE_NAME}"
