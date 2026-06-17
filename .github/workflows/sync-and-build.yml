@@ -31,6 +31,12 @@ jobs:
           pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
           base_ref: ${{ github.ref_name }}
 
+      - name: Pull Docker image
+        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        with:
+          image: ${{ inputs.docker_image }}
+          registry: artifacts.codelinaro.org/clo-420-qli-registry
+
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux/video-driver/.github/actions/build@meta-qcom_full-build
         with:
@@ -85,10 +91,11 @@ jobs:
           : > "$workspace/artifacts/file_list.txt"
           : > "$workspace/artifacts/tar_list.txt"
 
+          echo "🔍 Listing files in resolved directory: $resolved_dir"
           find "$resolved_dir" -type f -exec realpath {} \; > "$workspace/artifacts/tar_list.txt"
 
           if [ ! -s "$workspace/artifacts/tar_list.txt" ]; then
-            echo "⚠️ No files found to archive."
+            echo "⚠️ No files found to archive. Skipping tarball creation."
             exit 1
           fi
 
@@ -111,6 +118,7 @@ jobs:
           machine: ${{ matrix.build_matrix.machine }}
 
       - name: Clean up
+        if: always()
         shell: bash
         run: |
           rm -rf "${{ github.workspace }}/artifacts"
@@ -121,7 +129,7 @@ jobs:
         if: success() || failure()
         shell: bash
         run: |
-          if [ "${{ job.status }}" = "success" ]; then
+          if [ "${{ job.status }}" == "success" ]; then
             summary=":heavy_check_mark: Build Success for ${{ matrix.build_matrix.machine }}"
           else
             summary=":x: Build Failed for ${{ matrix.build_matrix.machine }}"
