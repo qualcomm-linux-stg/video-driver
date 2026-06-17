@@ -3,6 +3,9 @@ run-name: Pre Merge Workflow
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - meta-qcom_full-build
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches:
