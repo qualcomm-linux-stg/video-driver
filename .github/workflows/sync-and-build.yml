@@ -11,11 +11,6 @@ on:
         description: Build matrix for multi target builds
         type: string
         required: true
-      meta_qcom_ref:
-        description: Branch/tag/ref of qualcomm-linux/meta-qcom to clone
-        type: string
-        required: false
-        default: ""
 
 jobs:
   build:
@@ -40,33 +35,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           PARENT_DIR="$(dirname "${{ github.workspace }}")"
           META_QCOM_DIR="${PARENT_DIR}/meta-qcom"
-          META_QCOM_REPO="https://github.com/qualcomm-linux/meta-qcom"
 
           rm -rf "${META_QCOM_DIR}"
+          git clone --depth 1 https://github.com/qualcomm-linux/meta-qcom "${META_QCOM_DIR}"
 
-          if [ -n "${{ inputs.meta_qcom_ref }}" ]; then
-            echo "Cloning meta-qcom ref: ${{ inputs.meta_qcom_ref }}"
-            git clone --depth 1 \
-              --branch "${{ inputs.meta_qcom_ref }}" \
-              "${META_QCOM_REPO}" \
-              "${META_QCOM_DIR}"
-          else
-            echo "Cloning meta-qcom default branch"
-            git clone --depth 1 \
-              "${META_QCOM_REPO}" \
-              "${META_QCOM_DIR}"
-          fi
-
-          echo "✅ meta-qcom cloned"
           echo "=== parent workspace ==="
           ls -la "${PARENT_DIR}"
           echo "=== meta-qcom/ci ==="
           ls -la "${META_QCOM_DIR}/ci" || true
-          echo "=== search kas files ==="
-          find "${META_QCOM_DIR}" -type f \( -name "*.yml" -o -name "*.yaml" \) | sort | head -200
 
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
@@ -82,6 +60,15 @@ jobs:
             "artifacts.codelinaro.org/clo-420-qli-registry/${{ inputs.docker_image }}" \
             "${{ inputs.docker_image }}" || true
           docker images | grep kmake-image || true
+
+      - name: Patch meta-qcom recipe to current video-driver commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ci/patch_srcrev.sh \
+            "${{ github.workspace }}" \
+            "$(dirname "${{ github.workspace }}")/meta-qcom" \
+            "${{ github.event.pull_request.head.repo.full_name || '' }}"
 
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux/video-driver/.github/actions/build@meta-qcom_full-build
@@ -137,18 +124,17 @@ jobs:
           : > "$workspace/artifacts/file_list.txt"
           : > "$workspace/artifacts/tar_list.txt"
 
-          echo "🔍 Listing files in resolved directory: $resolved_dir"
           find "$resolved_dir" -type f -exec realpath {} \; > "$workspace/artifacts/tar_list.txt"
 
           if [ ! -s "$workspace/artifacts/tar_list.txt" ]; then
-            echo "⚠️ No files found to archive. Skipping tarball creation."
+            echo "⚠️ No files found to archive."
             exit 1
           fi
 
           tarball="${machine}_qcomflash_payload.tar.xz"
           tar -cJf "$tarball" -T "$workspace/artifacts/tar_list.txt"
-          mv "$tarball" "${{ github.workspace }}"
-          echo "${{ github.workspace }}/$tarball" >> "$workspace/artifacts/file_list.txt"
+          mv "$tarball" "$workspace"
+          echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
 
           echo "✅ Tarball created: $tarball"
 

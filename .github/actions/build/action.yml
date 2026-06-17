@@ -26,7 +26,6 @@ runs:
         MACHINE="${{ env.machine }}"
         KAS_FILE="${{ inputs.kas_file }}"
         BUILD_COMMAND="${{ inputs.build_command }}"
-
         WORKSPACE_ROOT="$(dirname "${PWD}")"
         REPO_NAME="$(basename "${PWD}")"
 
@@ -34,7 +33,6 @@ runs:
         echo "Docker image: ${{ inputs.docker_image }}"
         echo "KAS file: ${KAS_FILE}"
         echo "Build command: ${BUILD_COMMAND}"
-        echo "PWD: ${PWD}"
         echo "WORKSPACE_ROOT: ${WORKSPACE_ROOT}"
         echo "REPO_NAME: ${REPO_NAME}"
 
@@ -48,25 +46,18 @@ runs:
           "${{ inputs.docker_image }}" \
           bash -lc '
             set -euo pipefail
-
             echo "=== inside container ==="
             echo "pwd: $(pwd)"
-            echo
             echo "=== /workspace ==="
-            ls -la /workspace || true
-            echo
-            echo "=== current repo ==="
-            ls -la . || true
-            echo
-            echo "=== meta-qcom ci ==="
+            ls -la /workspace
+            echo "=== /workspace/video-driver ==="
+            ls -la .
+            echo "=== /workspace/meta-qcom/ci ==="
             ls -la ../meta-qcom/ci || true
-            echo
             echo "Starting build for ${MACHINE}"
             echo "Using kas file: ${KAS_FILE}"
             echo "Running build command: ${BUILD_COMMAND}"
-
             which kas
             kas --version
-
             kas shell -c "${BUILD_COMMAND}" "${KAS_FILE}"
           '

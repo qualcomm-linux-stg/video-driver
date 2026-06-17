@@ -22,5 +22,13 @@
   "kaanapali-mtp": {
     "machine": "kaanapali-mtp",
     "kas_file": "../meta-qcom/ci/kaanapali-mtp.yml:../meta-qcom/ci/qcom-distro.yml"
+  },
+  "linux-yocto-dev": {
+    "machine": "linux-yocto-dev",
+    "kas_file": "../meta-qcom/ci/linux-yocto-dev.yml:../meta-qcom/ci/qcom-armv8a.yml:../meta-qcom/ci/qcom-distro.yml"
+  },
+  "linux-yocto-6.18": {
+    "machine": "linux-yocto-6.18",
+    "kas_file": "../meta-qcom/ci/ci.yml:../meta-qcom/ci/qcom-armv8a.yml:../meta-qcom/ci/qcom-distro.yml"
   }
 }

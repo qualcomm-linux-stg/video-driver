@@ -23,4 +23,3 @@ jobs:
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
-      meta_qcom_ref: ""
