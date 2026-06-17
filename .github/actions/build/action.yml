@@ -45,9 +45,22 @@ runs:
             echo "Starting build for ${MACHINE}"
             echo "Using kas file: ${KAS_FILE}"
             echo "Running build command: ${BUILD_COMMAND}"
+            echo
+            echo "=== inside container: pwd ==="
+            pwd
+            echo
+            echo "=== inside container: top-level listing ==="
+            ls -la
+            echo
+            echo "=== inside container: ci listing ==="
+            ls -la ci || true
+            echo
+            echo "=== inside container: all yml/yaml files ==="
+            find . -type f \( -name "*.yml" -o -name "*.yaml" \) | sort
+            echo
+            echo "=== kas info ==="
             which kas
             kas --version
-            pwd
-            ls -la
+            echo
             kas shell -c "${BUILD_COMMAND}" "${KAS_FILE}"
           '

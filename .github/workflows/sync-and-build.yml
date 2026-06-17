@@ -31,6 +31,31 @@ jobs:
           pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
           base_ref: ${{ github.ref_name }}
 
+      - name: Print workspace structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== GITHUB_WORKSPACE ==="
+          echo "${{ github.workspace }}"
+          echo
+          echo "=== pwd ==="
+          pwd
+          echo
+          echo "=== top-level listing ==="
+          ls -la
+          echo
+          echo "=== ci directory ==="
+          ls -la ci || true
+          echo
+          echo "=== .github/workflows ==="
+          ls -la .github/workflows || true
+          echo
+          echo "=== .github/actions ==="
+          find .github/actions -maxdepth 2 -type f | sort || true
+          echo
+          echo "=== search for kas files ==="
+          find . -type f \( -name "*.yml" -o -name "*.yaml" \) | sort
+
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
@@ -44,16 +69,7 @@ jobs:
           docker tag \
             "artifacts.codelinaro.org/clo-420-qli-registry/${{ inputs.docker_image }}" \
             "${{ inputs.docker_image }}" || true
-
-      - name: Debug KAS files
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Workspace: $PWD"
-          echo "Contents of ci:"
-          ls -la ci || true
-          echo "Searching for KAS files:"
-          find . \( -name 'qcs9100-ride-sx.yml' -o -name 'qcs8300-ride-sx.yml' -o -name 'qcs6490-rb3gen2-core-kit.yml' -o -name 'qcom-distro.yml' \)
+          docker images | grep kmake-image || true
 
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux/video-driver/.github/actions/build@meta-qcom_full-build
@@ -119,7 +135,9 @@ jobs:
           tarball="${machine}_qcomflash_payload.tar.xz"
           tar -cJf "$tarball" -T "$workspace/artifacts/tar_list.txt"
           mv "$tarball" "$workspace"
-          echo "$workspace/$tarball" > "$workspace/artifacts/file_list.txt"
+          echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
+
+          echo "✅ Tarball created: $tarball"
 
       - name: Upload artifacts to S3
         id: upload-artifacts
@@ -129,20 +147,22 @@ jobs:
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.build_matrix.machine }}
+        env:
+          machine: ${{ matrix.build_matrix.machine }}
 
       - name: Clean up
         if: always()
         shell: bash
         run: |
-          rm -rf "${{ github.workspace }}/artifacts" || true
-          rm -rf "${{ github.workspace }}/build" || true
-          rm -f "${{ github.workspace }}/modules.tar.xz" || true
+          rm -rf "${{ github.workspace }}/artifacts"
+          rm -rf "${{ github.workspace }}/build"
+          rm -f "${{ github.workspace }}/modules.tar.xz"
 
       - name: Update summary
         if: success() || failure()
         shell: bash
         run: |
-          if [ "${{ job.status }}" = "success" ]; then
+          if [ "${{ job.status }}" == "success" ]; then
             summary=":heavy_check_mark: Build Success for ${{ matrix.build_matrix.machine }}"
           else
             summary=":x: Build Failed for ${{ matrix.build_matrix.machine }}"
