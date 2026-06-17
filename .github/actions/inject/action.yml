@@ -28,29 +28,35 @@ runs:
         MACHINE="${{ inputs.machine }}"
         IMAGE_DIR="build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash"
 
+        WORKSPACE_ROOT="$(dirname "${PWD}")"
+        REPO_NAME="$(basename "${PWD}")"
+
+        echo "PWD: ${PWD}"
+        echo "WORKSPACE_ROOT: ${WORKSPACE_ROOT}"
+        echo "REPO_NAME: ${REPO_NAME}"
+        echo "IMAGE_DIR: ${IMAGE_DIR}"
+
         docker run --rm \
           --user "${USER_ID}:${GROUP_ID}" \
-          -v "${PWD}:/workspace" \
-          -w /workspace \
+          -v "${WORKSPACE_ROOT}:/workspace" \
+          -w "/workspace/${REPO_NAME}" \
           -e "MACHINE=${MACHINE}" \
           -e "IMAGE_DIR=${IMAGE_DIR}" \
-          -e "WORKSPACE=/workspace" \
+          -e "WORKSPACE=/workspace/${REPO_NAME}" \
           --privileged \
           "${{ inputs.docker_image }}" \
           bash -lc '
-            set -euo pipefail
+            set -euxo pipefail
 
             echo "📦 Checking for rootfs.img..."
+            pwd
+            ls -la
             cd "$IMAGE_DIR"
             ls -larth
             test -f rootfs.img
 
             mkdir -p /tmp/rootfs
-
-            cleanup() {
-              sudo umount /tmp/rootfs 2>/dev/null || true
-            }
-            trap cleanup EXIT
+            trap "sudo umount /tmp/rootfs 2>/dev/null || true" EXIT
 
             echo "🔗 Mounting rootfs image..."
             sudo mount -o loop rootfs.img /tmp/rootfs

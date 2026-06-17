@@ -11,6 +11,10 @@ on:
         description: Build matrix for multi target builds
         type: string
         required: true
+      meta_qcom_ref:
+        description: Branch/tag/ref of qualcomm-linux/meta-qcom to clone
+        type: string
+        required: true
 
 jobs:
   build:
@@ -23,7 +27,7 @@ jobs:
         build_matrix: ${{ fromJson(inputs.build_matrix) }}
 
     steps:
-      - name: Sync codebase
+      - name: Sync video-driver codebase
         uses: qualcomm-linux/video-driver/.github/actions/sync@meta-qcom_full-build
         with:
           event_name: ${{ github.event_name }}
@@ -31,30 +35,48 @@ jobs:
           pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
           base_ref: ${{ github.ref_name }}
 
-      - name: Print workspace structure
+      - name: Clone meta-qcom as sibling repo
         shell: bash
         run: |
           set -euo pipefail
-          echo "=== GITHUB_WORKSPACE ==="
+
+          PARENT_DIR="$(dirname "${{ github.workspace }}")"
+          META_QCOM_DIR="${PARENT_DIR}/meta-qcom"
+
+          rm -rf "${META_QCOM_DIR}"
+
+          echo "Cloning meta-qcom into: ${META_QCOM_DIR}"
+          git clone --depth 1 \
+            --branch "${{ inputs.meta_qcom_ref }}" \
+            https://github.com/qualcomm-linux/meta-qcom \
+            "${META_QCOM_DIR}"
+
+          echo "✅ meta-qcom cloned"
+
+      - name: Print combined workspace structure
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PARENT_DIR="$(dirname "${{ github.workspace }}")"
+
+          echo "=== github.workspace ==="
           echo "${{ github.workspace }}"
           echo
-          echo "=== pwd ==="
-          pwd
+          echo "=== parent workspace ==="
+          echo "${PARENT_DIR}"
           echo
-          echo "=== top-level listing ==="
-          ls -la
+          echo "=== parent listing ==="
+          ls -la "${PARENT_DIR}"
           echo
-          echo "=== ci directory ==="
-          ls -la ci || true
+          echo "=== video-driver ci ==="
+          ls -la "${{ github.workspace }}/ci" || true
           echo
-          echo "=== .github/workflows ==="
-          ls -la .github/workflows || true
+          echo "=== meta-qcom ci ==="
+          ls -la "${PARENT_DIR}/meta-qcom/ci" || true
           echo
-          echo "=== .github/actions ==="
-          find .github/actions -maxdepth 2 -type f | sort || true
-          echo
-          echo "=== search for kas files ==="
-          find . -type f \( -name "*.yml" -o -name "*.yaml" \) | sort
+          echo "=== qcom kas files ==="
+          find "${PARENT_DIR}/meta-qcom/ci" -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) | sort || true
 
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
@@ -69,7 +91,7 @@ jobs:
           docker tag \
             "artifacts.codelinaro.org/clo-420-qli-registry/${{ inputs.docker_image }}" \
             "${{ inputs.docker_image }}" || true
-          docker images | grep kmake-image || true
+          docker images | grep 'kmake-image' || true
 
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux/video-driver/.github/actions/build@meta-qcom_full-build
@@ -125,17 +147,18 @@ jobs:
           : > "$workspace/artifacts/file_list.txt"
           : > "$workspace/artifacts/tar_list.txt"
 
+          echo "🔍 Listing files in resolved directory: $resolved_dir"
           find "$resolved_dir" -type f -exec realpath {} \; > "$workspace/artifacts/tar_list.txt"
 
           if [ ! -s "$workspace/artifacts/tar_list.txt" ]; then
-            echo "⚠️ No files found to archive."
+            echo "⚠️ No files found to archive. Skipping tarball creation."
             exit 1
           fi
 
           tarball="${machine}_qcomflash_payload.tar.xz"
           tar -cJf "$tarball" -T "$workspace/artifacts/tar_list.txt"
-          mv "$tarball" "$workspace"
-          echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
+          mv "$tarball" "${workspace}"
+          echo "${workspace}/$tarball" >> "$workspace/artifacts/file_list.txt"
 
           echo "✅ Tarball created: $tarball"
 
@@ -151,18 +174,19 @@ jobs:
           machine: ${{ matrix.build_matrix.machine }}
 
       - name: Clean up
-        if: always()
         shell: bash
         run: |
+          set -euo pipefail
           rm -rf "${{ github.workspace }}/artifacts"
           rm -rf "${{ github.workspace }}/build"
+          rm -rf "$(dirname "${{ github.workspace }}")/meta-qcom"
           rm -f "${{ github.workspace }}/modules.tar.xz"
 
       - name: Update summary
         if: success() || failure()
         shell: bash
         run: |
-          if [ "${{ job.status }}" == "success" ]; then
+          if [ "${{ job.status }}" = "success" ]; then
             summary=":heavy_check_mark: Build Success for ${{ matrix.build_matrix.machine }}"
           else
             summary=":x: Build Failed for ${{ matrix.build_matrix.machine }}"
