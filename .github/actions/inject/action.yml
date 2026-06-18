@@ -23,8 +23,6 @@ runs:
       run: |
         set -euo pipefail
 
-        USER_ID=$(id -u)
-        GROUP_ID=$(id -g)
         MACHINE="${{ inputs.machine }}"
         IMAGE_DIR="build/tmp/deploy/images/${MACHINE}/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash"
 
@@ -37,7 +35,6 @@ runs:
         echo "IMAGE_DIR: ${IMAGE_DIR}"
 
         docker run --rm \
-          --user "${USER_ID}:${GROUP_ID}" \
           -v "${WORKSPACE_ROOT}:/workspace" \
           -w "/workspace/${REPO_NAME}" \
           -e "MACHINE=${MACHINE}" \
@@ -56,24 +53,25 @@ runs:
             test -f rootfs.img
 
             mkdir -p /tmp/rootfs
-            trap "sudo umount /tmp/rootfs 2>/dev/null || true" EXIT
+            trap "umount /tmp/rootfs 2>/dev/null || true" EXIT
 
             echo "🔗 Mounting rootfs image..."
-            sudo mount -o loop rootfs.img /tmp/rootfs
+            mount -o loop rootfs.img /tmp/rootfs
 
             echo "📁 Creating IRIS app directories..."
-            sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
-            sudo mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
+            mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
+            mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
 
             echo "📥 Copying iris-test-app payload from workspace..."
-            sudo cp -a "$WORKSPACE/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
+            test -d "$WORKSPACE/v4l-video-test-app/build"
+            cp -a "$WORKSPACE/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
 
             echo "🔍 Verifying contents..."
-            sudo ls -larth /tmp/rootfs/data/vendor/iris_test_app
+            ls -larth /tmp/rootfs/data/vendor/iris_test_app
 
             echo "📤 Syncing and unmounting image..."
             sync
-            sudo umount /tmp/rootfs
+            umount /tmp/rootfs
             trap - EXIT
 
             echo "✅ IRIS injection completed for $MACHINE."
