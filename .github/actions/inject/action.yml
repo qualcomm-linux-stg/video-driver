@@ -52,27 +52,44 @@ runs:
             ls -larth
             test -f rootfs.img
 
-            mkdir -p /tmp/rootfs
-            trap "umount /tmp/rootfs 2>/dev/null || true" EXIT
+            echo "📦 Checking IRIS app payload..."
+            test -d "$WORKSPACE/v4l-video-test-app/build"
+            ls -la "$WORKSPACE/v4l-video-test-app/build"
 
-            echo "🔗 Mounting rootfs image..."
-            mount -o loop rootfs.img /tmp/rootfs
+            mkdir -p /tmp/rootfs
+            LOOPDEV=""
+
+            cleanup() {
+              set +e
+              sync || true
+              mountpoint -q /tmp/rootfs && umount /tmp/rootfs || true
+              [ -n "${LOOPDEV}" ] && losetup -d "${LOOPDEV}" || true
+            }
+            trap cleanup EXIT
+
+            echo "🔎 Available loop devices..."
+            ls -l /dev/loop* || true
+            losetup -a || true
+
+            echo "🔗 Attaching loop device..."
+            LOOPDEV=$(losetup --find --show rootfs.img)
+            echo "Using loop device: ${LOOPDEV}"
+
+            echo "🔗 Mounting rootfs..."
+            mount "${LOOPDEV}" /tmp/rootfs
 
             echo "📁 Creating IRIS app directories..."
             mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
             mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
 
             echo "📥 Copying iris-test-app payload from workspace..."
-            test -d "$WORKSPACE/v4l-video-test-app/build"
             cp -a "$WORKSPACE/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
 
-            echo "🔍 Verifying contents..."
+            echo "🔍 Verifying injected files..."
             ls -larth /tmp/rootfs/data/vendor/iris_test_app
 
-            echo "📤 Syncing and unmounting image..."
+            echo "📤 Syncing changes..."
             sync
-            umount /tmp/rootfs
-            trap - EXIT
 
             echo "✅ IRIS injection completed for $MACHINE."
           '
