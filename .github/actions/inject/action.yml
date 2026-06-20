@@ -29,11 +29,6 @@ runs:
         WORKSPACE_ROOT="$(dirname "${PWD}")"
         REPO_NAME="$(basename "${PWD}")"
 
-        echo "PWD: ${PWD}"
-        echo "WORKSPACE_ROOT: ${WORKSPACE_ROOT}"
-        echo "REPO_NAME: ${REPO_NAME}"
-        echo "IMAGE_DIR: ${IMAGE_DIR}"
-
         docker run --rm \
           -v "${WORKSPACE_ROOT}:/workspace" \
           -w "/workspace/${REPO_NAME}" \
@@ -45,16 +40,24 @@ runs:
           bash -lc '
             set -euxo pipefail
 
-            echo "📦 Checking for rootfs.img..."
-            pwd
-            ls -la
             cd "$IMAGE_DIR"
-            ls -larth
-            test -f rootfs.img
-
-            echo "📦 Checking IRIS app payload..."
+            ROOTFS_IMG="$(realpath rootfs.img)"
+            echo "ROOTFS_IMG=${ROOTFS_IMG}"
+            test -f "$ROOTFS_IMG"
             test -d "$WORKSPACE/v4l-video-test-app/build"
-            ls -la "$WORKSPACE/v4l-video-test-app/build"
+
+            echo "🔎 Loop devices before:"
+            ls -l /dev/loop* || true
+            losetup -a || true
+
+            # Try to make more loop devices visible in the container
+            modprobe loop max_loop=64 || true
+            for i in $(seq 0 63); do
+              [ -b /dev/loop$i ] || mknod -m 660 /dev/loop$i b 7 "$i" || true
+            done
+
+            echo "🔎 Loop devices after:"
+            ls -l /dev/loop* || true
 
             mkdir -p /tmp/rootfs
             LOOPDEV=""
@@ -67,29 +70,31 @@ runs:
             }
             trap cleanup EXIT
 
-            echo "🔎 Available loop devices..."
-            ls -l /dev/loop* || true
-            losetup -a || true
+            # Retry in case the first attempt races with another job
+            for attempt in 1 2 3; do
+              LOOPDEV=$(losetup --find --show "$ROOTFS_IMG") && break || true
+              echo "Attempt ${attempt} failed, retrying..."
+              sleep 2
+            done
 
-            echo "🔗 Attaching loop device..."
-            LOOPDEV=$(losetup --find --show rootfs.img)
+            if [ -z "${LOOPDEV}" ]; then
+              echo "❌ Failed to allocate loop device for ${ROOTFS_IMG}"
+              exit 1
+            fi
+
             echo "Using loop device: ${LOOPDEV}"
-
-            echo "🔗 Mounting rootfs..."
             mount "${LOOPDEV}" /tmp/rootfs
 
-            echo "📁 Creating IRIS app directories..."
             mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
             mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
 
-            echo "📥 Copying iris-test-app payload from workspace..."
             cp -a "$WORKSPACE/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
 
-            echo "🔍 Verifying injected files..."
             ls -larth /tmp/rootfs/data/vendor/iris_test_app
 
-            echo "📤 Syncing changes..."
             sync
+            umount /tmp/rootfs
+            trap - EXIT
 
             echo "✅ IRIS injection completed for $MACHINE."
           '
