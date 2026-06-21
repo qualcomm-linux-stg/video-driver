@@ -5,11 +5,11 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - meta-qcom_full-build
-  pull_request_target:
+      - video.qclinux.main
+  pull_request:
     types: [opened, synchronize, reopened]
     branches:
-      - meta-qcom_full-build
+      - video.qclinux.main
 
 jobs:
   loading:

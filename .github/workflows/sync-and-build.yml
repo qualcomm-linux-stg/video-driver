@@ -16,8 +16,8 @@ jobs:
   build:
     timeout-minutes: 720
     runs-on:
-      group: GHA-video-Prd-SelfHosted-RG
-      labels: [self-hosted, video-prd-u2204-x64-large-od-ephem]
+      group: GHA-video-Stg-SelfHosted-RG
+      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Sync video-driver codebase
-        uses: qualcomm-linux/video-driver/.github/actions/sync@meta-qcom_full-build
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@video.qclinux.main
         with:
           event_name: ${{ github.event_name }}
           pr_ref: ${{ github.event.pull_request.head.ref || '' }}
@@ -72,7 +72,7 @@ jobs:
             "${{ github.event.pull_request.head.repo.full_name || '' }}"
 
       - name: Build ${{ matrix.build_matrix.machine }}
-        uses: qualcomm-linux/video-driver/.github/actions/build@meta-qcom_full-build
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@meta-qcom_full-build
         with:
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
@@ -85,15 +85,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${{ github.workspace }}/v4l-video-test-app/build"
-          echo "Syncing files from s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/"
+          echo "Syncing files from s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/"
           aws s3 sync \
-            "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/" \
+            "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/" \
             "${{ github.workspace }}/v4l-video-test-app/build/"
           echo "✅ Download complete"
           ls -la "${{ github.workspace }}/v4l-video-test-app/build/"
 
       - name: Inject Iris test app to rootfs
-        uses: qualcomm-linux/video-driver/.github/actions/inject@meta-qcom_full-build
+        uses: qualcomm-linux-stg/video-driver/.github/actions/inject@video.qclinux.main
         with:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
@@ -141,9 +141,9 @@ jobs:
 
       - name: Upload artifacts to S3
         id: upload-artifacts
-        uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@meta-qcom_full-build
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@meta-qcom_full-build
         with:
-          s3_bucket: qli-prd-video-gh-artifacts
+          s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.build_matrix.machine }}
