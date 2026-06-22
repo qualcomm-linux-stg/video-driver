@@ -1,0 +1,25 @@
+name: pre_merge
+run-name: Pre Merge Workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - meta-qcom
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - meta-qcom
+
+jobs:
+  loading:
+    uses: ./.github/workflows/loading.yml
+    secrets: inherit
+
+  build:
+    needs: loading
+    uses: ./.github/workflows/sync-and-build.yml
+    secrets: inherit
+    with:
+      build_matrix: ${{ needs.loading.outputs.build_matrix }}
+      docker_image: kmake-image:ver.1.0

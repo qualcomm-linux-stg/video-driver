@@ -1,0 +1,76 @@
+name: Build Docker Image
+description: Build docker image from qualcomm-linux/kmake-image repository
+
+inputs:
+  image_name:
+    description: Docker image name to create
+    required: true
+  repo:
+    description: Repository containing the Dockerfile
+    required: false
+    default: "https://github.com/qualcomm-linux/kmake-image.git"
+  branch:
+    description: Branch or tag to checkout
+    required: false
+    default: "main"
+  dockerfile:
+    description: Dockerfile path relative to cloned repo
+    required: false
+    default: "Dockerfile"
+  context:
+    description: Build context relative to cloned repo
+    required: false
+    default: "."
+  http_proxy:
+    description: HTTP proxy
+    required: false
+    default: ""
+  https_proxy:
+    description: HTTPS proxy
+    required: false
+    default: ""
+  no_proxy:
+    description: no_proxy
+    required: false
+    default: ""
+
+outputs:
+  image_name:
+    description: Built image name
+    value: ${{ steps.build.outputs.image_name }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Clone kmake-image repo
+      shell: bash
+      run: |
+        set -euo pipefail
+        REPO_DIR="${{ runner.temp }}/kmake-image-src"
+        rm -rf "${REPO_DIR}"
+        git clone --depth 1 --branch "${{ inputs.branch }}" "${{ inputs.repo }}" "${REPO_DIR}"
+        ls -la "${REPO_DIR}"
+
+    - name: Build docker image
+      id: build
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        IMAGE_NAME="${{ inputs.image_name }}"
+        REPO_DIR="${{ runner.temp }}/kmake-image-src"
+        DOCKERFILE_PATH="${REPO_DIR}/${{ inputs.dockerfile }}"
+        CONTEXT_PATH="${REPO_DIR}/${{ inputs.context }}"
+
+        docker build \
+          --build-arg http_proxy="${{ inputs.http_proxy }}" \
+          --build-arg https_proxy="${{ inputs.https_proxy }}" \
+          --build-arg no_proxy="${{ inputs.no_proxy }}" \
+          --build-arg HTTP_PROXY="${{ inputs.http_proxy }}" \
+          --build-arg HTTPS_PROXY="${{ inputs.https_proxy }}" \
+          --build-arg NO_PROXY="${{ inputs.no_proxy }}" \
+          -t "${IMAGE_NAME}" \
+          -f "${DOCKERFILE_PATH}" \
+          "${CONTEXT_PATH}"
+
+        echo "image_name=${IMAGE_NAME}" >> "${GITHUB_OUTPUT}"

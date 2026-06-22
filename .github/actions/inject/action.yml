@@ -1,0 +1,141 @@
+name: IRIS Injection
+description: Inject IRIS app into rootfs image
+
+inputs:
+  machine:
+    description: Target machine name
+    required: true
+  docker_image:
+    description: Docker image name
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create top-level images directory
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "${{ github.workspace }}/images"
+
+    - name: Run IRIS injection in Docker
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        MACHINE="${{ inputs.machine }}"
+        WORKSPACE_ROOT="$(dirname "${PWD}")"
+        REPO_NAME="$(basename "${PWD}")"
+
+        echo "PWD: ${PWD}"
+        echo "WORKSPACE_ROOT: ${WORKSPACE_ROOT}"
+        echo "REPO_NAME: ${REPO_NAME}"
+        echo "MACHINE: ${MACHINE}"
+
+        docker run --rm \
+          -v "${WORKSPACE_ROOT}:/workspace" \
+          -w "/workspace/${REPO_NAME}" \
+          -e "MACHINE=${MACHINE}" \
+          -e "WORKSPACE=/workspace/${REPO_NAME}" \
+          --privileged \
+          "${{ inputs.docker_image }}" \
+          bash -lc '
+            set -euxo pipefail
+
+            IMAGE_BASE_DIR="build/tmp/deploy/images/${MACHINE}"
+
+            echo "=== Looking for build output under: ${IMAGE_BASE_DIR} ==="
+            if [ ! -d "${IMAGE_BASE_DIR}" ]; then
+              echo "❌ Machine output directory not found: ${IMAGE_BASE_DIR}"
+              echo "=== build/tmp/deploy/images tree ==="
+              find build/tmp/deploy/images -maxdepth 3 -mindepth 1 -print | sort || true
+              exit 1
+            fi
+
+            echo "=== Contents of machine directory ==="
+            ls -la "${IMAGE_BASE_DIR}" || true
+
+            IMAGE_DIR="$(find "${IMAGE_BASE_DIR}" -maxdepth 1 -type d -name "*.qcomflash" | sort | head -n 1 || true)"
+
+            if [ -z "${IMAGE_DIR}" ]; then
+              echo "❌ No .qcomflash directory found under ${IMAGE_BASE_DIR}"
+              echo "=== Full contents under machine directory ==="
+              find "${IMAGE_BASE_DIR}" -maxdepth 2 -print | sort || true
+              exit 1
+            fi
+
+            echo "✅ Using image directory: ${IMAGE_DIR}"
+            cd "${IMAGE_DIR}"
+            ls -larth
+
+            ROOTFS_IMG="$(realpath rootfs.img)"
+            echo "ROOTFS_IMG=${ROOTFS_IMG}"
+            test -f "${ROOTFS_IMG}"
+
+            echo "📦 Checking IRIS app payload..."
+            test -d "${WORKSPACE}/v4l-video-test-app/build"
+            ls -la "${WORKSPACE}/v4l-video-test-app/build"
+
+            echo "🔎 Loop devices before:"
+            ls -l /dev/loop* || true
+            losetup -a || true
+
+            # Try to expose more loop devices in the container
+            modprobe loop max_loop=64 || true
+            for i in $(seq 0 63); do
+              [ -b /dev/loop$i ] || mknod -m 660 /dev/loop$i b 7 "$i" || true
+            done
+
+            echo "🔎 Loop devices after:"
+            ls -l /dev/loop* || true
+
+            mkdir -p /tmp/rootfs
+            LOOPDEV=""
+
+            cleanup() {
+              set +e
+              sync || true
+              mountpoint -q /tmp/rootfs && umount /tmp/rootfs || true
+              [ -n "${LOOPDEV}" ] && losetup -d "${LOOPDEV}" || true
+            }
+            trap cleanup EXIT
+
+            echo "🔗 Attaching loop device..."
+            for attempt in 1 2 3; do
+              LOOPDEV="$(losetup --find --show "${ROOTFS_IMG}" 2>/dev/null || true)"
+              if [ -n "${LOOPDEV}" ]; then
+                break
+              fi
+              echo "Attempt ${attempt} failed to allocate loop device, retrying..."
+              sleep 2
+            done
+
+            if [ -z "${LOOPDEV}" ]; then
+              echo "❌ Failed to allocate loop device for ${ROOTFS_IMG}"
+              exit 1
+            fi
+
+            echo "Using loop device: ${LOOPDEV}"
+
+            echo "🔗 Mounting rootfs..."
+            mount "${LOOPDEV}" /tmp/rootfs
+
+            echo "📁 Creating IRIS app directories..."
+            mkdir -p /tmp/rootfs/data/vendor/iris_test_app/input
+            mkdir -p /tmp/rootfs/data/vendor/iris_test_app/output
+
+            echo "📥 Copying iris-test-app payload from workspace..."
+            cp -a "${WORKSPACE}/v4l-video-test-app/build/." /tmp/rootfs/data/vendor/iris_test_app/
+
+            echo "🔍 Verifying injected files..."
+            ls -larth /tmp/rootfs/data/vendor/iris_test_app
+
+            echo "📤 Syncing changes..."
+            sync
+
+            echo "📤 Unmounting rootfs..."
+            umount /tmp/rootfs
+            trap - EXIT
+
+            echo "✅ IRIS injection completed for ${MACHINE}."
+          '
