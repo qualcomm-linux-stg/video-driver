@@ -5,7 +5,7 @@ VIDEO_DRIVER_DIR="${1:-$(pwd)}"
 META_QCOM_DIR="${2:-$(dirname "$VIDEO_DRIVER_DIR")/meta-qcom}"
 PR_REPO="${3:-}"
 
-DEFAULT_REPO="qualcomm-linux/video-driver"
+DEFAULT_REPO="qualcomm-linux-stg/video-driver"
 
 echo "VIDEO_DRIVER_DIR=${VIDEO_DRIVER_DIR}"
 echo "META_QCOM_DIR=${META_QCOM_DIR}"
