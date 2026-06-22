@@ -15,7 +15,7 @@ jobs:
       build_matrix: ${{ steps.loading.outputs.build_matrix }}
     steps:
       - name: Sync codebase
-        uses: qualcomm-linux/video-driver/.github/actions/sync@video.qclinux.main
+        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@video.qclinux.main
         with:
           event_name: ${{ github.event_name }}
           pr_ref: ${{ github.event.pull_request.head.ref || '' }}
@@ -24,4 +24,4 @@ jobs:
 
       - name: Load Parameters
         id: loading
-        uses: qualcomm-linux/video-driver/.github/actions/loading@video.qclinux.main
+        uses: qualcomm-linux-stg/video-driver/.github/actions/loading@video.qclinux.main
