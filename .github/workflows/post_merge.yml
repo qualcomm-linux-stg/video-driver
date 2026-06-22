@@ -11,12 +11,12 @@ on:
 
 jobs:
   loading:
-    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.main
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@video.qclinux.main
     secrets: inherit
 
   build:
     needs: loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.main
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.main
     secrets: inherit
     with:
       docker_image: kmake-image:ver.1.0
