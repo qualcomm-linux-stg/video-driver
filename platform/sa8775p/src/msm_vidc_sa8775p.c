@@ -2610,7 +2610,7 @@ static const struct msm_vidc_platform_data sa8775p_data = {
 	.freq_tbl_size = ARRAY_SIZE(sa8775p_freq_table),
 	.reg_prst_tbl = sa8775p_reg_preset_table,
 	.reg_prst_tbl_size = ARRAY_SIZE(sa8775p_reg_preset_table),
-	.fwname = "./qcom/vpu/vpu30_p4_s6.mbn",
+	.fwname = "./qcom/vpu/vpu30_p4_s6_16mb.mbn",
 	.pas_id = 9,
 	.supports_mmrm = 0,
 
