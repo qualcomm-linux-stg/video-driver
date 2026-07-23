@@ -2550,7 +2550,7 @@ int msm_vdec_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 		i_vpr_e(inst, "%s: invalid type %d\n", __func__, f->type);
 		goto err_invalid_fmt;
 	}
-	memcpy(f, fmt, sizeof(struct v4l2_format));
+	*f = *fmt;
 
 err_invalid_fmt:
 	return rc;
@@ -2565,7 +2565,7 @@ int msm_vdec_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	if (port < 0)
 		return -EINVAL;
 
-	memcpy(f, &inst->fmts[port], sizeof(struct v4l2_format));
+	*f = inst->fmts[port];
 
 	return rc;
 }

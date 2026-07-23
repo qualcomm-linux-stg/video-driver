@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
+# KERNEL_SRC may not be set in all build environments; fall back to srctree
+# which is always defined by the kernel build system.
+KERNEL_SRC ?= $(srctree)
+
 VIDEO_DRIVER_ABS_PATH := $(VIDEO_ROOT)/video/driver
 VIDEO_DRIVER_REL_PATH := ../video/driver
 
@@ -7,6 +11,12 @@ UBWC_H := $(KERNEL_SRC)/include/linux/soc/qcom/ubwc.h
 HAS_UBWC_HELPERS := $(shell grep -qs 'qcom_ubwc_min_acc_length_64b' $(UBWC_H) && echo yes || echo no)
 ifeq ($(HAS_UBWC_HELPERS),yes)
   ccflags-y += -DMSM_VIDC_HAS_QCOM_UBWC_HELPERS=1
+endif
+
+X1P42100_VIDEOCC_H := $(KERNEL_SRC)/include/dt-bindings/clock/qcom,x1p42100-videocc.h
+HAS_X1P42100_VIDEOCC := $(shell test -f $(X1P42100_VIDEOCC_H) && echo yes || echo no)
+ifeq ($(HAS_X1P42100_VIDEOCC),yes)
+  ccflags-y += -DMSM_VIDC_HAS_X1P42100_VIDEOCC=1
 endif
 
 MDT_LOADER_H := $(KERNEL_SRC)/include/linux/soc/qcom/mdt_loader.h
@@ -116,6 +126,7 @@ LINUXINCLUDE   += -I$(VIDEO_DRIVER_ABS_PATH)/platform/lemans/inc \
                   -I$(VIDEO_DRIVER_ABS_PATH)/platform/hamoa/inc \
                   -I$(VIDEO_DRIVER_ABS_PATH)/platform/monaco/inc \
                   -I$(VIDEO_DRIVER_ABS_PATH)/platform/kodiak/inc \
+                  -I$(VIDEO_DRIVER_ABS_PATH)/platform/purwa/inc \
                   -I$(VIDEO_DRIVER_ABS_PATH)/variant/iris3/inc \
                   -I$(VIDEO_DRIVER_ABS_PATH)/variant/iris2/inc
 endif
@@ -214,6 +225,7 @@ iris_vpu-objs +=  $(VIDEO_DRIVER_REL_PATH)/platform/lemans/src/lemans.o \
                   $(VIDEO_DRIVER_REL_PATH)/platform/hamoa/src/hamoa.o \
                   $(VIDEO_DRIVER_REL_PATH)/platform/monaco/src/monaco.o \
                   $(VIDEO_DRIVER_REL_PATH)/platform/kodiak/src/kodiak.o \
+                  $(VIDEO_DRIVER_REL_PATH)/platform/purwa/src/purwa.o \
                   $(VIDEO_DRIVER_REL_PATH)/variant/iris3/src/msm_vidc_buffer_iris3.o \
                   $(VIDEO_DRIVER_REL_PATH)/variant/iris3/src/msm_vidc_power_iris3.o \
                   $(VIDEO_DRIVER_REL_PATH)/variant/iris3/src/msm_vidc_bus_iris3.o \

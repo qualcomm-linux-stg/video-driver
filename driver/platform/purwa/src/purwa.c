@@ -3,16 +3,18 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
-#include <dt-bindings/clock/qcom,sa8775p-gcc.h>
-#include <dt-bindings/clock/qcom,sa8775p-videocc.h>
+#include <dt-bindings/clock/qcom,x1e80100-gcc.h>
+#ifdef MSM_VIDC_HAS_X1P42100_VIDEOCC
+#include <dt-bindings/clock/qcom,x1p42100-videocc.h>
+#endif
 #include <media/v4l2_vidc_extensions.h>
 
-#include "msm_vidc_internal.h"
+#include "msm_vidc_purwa.h"
 #include "msm_vidc_inst.h"
 #include "msm_vidc_control.h"
-#include "msm_vidc_lemans.h"
 #include "msm_vidc_platform.h"
 #include "msm_vidc_debug.h"
+#include "msm_vidc_internal.h"
 #include "msm_vidc_iris3.h"
 #include "hfi_property.h"
 #include "hfi_command.h"
@@ -20,7 +22,7 @@
 #include "msm_vidc_driver.h"
 #include "resources.h"
 
-#define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8000800010
+#define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8020010
 #define MAX_BASE_LAYER_PRIORITY_ID 63
 #define MAX_OP_POINT            31
 #define MAX_BITRATE             245000000
@@ -43,17 +45,9 @@
 #define VP9     MSM_VIDC_VP9
 #define AV1     MSM_VIDC_AV1
 #define CODECS_ALL     (H264 | HEVC | VP9 | AV1)
-#define MAXIMUM_OVERRIDE_VP9_FPS 180
+#define MAXIMUM_OVERRIDE_VP9_FPS 200
 
-#ifndef V4L2_PIX_FMT_QC08C
-#define V4L2_PIX_FMT_QC08C    v4l2_fourcc('Q', '0', '8', 'C')
-#endif
-
-#ifndef V4L2_PIX_FMT_QC10C
-#define V4L2_PIX_FMT_QC10C    v4l2_fourcc('Q', '1', '0', 'C')
-#endif
-
-static struct codec_info codec_data_lemans[] = {
+static struct codec_info codec_data_purwa[] = {
 	{
 		.v4l2_codec  = V4L2_PIX_FMT_H264,
 		.vidc_codec  = MSM_VIDC_H264,
@@ -76,7 +70,7 @@ static struct codec_info codec_data_lemans[] = {
 	},
 };
 
-static struct color_format_info color_format_data_lemans[] = {
+static struct color_format_info color_format_data_purwa[] = {
 	{
 		.v4l2_color_format = V4L2_PIX_FMT_NV12,
 		.vidc_color_format = MSM_VIDC_FMT_NV12,
@@ -105,7 +99,7 @@ static struct color_format_info color_format_data_lemans[] = {
 	{
 		.v4l2_color_format = V4L2_PIX_FMT_P010,
 		.vidc_color_format = MSM_VIDC_FMT_P010,
-		.pixfmt_name	   = "P010",
+		.pixfmt_name       = "P010",
 	},
 	{
 		.v4l2_color_format = V4L2_META_FMT_VIDC,
@@ -114,14 +108,10 @@ static struct color_format_info color_format_data_lemans[] = {
 	},
 };
 
-static struct color_primaries_info color_primaries_data_lemans[] = {
+static struct color_primaries_info color_primaries_data_purwa[] = {
 	{
 		.v4l2_color_primaries  = V4L2_COLORSPACE_DEFAULT,
 		.vidc_color_primaries  = MSM_VIDC_PRIMARIES_RESERVED,
-	},
-	{
-		.v4l2_color_primaries  = V4L2_COLORSPACE_DEFAULT,
-		.vidc_color_primaries  = MSM_VIDC_PRIMARIES_UNSPECIFIED,
 	},
 	{
 		.v4l2_color_primaries  = V4L2_COLORSPACE_REC709,
@@ -153,14 +143,10 @@ static struct color_primaries_info color_primaries_data_lemans[] = {
 	},
 };
 
-static struct transfer_char_info transfer_char_data_lemans[] = {
+static struct transfer_char_info transfer_char_data_purwa[] = {
 	{
 		.v4l2_transfer_char  = V4L2_XFER_FUNC_DEFAULT,
 		.vidc_transfer_char  = MSM_VIDC_TRANSFER_RESERVED,
-	},
-	{
-		.v4l2_transfer_char  = V4L2_XFER_FUNC_DEFAULT,
-		.vidc_transfer_char  = MSM_VIDC_TRANSFER_UNSPECIFIED,
 	},
 	{
 		.v4l2_transfer_char  = V4L2_XFER_FUNC_709,
@@ -180,14 +166,10 @@ static struct transfer_char_info transfer_char_data_lemans[] = {
 	},
 };
 
-static struct matrix_coeff_info matrix_coeff_data_lemans[] = {
+static struct matrix_coeff_info matrix_coeff_data_purwa[] = {
 	{
 		.v4l2_matrix_coeff  = V4L2_YCBCR_ENC_DEFAULT,
 		.vidc_matrix_coeff  = MSM_VIDC_MATRIX_COEFF_RESERVED,
-	},
-	{
-		.v4l2_matrix_coeff  = V4L2_YCBCR_ENC_DEFAULT,
-		.vidc_matrix_coeff  = MSM_VIDC_MATRIX_COEFF_UNSPECIFIED,
 	},
 	{
 		.v4l2_matrix_coeff  = V4L2_YCBCR_ENC_709,
@@ -219,47 +201,41 @@ static struct matrix_coeff_info matrix_coeff_data_lemans[] = {
 	},
 };
 
-static const struct msm_platform_core_capability core_data_lemans[] = {
+static struct msm_platform_core_capability core_data_purwa[] = {
 	/* {type, value} */
 	{ENC_CODECS, H264 | HEVC},
 	{DEC_CODECS, H264 | HEVC | VP9 | AV1},
-	{MAX_SESSION_COUNT, 32},
-	{MAX_NUM_720P_SESSIONS, 32},
-	{MAX_NUM_1080P_SESSIONS, 32},
-	{MAX_NUM_4K_SESSIONS, 8},
-	{MAX_NUM_8K_SESSIONS, 2},
-	{MAX_RT_MBPF, 174080},	/* (8192x4352)/256 + (4096x2176)/256*/
-	{MAX_MBPF, 278528}, /* ((8192x4352)/256) * 2 */
-	{MAX_MBPS, 7833600},
-	/* max_load
-	 * 7680x4320@60fps or 3840x2176@240fps
-	 * which is greater than 4096x2176@120fps,
-	 * 8192x4320@48fps
-	 */
-	{MAX_MBPF_HQ, 8160}, /* ((1920x1088)/256) */
-	{MAX_MBPS_HQ, 489600}, /* ((1920x1088)/256)@60fps */
-	{MAX_MBPF_B_FRAME, 32640}, /* 3840x2176/256 */
-	{MAX_MBPS_B_FRAME, 1958400}, /* 3840x2176/256 MBs@60fps */
-	{MAX_MBPS_ALL_INTRA, 1044480}, /* 4096x2176/256 MBs@30fps */
+	{MAX_SESSION_COUNT, 16},
+	{MAX_NUM_720P_SESSIONS, 16},
+	{MAX_NUM_1080P_SESSIONS, 8},
+	{MAX_NUM_4K_SESSIONS, 4},
+	{MAX_NUM_8K_SESSIONS, 1},
+	{MAX_RT_MBPF, (((4096 * 2176) / 256) * 4)},	/* (4096*2176)/256 * 4 */
+	{MAX_MBPF, (((4096 * 2176) / 256) * 4)}, /* (4096*2176)/256 * 4 */
+	{MAX_MBPS, (((3840 * 2176) / 256) * 120)},	/* max_load 3840x2176@120fps */
+	{MAX_MBPF_HQ, ((1280 * 720) / 256)}, /* ((1280*720)/256)) */
+	{MAX_MBPS_HQ, (((1280 * 720) / 256) * 30)}, /* ((1280*720)/256))@30fps */
+	{MAX_MBPF_B_FRAME, ((1920 * 1088) / 256 * 2)}, /* (1920*1088)/256 * 2 */
+	{MAX_MBPS_B_FRAME, (((1920 * 1088) / 256) * 120)}, /* ((1920*1088)/256)@120fps */
+	{MAX_MBPS_ALL_INTRA, (((1920 * 1088) / 256) * 120)}, /* ((1920*1088)/256)@120fps */
 	{MAX_ENH_LAYER_COUNT, 5},
-	{NUM_VPP_PIPE, 4},
+	{NUM_VPP_PIPE, 1},
 	{SW_PC, 1},
 	{FW_UNLOAD, 0},
 	{HW_RESPONSE_TIMEOUT, HW_RESPONSE_TIMEOUT_VALUE}, /* 1000 ms */
 	{SW_PC_DELAY,         SW_PC_DELAY_VALUE        }, /* 1500 ms (>HW_RESPONSE_TIMEOUT)*/
 	{FW_UNLOAD_DELAY,     FW_UNLOAD_DELAY_VALUE    }, /* 3000 ms (>SW_PC_DELAY)*/
-	{DCVS, 0},
-	{DECODE_BATCH, 0},
+	{DCVS, 1},
+	{DECODE_BATCH, 1},
 	{DECODE_BATCH_TIMEOUT, 200},
 	{STATS_TIMEOUT_MS, 2000},
 	{NON_FATAL_FAULTS, 1},
-	{ENC_AUTO_FRAMERATE, 1},
+	{ENC_AUTO_FRAMERATE, 0},
 	{DEVICE_CAPS, V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING},
 	{SUPPORTS_REQUESTS, 0},
-	{SKIP_DELAYED_UNMAP, 1},
 };
 
-static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
+static struct msm_platform_inst_capability instance_cap_data_purwa[] = {
 	/* {cap, domain, codec,
 	 *      min, max, step_or_mask, value,
 	 *      v4l2_id,
@@ -273,7 +249,11 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	{FRAME_WIDTH, ENC, CODECS_ALL, 128, 8192, 1, 1920},
 
+	{FRAME_WIDTH, ENC, HEVC, 96, 8192, 1, 1920},
+
 	{LOSSLESS_FRAME_WIDTH, ENC, CODECS_ALL, 128, 4096, 1, 1920},
+
+	{LOSSLESS_FRAME_WIDTH, ENC, HEVC, 96, 4096, 1, 1920},
 
 	{FRAME_HEIGHT, DEC, CODECS_ALL, 96, 8192, 1, 1080},
 
@@ -281,9 +261,11 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	{FRAME_HEIGHT, ENC, CODECS_ALL, 128, 8192, 1, 1080},
 
+	{FRAME_HEIGHT, ENC, HEVC, 96, 8192, 1, 1080},
 
 	{LOSSLESS_FRAME_HEIGHT, ENC, CODECS_ALL, 128, 4096, 1, 1080},
 
+	{LOSSLESS_FRAME_HEIGHT, ENC, HEVC, 96, 4096, 1, 1080},
 
 	{PIX_FMTS, ENC | DEC, H264,
 		MSM_VIDC_FMT_NV12,
@@ -295,14 +277,13 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		MSM_VIDC_FMT_NV12,
 		MSM_VIDC_FMT_TP10C,
 		MSM_VIDC_FMT_NV12 | MSM_VIDC_FMT_NV21 | MSM_VIDC_FMT_NV12C |
-		MSM_VIDC_FMT_TP10C,
+		MSM_VIDC_FMT_P010 | MSM_VIDC_FMT_TP10C,
 		MSM_VIDC_FMT_NV12C},
 
 	{MIN_BUFFERS_INPUT, ENC | DEC, CODECS_ALL, 0, 64, 1, 4,
 		V4L2_CID_MIN_BUFFERS_FOR_OUTPUT,
 		0,
 		CAP_FLAG_VOLATILE},
-
 
 	{MIN_BUFFERS_OUTPUT, ENC | DEC, CODECS_ALL,
 		0, 64, 1, 4,
@@ -410,7 +391,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME,
 		BIT(V4L2_MPEG_VIDEO_HEADER_MODE_SEPARATE) |
 		BIT(V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME),
-		V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME,
+		V4L2_MPEG_VIDEO_HEADER_MODE_SEPARATE,
 		V4L2_CID_MPEG_VIDEO_HEADER_MODE,
 		HFI_PROP_SEQ_HEADER_MODE,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
@@ -541,7 +522,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		0},
 
 	{B_FRAME, ENC, H264 | HEVC,
-		0, 1, 1, 0,
+		0, 7, 1, 0,
 		V4L2_CID_MPEG_VIDEO_B_FRAMES,
 		HFI_PROP_MAX_B_FRAMES,
 		CAP_FLAG_OUTPUT_PORT},
@@ -573,14 +554,14 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 
 	{LTR_COUNT, ENC, H264 | HEVC,
-		0, MAX_LTR_FRAME_COUNT_2, 1, 0,
+		0, MAX_LTR_FRAME_COUNT_5, 1, 0,
 		V4L2_CID_MPEG_VIDEO_LTR_COUNT,
 		HFI_PROP_LTR_COUNT,
 		CAP_FLAG_OUTPUT_PORT},
 
 	{USE_LTR, ENC, H264 | HEVC,
 		0,
-		((1 << MAX_LTR_FRAME_COUNT_2) - 1),
+		((1 << MAX_LTR_FRAME_COUNT_5) - 1),
 		0, 0,
 		V4L2_CID_MPEG_VIDEO_USE_LTR_FRAMES,
 		HFI_PROP_LTR_USE,
@@ -588,7 +569,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	{MARK_LTR, ENC, H264 | HEVC,
 		INVALID_DEFAULT_MARK_OR_USE_LTR,
-		(MAX_LTR_FRAME_COUNT_2 - 1),
+		(MAX_LTR_FRAME_COUNT_5 - 1),
 		1, INVALID_DEFAULT_MARK_OR_USE_LTR,
 		V4L2_CID_MPEG_VIDEO_FRAME_LTR_INDEX,
 		HFI_PROP_LTR_MARK,
@@ -598,7 +579,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		0, MAX_BASE_LAYER_PRIORITY_ID, 1, 0,
 		V4L2_CID_MPEG_VIDEO_BASELAYER_PRIORITY_ID,
 		HFI_PROP_BASELAYER_PRIORITYID,
-		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
+		CAP_FLAG_OUTPUT_PORT},
 
 	{IR_TYPE, ENC, H264 | HEVC,
 		V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD_TYPE_RANDOM,
@@ -610,23 +591,10 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		0,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
 
-	{IR_PERIOD, ENC, H264 | HEVC,
-		0, INT_MAX, 1, 0,
-		V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD,
-		0,
-		CAP_FLAG_INPUT_PORT | CAP_FLAG_OUTPUT_PORT |
-		CAP_FLAG_DYNAMIC_ALLOWED},
-
 	{AU_DELIMITER, ENC, H264 | HEVC,
 		0, 1, 1, 0,
 		V4L2_CID_MPEG_VIDEO_AU_DELIMITER,
 		HFI_PROP_AUD,
-		CAP_FLAG_OUTPUT_PORT},
-
-	{TIME_DELTA_BASED_RC, ENC, H264 | HEVC,
-		0, 1, 1, 0,
-		V4L2_CID_MPEG_VIDC_TIME_DELTA_BASED_RC,
-		HFI_PROP_TIME_DELTA_BASED_RATE_CONTROL,
 		CAP_FLAG_OUTPUT_PORT},
 
 	{CONTENT_ADAPTIVE_CODING, ENC, H264 | HEVC,
@@ -1004,7 +972,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	{LEVEL, ENC, HEVC,
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_1,
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_6,
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2,
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2_1) |
@@ -1015,7 +983,9 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6),
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1) |
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_5,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
 		HFI_PROP_LEVEL,
@@ -1023,7 +993,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	{LEVEL, DEC, H264,
 		V4L2_MPEG_VIDEO_H264_LEVEL_1_0,
-		V4L2_MPEG_VIDEO_H264_LEVEL_6_1,
+		V4L2_MPEG_VIDEO_H264_LEVEL_6_2,
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_0) |
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1B) |
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_1_1) |
@@ -1042,7 +1012,8 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_5_2) |
 		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_6_0) |
-		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_6_1),
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_6_1) |
+		BIT(V4L2_MPEG_VIDEO_H264_LEVEL_6_2),
 		V4L2_MPEG_VIDEO_H264_LEVEL_6_1,
 		V4L2_CID_MPEG_VIDEO_H264_LEVEL,
 		HFI_PROP_LEVEL,
@@ -1050,7 +1021,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	{LEVEL, DEC, HEVC,
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_1,
-		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1,
+		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2,
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_2_1) |
@@ -1062,7 +1033,8 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_1) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_5_2) |
 		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6) |
-		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1),
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1)|
+		BIT(V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2),
 		V4L2_MPEG_VIDEO_HEVC_LEVEL_6_1,
 		V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
 		HFI_PROP_LEVEL,
@@ -1070,7 +1042,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	{LEVEL, DEC, VP9,
 		V4L2_MPEG_VIDEO_VP9_LEVEL_1_0,
-		V4L2_MPEG_VIDEO_VP9_LEVEL_5_1,
+		V4L2_MPEG_VIDEO_VP9_LEVEL_6_0,
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_1_0) |
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_1_1) |
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_2_0) |
@@ -1080,8 +1052,10 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_4_0) |
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_4_1) |
 		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_5_0) |
-		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_5_1),
-		V4L2_MPEG_VIDEO_VP9_LEVEL_5_1,
+		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_5_1) |
+		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_5_2) |
+		BIT(V4L2_MPEG_VIDEO_VP9_LEVEL_6_0),
+		V4L2_MPEG_VIDEO_VP9_LEVEL_6_0,
 		V4L2_CID_MPEG_VIDEO_VP9_LEVEL,
 		HFI_PROP_LEVEL,
 		CAP_FLAG_OUTPUT_PORT | CAP_FLAG_MENU},
@@ -1240,15 +1214,15 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		HFI_PROP_BUFFER_HOST_MAX_COUNT,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{CONCEAL_COLOR_8BIT, DEC, CODECS_ALL, 0x0, 0xFF00FF00FF, 1,
+	{CONCEAL_COLOR_8BIT, DEC, CODECS_ALL, 0x0, 0xff3fcff, 1,
 		DEFAULT_VIDEO_CONCEAL_COLOR_BLACK,
-		V4L2_CID_MPEG_VIDEO_DEC_CONCEAL_COLOR,
+		V4L2_CID_MPEG_VIDEO_MUTE_YUV,
 		HFI_PROP_CONCEAL_COLOR_8BIT,
 		CAP_FLAG_INPUT_PORT},
 
-	{CONCEAL_COLOR_10BIT, DEC, CODECS_ALL, 0x0, 0x3FF03FF03FF, 1,
+	{CONCEAL_COLOR_10BIT, DEC, CODECS_ALL, 0x0, 0x3fffffff, 1,
 		DEFAULT_VIDEO_CONCEAL_COLOR_BLACK,
-		V4L2_CID_MPEG_VIDEO_DEC_CONCEAL_COLOR,
+		V4L2_CID_MPEG_VIDEO_MUTE_YUV,
 		HFI_PROP_CONCEAL_COLOR_10BIT,
 		CAP_FLAG_INPUT_PORT},
 
@@ -1261,14 +1235,16 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 
 	{PIPE, DEC | ENC, CODECS_ALL,
 		MSM_VIDC_PIPE_1,
-		MSM_VIDC_PIPE_4, 1,
-		MSM_VIDC_PIPE_4,
+		MSM_VIDC_PIPE_1, 1,
+		MSM_VIDC_PIPE_1,
 		0,
 		HFI_PROP_PIPE},
 
-	{POC, DEC, H264, 0, 2, 1, 1,
+	{POC, DEC, H264,
+		0, 2, 1, 1,
 		0,
-		HFI_PROP_PIC_ORDER_CNT_TYPE},
+		HFI_PROP_PIC_ORDER_CNT_TYPE,
+		CAP_FLAG_VOLATILE},
 
 	{QUALITY_MODE, ENC, CODECS_ALL,
 		MSM_VIDC_MAX_QUALITY_MODE,
@@ -1322,6 +1298,9 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		HFI_PROP_SESSION_PRIORITY,
 		CAP_FLAG_DYNAMIC_ALLOWED},
 
+	{FIRMWARE_PRIORITY_OFFSET, DEC | ENC, CODECS_ALL,
+		1, 1, 1, 1},
+
 	{ENC_IP_CR, ENC, CODECS_ALL,
 		0, S32_MAX, 1, 0,
 		0,
@@ -1354,11 +1333,6 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		0,
 		CAP_FLAG_OUTPUT_PORT},
 
-	{META_ROI_INFO, ENC, H264 | HEVC,
-		0, 0, 0, 0,
-		0,
-		0,
-		CAP_FLAG_INPUT_PORT | CAP_FLAG_BITMASK | CAP_FLAG_META},
 	{COMPLEXITY, ENC, H264 | HEVC,
 		0, 100,
 		1, DEFAULT_COMPLEXITY,
@@ -1377,7 +1351,7 @@ static struct msm_platform_inst_capability instance_cap_data_lemans[] = {
 		CAP_FLAG_INPUT_PORT | CAP_FLAG_DYNAMIC_ALLOWED},
 };
 
-static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_lemans[] = {
+static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_purwa[] = {
 	/* {cap, domain, codec,
 	 *      parents,
 	 *      children,
@@ -1385,12 +1359,11 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_lema
 	 */
 
 	{PIX_FMTS, ENC, H264,
-		{META_ROI_INFO, IR_PERIOD, BIT_DEPTH}},
+		{LTR_COUNT, BIT_DEPTH}},
 
 	{PIX_FMTS, ENC, HEVC,
 		{PROFILE, MIN_FRAME_QP, MAX_FRAME_QP, I_FRAME_QP, P_FRAME_QP,
-			B_FRAME_QP, META_ROI_INFO, MIN_QUALITY, BLUR_TYPES, IR_PERIOD,
-			LTR_COUNT, BIT_DEPTH}},
+			B_FRAME_QP, MIN_QUALITY, BLUR_TYPES, LTR_COUNT, BIT_DEPTH}},
 
 	{PIX_FMTS, DEC, HEVC,
 		{PROFILE}},
@@ -1450,18 +1423,18 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_lema
 		msm_vidc_set_bitrate},
 
 	{BITRATE_MODE, ENC, H264,
-		{LTR_COUNT, IR_PERIOD, TIME_DELTA_BASED_RC, I_FRAME_QP,
-			P_FRAME_QP, B_FRAME_QP, ENH_LAYER_COUNT, BIT_RATE,
-			META_ROI_INFO, MIN_QUALITY, VBV_DELAY,
+		{LTR_COUNT, I_FRAME_QP, P_FRAME_QP,
+			B_FRAME_QP, ENH_LAYER_COUNT, BIT_RATE,
+			MIN_QUALITY, VBV_DELAY,
 			PEAK_BITRATE, SLICE_MODE, CONTENT_ADAPTIVE_CODING,
 			BLUR_TYPES, LOWLATENCY_MODE},
 		msm_vidc_adjust_bitrate_mode,
 		msm_vidc_set_u32_enum},
 
 	{BITRATE_MODE, ENC, HEVC,
-		{LTR_COUNT, IR_PERIOD, TIME_DELTA_BASED_RC, I_FRAME_QP,
-			P_FRAME_QP, B_FRAME_QP, CONSTANT_QUALITY, ENH_LAYER_COUNT,
-			BIT_RATE, META_ROI_INFO, MIN_QUALITY, VBV_DELAY,
+		{LTR_COUNT, I_FRAME_QP, P_FRAME_QP,
+			B_FRAME_QP, CONSTANT_QUALITY, ENH_LAYER_COUNT,
+			BIT_RATE, MIN_QUALITY, VBV_DELAY,
 			PEAK_BITRATE, SLICE_MODE, CONTENT_ADAPTIVE_CODING,
 			BLUR_TYPES, LOWLATENCY_MODE, OPEN_GOP},
 		msm_vidc_adjust_bitrate_mode,
@@ -1517,24 +1490,9 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_lema
 		msm_vidc_adjust_mark_ltr,
 		msm_vidc_set_use_and_mark_ltr},
 
-	{IR_PERIOD, ENC, H264 | HEVC,
-		{0},
-		msm_vidc_adjust_ir_period_lemans,
-		msm_vidc_set_ir_period_lemans},
-
 	{AU_DELIMITER, ENC, H264 | HEVC,
 		{0},
 		NULL,
-		msm_vidc_set_u32},
-
-	{BASELAYER_PRIORITY, ENC, H264,
-		{0},
-		NULL,
-		msm_vidc_set_u32},
-
-	{TIME_DELTA_BASED_RC, ENC, CODECS_ALL,
-		{0},
-		msm_vidc_adjust_delta_based_rc,
 		msm_vidc_set_u32},
 
 	{CONTENT_ADAPTIVE_CODING, ENC, H264 | HEVC,
@@ -1627,14 +1585,12 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_lema
 		{CONTENT_ADAPTIVE_CODING}},
 
 	{ENH_LAYER_COUNT, ENC, H264,
-		{GOP_SIZE, B_FRAME, BIT_RATE, MIN_QUALITY,
-			SLICE_MODE, LTR_COUNT},
+		{GOP_SIZE, B_FRAME, BIT_RATE, MIN_QUALITY, LTR_COUNT},
 		msm_vidc_adjust_layer_count,
 		msm_vidc_set_layer_count_and_type},
 
 	{ENH_LAYER_COUNT, ENC, HEVC,
-		{GOP_SIZE, B_FRAME, BIT_RATE, MIN_QUALITY,
-			SLICE_MODE, LTR_COUNT, OPEN_GOP},
+		{GOP_SIZE, B_FRAME, BIT_RATE, MIN_QUALITY, LTR_COUNT, OPEN_GOP},
 		msm_vidc_adjust_layer_count,
 		msm_vidc_set_layer_count_and_type},
 
@@ -1807,79 +1763,89 @@ static struct msm_platform_inst_cap_dependency instance_cap_dependency_data_lema
 		{0},
 		msm_vidc_adjust_session_priority,
 		msm_vidc_set_session_priority},
+
+	{FIRMWARE_PRIORITY_OFFSET, DEC | ENC, CODECS_ALL,
+		{0},
+		NULL,
+		NULL},
+
 	{DRAP, DEC, AV1,
 		{0},
 		NULL,
 		msm_vidc_set_u32},
 
 	{ALL_INTRA, ENC, H264 | HEVC,
-		{LTR_COUNT, IR_PERIOD, SLICE_MODE, BIT_RATE},
+		{LTR_COUNT, SLICE_MODE, BIT_RATE},
 		msm_vidc_adjust_all_intra,
-		NULL},
-	{META_ROI_INFO, ENC, H264 | HEVC,
-		{MIN_QUALITY, IR_PERIOD, BLUR_TYPES},
-		NULL,
 		NULL},
 };
 
-static struct msm_vidc_format_capability format_data_lemans = {
-	.codec_info = codec_data_lemans,
-	.codec_info_size = ARRAY_SIZE(codec_data_lemans),
-	.color_format_info = color_format_data_lemans,
-	.color_format_info_size = ARRAY_SIZE(color_format_data_lemans),
-	.color_prim_info = color_primaries_data_lemans,
-	.color_prim_info_size = ARRAY_SIZE(color_primaries_data_lemans),
-	.transfer_char_info = transfer_char_data_lemans,
-	.transfer_char_info_size = ARRAY_SIZE(transfer_char_data_lemans),
-	.matrix_coeff_info = matrix_coeff_data_lemans,
-	.matrix_coeff_info_size = ARRAY_SIZE(matrix_coeff_data_lemans),
+static struct msm_vidc_format_capability format_data_purwa = {
+	.codec_info = codec_data_purwa,
+	.codec_info_size = ARRAY_SIZE(codec_data_purwa),
+	.color_format_info = color_format_data_purwa,
+	.color_format_info_size = ARRAY_SIZE(color_format_data_purwa),
+	.color_prim_info = color_primaries_data_purwa,
+	.color_prim_info_size = ARRAY_SIZE(color_primaries_data_purwa),
+	.transfer_char_info = transfer_char_data_purwa,
+	.transfer_char_info_size = ARRAY_SIZE(transfer_char_data_purwa),
+	.matrix_coeff_info = matrix_coeff_data_purwa,
+	.matrix_coeff_info_size = ARRAY_SIZE(matrix_coeff_data_purwa),
 };
 
 /* name, min_kbps, max_kbps */
-static const struct bw_table lemans_bw_table[] = {
+static const struct bw_table purwa_bw_table[] = {
 	{ "cpu-cfg",     1000, 1000     },
 	{ "video-mem",   1000, 15000000 },
 };
 
-/* name */
-static struct pd_table lemans_pd_table[] = {
-	{ "venus",     0, 1 },
-	{ "vcodec0",   1, 1 },
+/* name, hw_trigger */
+static struct pd_table purwa_pd_table[] = {
+	{ "venus",    0,  1 },
+	{ "vcodec0",  1,  1 },
 };
 
 /* name */
-static const char * const lemans_opp_pd_table[] = { "mxc", "mmcx", NULL };
+static const char * const purwa_opp_pd_table[] = { "mxc", "mmcx", NULL };
 
 /* name, clock id, scaling */
-static const struct clk_table lemans_clk_table[] = {
+static const struct clk_table purwa_clk_table[] = {
 	{ "iface",                    GCC_VIDEO_AXI0_CLK,      0},
+#ifdef MSM_VIDC_HAS_X1P42100_VIDEOCC
 	{ "core",                     VIDEO_CC_MVS0C_CLK,      0},
-	{ "vcodec0_core",             VIDEO_CC_MVS0_CLK,      1,
-	 (u64[]) {560000000, 533000000, 444000000, 366000000}, 4},
+	{ "vcodec0_core",             VIDEO_CC_MVS0_CLK,       1,
+	 (u64[]) {500000000, 424000000, 335000000, 300000000, 210000000}, 5},
+	{ "vcodec0_bse",              VIDEO_CC_MVS0_BSE_CLK,   1,
+	 (u64[]) {250000000, 212000000, 167500000, 150000000, 105000000}, 5},
+#endif
 };
 
+/* name */
+static const char * const purwa_opp_clk_table[] = { "vcodec0_core", "vcodec0_bse", NULL };
+
 /* name, exclusive_release */
-static const struct clk_rst_table lemans_clk_reset_table[] = {
+static const struct clk_rst_table purwa_clk_reset_table[] = {
 	{ "bus", 0 },
 };
 
 /* name, start, size, secure, dma_coherant, region, dma_mask */
-const struct context_bank_table lemans_context_bank_table[] = {
-	{"qcom,vidc,cb-ns", 0x25800000, 0xba800000, 0, 1,
-				MSM_VIDC_NON_SECURE | MSM_VIDC_NON_SECURE_BITSTREAM,	0},
+const struct context_bank_table purwa_context_bank_table[] = {
+	{"qcom,vidc,cb-ns",     0x25800000, 0xba800000, 0, 1,
+		MSM_VIDC_NON_SECURE | MSM_VIDC_NON_SECURE_BITSTREAM,	0},
 	{"qcom,vidc,cb-ns-pxl", 0x00100000, 0xdff00000, 0, 1,
-				MSM_VIDC_NON_SECURE_PIXEL,				0},
+		MSM_VIDC_NON_SECURE_PIXEL,				0},
 	{"qcom,vidc,cb-sec-non-pxl", 0x01400000, 0x24400000, 1, 0,
-				MSM_VIDC_SECURE_NONPIXEL,				0},
+		MSM_VIDC_SECURE_NONPIXEL,				0},
 };
 
+
 /* register, value, mask */
-static const struct reg_preset_table lemans_reg_preset_table[] = {
+static const struct reg_preset_table purwa_reg_preset_table[] = {
 	{ 0xB0088, 0x0, 0x11 },
 };
 
 /* decoder properties */
-static const u32 lemans_vdec_psc_avc[] = {
+static const u32 purwa_vdec_psc_avc[] = {
 	HFI_PROP_BITSTREAM_RESOLUTION,
 	HFI_PROP_CROP_OFFSETS,
 	HFI_PROP_CODED_FRAMES,
@@ -1891,7 +1857,7 @@ static const u32 lemans_vdec_psc_avc[] = {
 	HFI_PROP_SIGNAL_COLOR_INFO,
 };
 
-static const u32 lemans_vdec_psc_hevc[] = {
+static const u32 purwa_vdec_psc_hevc[] = {
 	HFI_PROP_BITSTREAM_RESOLUTION,
 	HFI_PROP_CROP_OFFSETS,
 	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
@@ -1902,7 +1868,7 @@ static const u32 lemans_vdec_psc_hevc[] = {
 	HFI_PROP_SIGNAL_COLOR_INFO,
 };
 
-static const u32 lemans_vdec_psc_vp9[] = {
+static const u32 purwa_vdec_psc_vp9[] = {
 	HFI_PROP_BITSTREAM_RESOLUTION,
 	HFI_PROP_CROP_OFFSETS,
 	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
@@ -1911,7 +1877,7 @@ static const u32 lemans_vdec_psc_vp9[] = {
 	HFI_PROP_LEVEL,
 };
 
-static const u32 lemans_vdec_psc_av1[] = {
+static const u32 purwa_vdec_psc_av1[] = {
 	HFI_PROP_BITSTREAM_RESOLUTION,
 	HFI_PROP_CROP_OFFSETS,
 	HFI_PROP_LUMA_CHROMA_BIT_DEPTH,
@@ -1924,30 +1890,29 @@ static const u32 lemans_vdec_psc_av1[] = {
 	HFI_PROP_SIGNAL_COLOR_INFO,
 };
 
-static const u32 lemans_vdec_input_properties_avc[] = {
+static const u32 purwa_vdec_input_properties_avc[] = {
 	HFI_PROP_NO_OUTPUT,
 	HFI_PROP_SUBFRAME_INPUT,
 };
 
-static const u32 lemans_vdec_input_properties_hevc[] = {
+static const u32 purwa_vdec_input_properties_hevc[] = {
 	HFI_PROP_NO_OUTPUT,
 	HFI_PROP_SUBFRAME_INPUT,
 };
 
-static const u32 lemans_vdec_input_properties_vp9[] = {
+static const u32 purwa_vdec_input_properties_vp9[] = {
 	HFI_PROP_NO_OUTPUT,
 	HFI_PROP_SUBFRAME_INPUT,
 };
 
-static const u32 lemans_vdec_input_properties_av1[] = {
+static const u32 purwa_vdec_input_properties_av1[] = {
 	HFI_PROP_NO_OUTPUT,
 	HFI_PROP_SUBFRAME_INPUT,
-	HFI_PROP_DPB_LIST,
 	HFI_PROP_AV1_TILE_ROWS_COLUMNS,
 	HFI_PROP_AV1_UNIFORM_TILE_SPACING,
 };
 
-static const u32 lemans_vdec_output_properties_avc[] = {
+static const u32 purwa_vdec_output_properties_avc[] = {
 	HFI_PROP_WORST_COMPRESSION_RATIO,
 	HFI_PROP_WORST_COMPLEXITY_FACTOR,
 	HFI_PROP_PICTURE_TYPE,
@@ -1955,21 +1920,21 @@ static const u32 lemans_vdec_output_properties_avc[] = {
 	HFI_PROP_CABAC_SESSION,
 };
 
-static const u32 lemans_vdec_output_properties_hevc[] = {
+static const u32 purwa_vdec_output_properties_hevc[] = {
 	HFI_PROP_WORST_COMPRESSION_RATIO,
 	HFI_PROP_WORST_COMPLEXITY_FACTOR,
 	HFI_PROP_PICTURE_TYPE,
 	HFI_PROP_DPB_LIST,
 };
 
-static const u32 lemans_vdec_output_properties_vp9[] = {
+static const u32 purwa_vdec_output_properties_vp9[] = {
 	HFI_PROP_WORST_COMPRESSION_RATIO,
 	HFI_PROP_WORST_COMPLEXITY_FACTOR,
 	HFI_PROP_PICTURE_TYPE,
 	HFI_PROP_DPB_LIST,
 };
 
-static const u32 lemans_vdec_output_properties_av1[] = {
+static const u32 purwa_vdec_output_properties_av1[] = {
 	HFI_PROP_WORST_COMPRESSION_RATIO,
 	HFI_PROP_WORST_COMPLEXITY_FACTOR,
 	HFI_PROP_PICTURE_TYPE,
@@ -1977,26 +1942,26 @@ static const u32 lemans_vdec_output_properties_av1[] = {
 	HFI_PROP_CABAC_SESSION,
 };
 
-static const u32 lemans_msm_vidc_ssr_type[] = {
+static const u32 purwa_msm_vidc_ssr_type[] = {
 	HFI_SSR_TYPE_SW_ERR_FATAL,
 };
 
 /*
- * msm_vidc_lemans_init_cb_devs - lemans-specific iommu-map CB initializer.
+ * msm_vidc_purwa_init_cb_devs - purwa-specific iommu-map CB initializer.
  *
  * Creates a child platform device for each non-secure context bank and
  * configures it with the hardcoded fid from the iommu-map DT property:
  *   qcom,vidc,cb-ns     (NON_SECURE | NON_SECURE_BITSTREAM) -> fid 0
  *   qcom,vidc,cb-ns-pxl (NON_SECURE_PIXEL)                  -> fid 1
  */
-static int msm_vidc_lemans_init_cb_devs(struct msm_vidc_core *core)
+static int msm_vidc_purwa_init_cb_devs(struct msm_vidc_core *core)
 {
-	/* Hardcoded fid per CB name for lemans iommu-map */
+	/* Hardcoded fid per CB name for purwa iommu-map */
 	static const struct {
 		const char *cb_name;
 		u32 fid;
 		const char *cb_node_name;
-	} lemans_cb_fid[] = {
+	} purwa_cb_fid[] = {
 		{ "qcom,vidc,cb-ns",     0, "non-pixel" },
 		{ "qcom,vidc,cb-ns-pxl", 1, "pixel"     },
 	};
@@ -2004,12 +1969,12 @@ static int msm_vidc_lemans_init_cb_devs(struct msm_vidc_core *core)
 	int i, rc;
 
 	venus_hfi_for_each_context_bank(core, cb) {
-		for (i = 0; i < ARRAY_SIZE(lemans_cb_fid); i++) {
-			if (strcmp(cb->name, lemans_cb_fid[i].cb_name))
+		for (i = 0; i < ARRAY_SIZE(purwa_cb_fid); i++) {
+			if (strcmp(cb->name, purwa_cb_fid[i].cb_name))
 				continue;
 
-			rc = msm_vidc_create_child_device_and_map(core, cb, lemans_cb_fid[i].fid,
-								  lemans_cb_fid[i].cb_node_name);
+			rc = msm_vidc_create_child_device_and_map(core, cb, purwa_cb_fid[i].fid,
+								  purwa_cb_fid[i].cb_node_name);
 			if (rc) {
 				d_vpr_e("%s: failed to create child device for %s rc %d\n",
 					__func__, cb->name, rc);
@@ -2022,187 +1987,97 @@ static int msm_vidc_lemans_init_cb_devs(struct msm_vidc_core *core)
 	return 0;
 }
 
-static const struct msm_vidc_platform_data lemans_data = {
+static const struct msm_vidc_platform_data purwa_data = {
 	/* resources dependent on other module */
-	.bw_tbl = lemans_bw_table,
-	.bw_tbl_size = ARRAY_SIZE(lemans_bw_table),
-	.pd_tbl = lemans_pd_table,
-	.pd_tbl_size = ARRAY_SIZE(lemans_pd_table),
-	.opp_tbl = lemans_opp_pd_table,
-	.opp_tbl_size = ARRAY_SIZE(lemans_opp_pd_table),
-	.clk_tbl = lemans_clk_table,
-	.clk_tbl_size = ARRAY_SIZE(lemans_clk_table),
-	.clk_rst_tbl = lemans_clk_reset_table,
-	.clk_rst_tbl_size = ARRAY_SIZE(lemans_clk_reset_table),
+	.bw_tbl = purwa_bw_table,
+	.bw_tbl_size = ARRAY_SIZE(purwa_bw_table),
+	.pd_tbl = purwa_pd_table,
+	.pd_tbl_size = ARRAY_SIZE(purwa_pd_table),
+	.opp_tbl = purwa_opp_pd_table,
+	.opp_tbl_size = ARRAY_SIZE(purwa_opp_pd_table),
+	.clk_tbl = purwa_clk_table,
+	.clk_tbl_size = ARRAY_SIZE(purwa_clk_table),
+	.opp_clk_tbl = purwa_opp_clk_table,
+	.opp_clk_tbl_size = ARRAY_SIZE(purwa_opp_clk_table),
+	.clk_rst_tbl = purwa_clk_reset_table,
+	.clk_rst_tbl_size = ARRAY_SIZE(purwa_clk_reset_table),
 
 	/* populate context bank */
-	.context_bank_tbl = lemans_context_bank_table,
-	.context_bank_tbl_size = ARRAY_SIZE(lemans_context_bank_table),
+	.context_bank_tbl = purwa_context_bank_table,
+	.context_bank_tbl_size = ARRAY_SIZE(purwa_context_bank_table),
+
 	/* platform specific resources */
-	.reg_prst_tbl = lemans_reg_preset_table,
-	.reg_prst_tbl_size = ARRAY_SIZE(lemans_reg_preset_table),
+	.reg_prst_tbl = purwa_reg_preset_table,
+	.reg_prst_tbl_size = ARRAY_SIZE(purwa_reg_preset_table),
 	.clock_source_scaling_ratio = 1,
-	.fwname = "./qcom/vpu/vpu30_p4_s6_16mb.mbn",
+	.fwname = "./qcom/vpu/vpu30_p1_s7.mbn",
 	.pas_id = 9,
 	.supports_mmrm = 0,
 
-	.core_data = core_data_lemans,
-	.core_data_size = ARRAY_SIZE(core_data_lemans),
-	.inst_cap_data = instance_cap_data_lemans,
-	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_lemans),
-	.inst_cap_dependency_data = instance_cap_dependency_data_lemans,
-	.inst_cap_dependency_data_size = ARRAY_SIZE(instance_cap_dependency_data_lemans),
+	/* caps related resorces */
+	.core_data = core_data_purwa,
+	.core_data_size = ARRAY_SIZE(core_data_purwa),
+	.inst_cap_data = instance_cap_data_purwa,
+	.inst_cap_data_size = ARRAY_SIZE(instance_cap_data_purwa),
+	.inst_cap_dependency_data = instance_cap_dependency_data_purwa,
+	.inst_cap_dependency_data_size = ARRAY_SIZE(instance_cap_dependency_data_purwa),
 	.csc_data.vpe_csc_custom_bias_coeff = vpe_csc_custom_bias_coeff,
 	.csc_data.vpe_csc_custom_matrix_coeff = vpe_csc_custom_matrix_coeff,
 	.csc_data.vpe_csc_custom_limit_coeff = vpe_csc_custom_limit_coeff,
-	.format_data = &format_data_lemans,
+	.format_data = &format_data_purwa,
 
 	/* decoder properties related*/
-	.psc_avc_tbl = lemans_vdec_psc_avc,
-	.psc_avc_tbl_size = ARRAY_SIZE(lemans_vdec_psc_avc),
-	.psc_hevc_tbl = lemans_vdec_psc_hevc,
-	.psc_hevc_tbl_size = ARRAY_SIZE(lemans_vdec_psc_hevc),
-	.psc_vp9_tbl = lemans_vdec_psc_vp9,
-	.psc_vp9_tbl_size = ARRAY_SIZE(lemans_vdec_psc_vp9),
-	.psc_av1_tbl = lemans_vdec_psc_av1,
-	.psc_av1_tbl_size = ARRAY_SIZE(lemans_vdec_psc_av1),
-	.dec_input_prop_avc = lemans_vdec_input_properties_avc,
-	.dec_input_prop_hevc = lemans_vdec_input_properties_hevc,
-	.dec_input_prop_vp9 = lemans_vdec_input_properties_vp9,
-	.dec_input_prop_av1 = lemans_vdec_input_properties_av1,
-	.dec_input_prop_size_avc = ARRAY_SIZE(lemans_vdec_input_properties_avc),
-	.dec_input_prop_size_hevc = ARRAY_SIZE(lemans_vdec_input_properties_hevc),
-	.dec_input_prop_size_vp9 = ARRAY_SIZE(lemans_vdec_input_properties_vp9),
-	.dec_input_prop_size_av1 = ARRAY_SIZE(lemans_vdec_input_properties_av1),
-	.dec_output_prop_avc = lemans_vdec_output_properties_avc,
-	.dec_output_prop_hevc = lemans_vdec_output_properties_hevc,
-	.dec_output_prop_vp9 = lemans_vdec_output_properties_vp9,
-	.dec_output_prop_av1 = lemans_vdec_output_properties_av1,
-	.dec_output_prop_size_avc = ARRAY_SIZE(lemans_vdec_output_properties_avc),
-	.dec_output_prop_size_hevc = ARRAY_SIZE(lemans_vdec_output_properties_hevc),
-	.dec_output_prop_size_vp9 = ARRAY_SIZE(lemans_vdec_output_properties_vp9),
-	.dec_output_prop_size_av1 = ARRAY_SIZE(lemans_vdec_output_properties_av1),
-	.msm_vidc_ssr_type = lemans_msm_vidc_ssr_type,
-	.msm_vidc_ssr_type_size = ARRAY_SIZE(lemans_msm_vidc_ssr_type),
-	.init_cb_devs = msm_vidc_lemans_init_cb_devs,
+	.psc_avc_tbl = purwa_vdec_psc_avc,
+	.psc_avc_tbl_size = ARRAY_SIZE(purwa_vdec_psc_avc),
+	.psc_hevc_tbl = purwa_vdec_psc_hevc,
+	.psc_hevc_tbl_size = ARRAY_SIZE(purwa_vdec_psc_hevc),
+	.psc_vp9_tbl = purwa_vdec_psc_vp9,
+	.psc_vp9_tbl_size = ARRAY_SIZE(purwa_vdec_psc_vp9),
+	.psc_av1_tbl = purwa_vdec_psc_av1,
+	.psc_av1_tbl_size = ARRAY_SIZE(purwa_vdec_psc_av1),
+	.dec_input_prop_avc = purwa_vdec_input_properties_avc,
+	.dec_input_prop_hevc = purwa_vdec_input_properties_hevc,
+	.dec_input_prop_vp9 = purwa_vdec_input_properties_vp9,
+	.dec_input_prop_av1 = purwa_vdec_input_properties_av1,
+	.dec_input_prop_size_avc = ARRAY_SIZE(purwa_vdec_input_properties_avc),
+	.dec_input_prop_size_hevc = ARRAY_SIZE(purwa_vdec_input_properties_hevc),
+	.dec_input_prop_size_vp9 = ARRAY_SIZE(purwa_vdec_input_properties_vp9),
+	.dec_input_prop_size_av1 = ARRAY_SIZE(purwa_vdec_input_properties_av1),
+	.dec_output_prop_avc = purwa_vdec_output_properties_avc,
+	.dec_output_prop_hevc = purwa_vdec_output_properties_hevc,
+	.dec_output_prop_vp9 = purwa_vdec_output_properties_vp9,
+	.dec_output_prop_av1 = purwa_vdec_output_properties_av1,
+	.dec_output_prop_size_avc = ARRAY_SIZE(purwa_vdec_output_properties_avc),
+	.dec_output_prop_size_hevc = ARRAY_SIZE(purwa_vdec_output_properties_hevc),
+	.dec_output_prop_size_vp9 = ARRAY_SIZE(purwa_vdec_output_properties_vp9),
+	.dec_output_prop_size_av1 = ARRAY_SIZE(purwa_vdec_output_properties_av1),
+	.msm_vidc_ssr_type = purwa_msm_vidc_ssr_type,
+	.msm_vidc_ssr_type_size = ARRAY_SIZE(purwa_msm_vidc_ssr_type),
+	.init_cb_devs = msm_vidc_purwa_init_cb_devs,
 };
 
-static int msm_vidc_lemans_check_ddr_type(void)
+static int msm_vidc_purwa_check_ddr_type(void)
 {
 	return 0;
 }
 
-int msm_vidc_adjust_ir_period_lemans(void *instance, struct v4l2_ctrl *ctrl)
+int msm_vidc_get_platform_data_purwa(struct msm_vidc_core *core)
 {
-	s32 adjusted_value;
-	s64 all_intra = 0, roi_enable = 0,  pix_fmts = MSM_VIDC_FMT_NONE;
-	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-
-	adjusted_value = ctrl ? ctrl->val : inst->capabilities[IR_PERIOD].value;
-
-	if (msm_vidc_get_parent_value(inst, IR_PERIOD, ALL_INTRA,
-				      &all_intra, __func__) ||
-		msm_vidc_get_parent_value(inst, IR_PERIOD, META_ROI_INFO,
-					  &roi_enable, __func__))
-		return -EINVAL;
-
-	if (all_intra) {
-		adjusted_value = 0;
-		i_vpr_h(inst, "%s: intra refresh unsupported, all intra: %lld\n",
-			__func__, all_intra);
-		goto exit;
-	}
-
-	if (roi_enable) {
-		i_vpr_h(inst,
-			"%s: intra refresh unsupported with roi metadata\n",
-			__func__);
-		adjusted_value = 0;
-		goto exit;
-	}
-
-	if (inst->codec == MSM_VIDC_HEVC) {
-		if (msm_vidc_get_parent_value(inst, IR_PERIOD,
-					      PIX_FMTS, &pix_fmts, __func__))
-			return -EINVAL;
-
-		if (is_10bit_colorformat(pix_fmts)) {
-			i_vpr_h(inst,
-				"%s: intra refresh is supported only for 8 bit\n",
-				__func__);
-			adjusted_value = 0;
-			goto exit;
-		}
-	}
-
-	/*
-	 * BITRATE_MODE dependency is NOT common across all chipsets.
-	 * Hence, do not return error if not specified as one of the parent.
-	 */
-	if (is_parent_available(inst, IR_PERIOD, BITRATE_MODE, __func__) &&
-	    inst->hfi_rc_type != HFI_RC_CBR_CFR &&
-	    inst->hfi_rc_type != HFI_RC_CBR_VFR)
-		adjusted_value = 0;
-
-exit:
-	msm_vidc_update_cap_value(inst, IR_PERIOD, adjusted_value, __func__);
+	d_vpr_h("%s: initialize purwa data\n", __func__);
+	core->platform->data = purwa_data;
 
 	return 0;
 }
 
-int msm_vidc_set_ir_period_lemans(void *instance,
-				  enum msm_vidc_inst_capability_type cap_id)
-{
-	int rc = 0;
-	struct msm_vidc_inst *inst = (struct msm_vidc_inst *)instance;
-	u32 ir_type = 0;
-	struct msm_vidc_core *core;
-
-	core = inst->core;
-
-	if (inst->capabilities[IR_TYPE].value ==
-	    V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD_TYPE_RANDOM) {
-		if (inst->bufq[OUTPUT_PORT].vb2q->streaming) {
-			i_vpr_h(inst, "%s: dynamic random intra refresh not allowed\n",
-				__func__);
-			return 0;
-		}
-		ir_type = HFI_PROP_IR_RANDOM_PERIOD;
-	} else if (inst->capabilities[IR_TYPE].value ==
-		   V4L2_CID_MPEG_VIDEO_INTRA_REFRESH_PERIOD_TYPE_CYCLIC) {
-		ir_type = HFI_PROP_IR_CYCLIC_PERIOD;
-	} else {
-		i_vpr_e(inst, "%s: invalid ir_type %lld\n",
-			__func__, inst->capabilities[IR_TYPE].value);
-		return -EINVAL;
-	}
-
-	rc = venus_hfi_set_ir_period(inst, ir_type, cap_id);
-	if (rc) {
-		i_vpr_e(inst, "%s: failed to set ir period %lld\n",
-			__func__, inst->capabilities[IR_PERIOD].value);
-		return rc;
-	}
-
-	return rc;
-}
-
-int msm_vidc_get_platform_data_lemans(struct msm_vidc_core *core)
-{
-	d_vpr_h("%s: initialize lemans data\n", __func__);
-	core->platform->data = lemans_data;
-
-	return 0;
-}
-
-int msm_vidc_init_platform_lemans(struct msm_vidc_core *core)
+int msm_vidc_init_platform_purwa(struct msm_vidc_core *core)
 {
 	int rc = 0;
 
-	d_vpr_h("%s: initialize lemans ops\n", __func__);
-	rc = msm_vidc_lemans_check_ddr_type();
+	d_vpr_h("%s: initialize purwa data\n", __func__);
+	rc = msm_vidc_purwa_check_ddr_type();
 	if (rc)
 		return rc;
 
 	return rc;
+
 }

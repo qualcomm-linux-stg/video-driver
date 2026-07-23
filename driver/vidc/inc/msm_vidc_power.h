@@ -56,7 +56,7 @@ static inline u32 get_type_frm_name(const char *name)
 {
 	if (!strcmp(name, "venus-llcc"))
 		return LLCC;
-	else if (!strcmp(name, "venus-ddr"))
+	else if (!strcmp(name, "venus-ddr") || !strcmp(name, "video-mem"))
 		return DDR;
 	else
 		return PERF;

@@ -592,8 +592,8 @@ int msm_vidc_smmu_fault_handler(struct iommu_domain *domain,
 				struct device *dev, unsigned long iova,
 				int flags, void *data);
 struct context_bank_info;
-int msm_vidc_create_child_device_and_map(struct msm_vidc_core *core,
-					 struct context_bank_info *cb, u32 fid);
+int msm_vidc_create_child_device_and_map(struct msm_vidc_core *core, struct context_bank_info *cb,
+					 u32 fid, const char *cb_node_name);
 int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
 			 u64 trigger_ssr_val);
 void msm_vidc_ssr_handler(struct work_struct *work);

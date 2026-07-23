@@ -359,13 +359,19 @@ int fw_resume(struct msm_vidc_core *core)
 
 int fw_init(struct msm_vidc_core *core)
 {
+	static const char * const fw_node_name[] = { "video-firmware", "firmware" };
 	struct platform_device_info info;
 	struct platform_device *pdev;
 	struct iommu_domain *dom;
 	struct device_node *np;
-	int ret;
+	int i, ret;
 
-	np = of_get_child_by_name(core->pdev->dev.of_node, "video-firmware");
+	for (i = 0; i < ARRAY_SIZE(fw_node_name); i++) {
+		np = of_get_child_by_name(core->pdev->dev.of_node, fw_node_name[i]);
+		if (np)
+			break;
+	}
+
 	if (!np)
 		return 0;
 

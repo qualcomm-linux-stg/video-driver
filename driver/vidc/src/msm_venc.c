@@ -1193,7 +1193,7 @@ int msm_venc_s_fmt_output(struct msm_vidc_inst *inst, struct v4l2_format *f)
 		inst->buffers.output.extra_count);
 
 	/* finally update client format */
-	memcpy(f, fmt, sizeof(struct v4l2_format));
+	*f = *fmt;
 	return rc;
 }
 
@@ -1219,7 +1219,7 @@ static int msm_venc_s_fmt_output_meta(struct msm_vidc_inst *inst, struct v4l2_fo
 			inst->buffers.output.actual_count;
 	inst->buffers.output_meta.size = fmt->fmt.meta.buffersize;
 
-	memcpy(f, fmt, sizeof(struct v4l2_format));
+	*f = *fmt;
 
 	i_vpr_h(inst, "%s: type: OUTPUT_META, size %u min_count %d extra_count %d\n",
 		__func__, fmt->fmt.meta.buffersize,
@@ -1324,7 +1324,7 @@ static int msm_venc_s_fmt_input(struct msm_vidc_inst *inst, struct v4l2_format *
 		inst->buffers.input.extra_count);
 
 	/* finally update client format */
-	memcpy(f, fmt, sizeof(struct v4l2_format));
+	*f = *fmt;
 
 	return rc;
 }
@@ -1351,7 +1351,7 @@ static int msm_venc_s_fmt_input_meta(struct msm_vidc_inst *inst, struct v4l2_for
 			inst->buffers.input.actual_count;
 	inst->buffers.input_meta.size = fmt->fmt.meta.buffersize;
 
-	memcpy(f, fmt, sizeof(struct v4l2_format));
+	*f = *fmt;
 
 	i_vpr_h(inst, "%s: type: INPUT_META, size %u min_count %d extra_count %d\n",
 		__func__, fmt->fmt.meta.buffersize,
@@ -1403,7 +1403,7 @@ int msm_venc_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	if (port < 0)
 		return -EINVAL;
 
-	memcpy(f, &inst->fmts[port], sizeof(struct v4l2_format));
+	*f = inst->fmts[port];
 
 	return rc;
 }

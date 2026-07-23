@@ -66,6 +66,7 @@ static inline bool is_video_device(struct device *dev)
 		of_device_is_compatible(dev->of_node, "qcom,alor-vidc") ||
 		of_device_is_compatible(dev->of_node, "qcom,x1e80100-vidc") ||
 		of_device_is_compatible(dev->of_node, "qcom,x1e80100-iris") ||
+		of_device_is_compatible(dev->of_node, "qcom,x1p42100-iris") ||
 		of_device_is_compatible(dev->of_node, "qcom,sa8775p-iris") ||
 		of_device_is_compatible(dev->of_node, "qcom,qcs8300-iris") ||
 		of_device_is_compatible(dev->of_node, "qcom,sc7280-venus") ||
@@ -171,6 +172,9 @@ static const struct of_device_id msm_vidc_dt_match[] = {
 	{.compatible = "qcom,kera-vidc"},
 	{.compatible = "qcom,x1e80100-vidc"},
 	{.compatible = "qcom,x1e80100-iris"},
+#ifdef MSM_VIDC_HAS_X1P42100_VIDEOCC
+	{.compatible = "qcom,x1p42100-iris"},
+#endif
 	{.compatible = "qcom,sa8775p-iris"},
 	{.compatible = "qcom,qcs8300-iris"},
 	{.compatible = "qcom,sc7280-venus"},
@@ -835,10 +839,11 @@ static struct notifier_block msm_vidc_reboot_nb = {
 };
 #endif
 
-int msm_vidc_create_child_device_and_map(struct msm_vidc_core *core,
-					 struct context_bank_info *cb, u32 fid)
+int msm_vidc_create_child_device_and_map(struct msm_vidc_core *core, struct context_bank_info *cb,
+					 u32 fid, const char *cb_node_name)
 {
 	struct platform_device *pdev;
+	struct device_node *dev_node;
 	int ret;
 
 	pdev = platform_device_alloc(cb->name, 0);
@@ -853,11 +858,22 @@ int msm_vidc_create_child_device_and_map(struct msm_vidc_core *core,
 		return ret;
 	}
 
-	ret = of_dma_configure_id(&pdev->dev, core->pdev->dev.of_node,
-				  true, &fid);
+	dev_node = of_get_child_by_name(core->pdev->dev.of_node, cb_node_name);
+	if (dev_node)
+		ret = of_dma_configure_id(&pdev->dev, dev_node, true, NULL);
+	else
+		ret = of_dma_configure_id(&pdev->dev, core->pdev->dev.of_node, true, &fid);
+	of_node_put(dev_node);
+
 	if (ret) {
 		d_vpr_e("%s: of_dma_configure_id failed for %s fid %u ret %d\n",
 			__func__, cb->name, fid, ret);
+		goto error_unregister;
+	}
+
+	/* No IOMMU mapping established; fall back to parent device */
+	if (!device_iommu_mapped(&pdev->dev)) {
+		cb->dev = &core->pdev->dev;
 		goto error_unregister;
 	}
 
@@ -903,10 +919,9 @@ static int msm_vidc_probe_without_context_bank(struct platform_device *pdev,
 	int rc = 0;
 	struct context_bank_info *cb = NULL;
 
-	if (core->platform->data.init_cb_devs &&
-	    of_find_property(pdev->dev.of_node, "iommu-map", NULL)) {
+	if (core->platform->data.init_cb_devs) {
 		/*
-		 * iommu-map present: platform provides init_cb_devs to create
+		 * iommu-map or subnode present: platform provides init_cb_devs to create
 		 * a child platform device for each CB with a valid fid.
 		 */
 		rc = core->platform->data.init_cb_devs(core);
