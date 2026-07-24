@@ -1064,6 +1064,8 @@ struct msm_vidc_dma_buf_info  {
 	struct vb2_vmarea_handler handler;
 	struct  msm_vidc_buffer   *buf;
 	struct  device            *dev;
+	struct sg_table           *sg_table;
+	bool                      sg_table_alloc;
 };
 
 struct msm_vidc_buffer {
