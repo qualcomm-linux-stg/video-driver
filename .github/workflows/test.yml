@@ -15,8 +15,8 @@ on:
 jobs:
   test:
     runs-on:
-      group: GHA-video-Prd-SelfHosted-RG
-      labels: [self-hosted, video-prd-u2204-x64-large-od-ephem]
+      group: GHA-video-Stg-SelfHosted-RG
+      labels: [self-hosted, GHA-video-Stg-SelfHosted-RG]
 
     strategy:
       fail-fast: false
