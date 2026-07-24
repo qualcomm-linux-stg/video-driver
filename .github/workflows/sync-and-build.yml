@@ -16,8 +16,8 @@ jobs:
   build:
     timeout-minutes: 720
     runs-on:
-      group: GHA-video-Stg-SelfHosted-RG
-      labels: [self-hosted, video-stg-u2204-x64-large-od-ephem]
+      group: GHA-video-Prd-SelfHosted-RG
+      labels: [self-hosted, video-prd-u2204-x64-large-od-ephem]
     strategy:
       fail-fast: false
       matrix:
@@ -62,15 +62,15 @@ jobs:
             "${{ inputs.docker_image }}" || true
           docker images | grep kmake-image || true
 
-      - name: Patch meta-qcom recipe to current video-driver commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash ci/patch_srcrev.sh \
-            "${{ github.workspace }}" \
-            "$(dirname "${{ github.workspace }}")/meta-qcom" \
-            "${{ github.event.pull_request.head.repo.full_name || '' }}"
-
+      # ------------------------------------------------------------------ #
+      #  Single kas invocation — KAS_LOCAL_CONF_HEADER injects the         #
+      #  EXTERNALSRC overrides into build/conf/local.conf during kas init, #
+      #  before bitbake runs. Yocto then uses the already-checked-out      #
+      #  video-driver workspace (this PR's commit) instead of fetching     #
+      #  iris-video-dlkm from GitHub.                                      #
+      #  Replaces both the old patch_srcrev.sh step and the double kas     #
+      #  invocation approach.                                              #
+      # ------------------------------------------------------------------ #
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@meta-qcom
         with:
@@ -79,6 +79,20 @@ jobs:
           build_command: "bitbake qcom-multimedia-proprietary-image"
         env:
           machine: ${{ matrix.build_matrix.machine }}
+          KAS_LOCAL_CONF_HEADER: |
+            # === iris-video-dlkm CI override (injected via KAS_LOCAL_CONF_HEADER) ===
+            # Uses the checked-out video-driver workspace — skips do_fetch/do_unpack/do_patch.
+            # The workspace already contains this PR's commit; no SRC_URI/SRCREV patching needed.
+            EXTERNALSRC:pn-iris-video-dlkm = "${{ github.workspace }}"
+            EXTERNALSRC_BUILD:pn-iris-video-dlkm = "${{ github.workspace }}/build_iris"
+            S:pn-iris-video-dlkm = "${EXTERNALSRC}"
+            B:pn-iris-video-dlkm = "${EXTERNALSRC_BUILD}"
+            do_fetch:pn-iris-video-dlkm[noexec] = "1"
+            do_unpack:pn-iris-video-dlkm[noexec] = "1"
+            do_patch:pn-iris-video-dlkm[noexec] = "1"
+            MAKE_TARGETS:pn-iris-video-dlkm = ""
+            EXTRA_OEMAKE:pn-iris-video-dlkm = "-C ${STAGING_KERNEL_DIR} M=${S} modules"
+            # === end iris-video-dlkm CI override ===
 
       - name: Download iris_test_app from S3
         shell: bash
@@ -92,6 +106,25 @@ jobs:
           echo "✅ Download complete"
           ls -la "${{ github.workspace }}/v4l-video-test-app/build/"
 
+      - name: Download the video-contents for testing
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ github.workspace }}/downloads"
+          echo "Downloading the video-content files"
+          wget -q \
+            "https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz" \
+            -O "${{ github.workspace }}/downloads/video_clips_iris.tar.gz"
+
+          [ -f "$WORKSPACE/downloads/video_clips_iris.tar.gz" ] || {
+            echo "❌ Failed to download video_clips_iris.tar.gz"
+            exit 1
+          }
+
+          ls -la "${{ github.workspace }}/downloads/"
+
       - name: Inject Iris test app to rootfs
         uses: qualcomm-linux-stg/video-driver/.github/actions/inject@meta-qcom
         with:
@@ -104,6 +137,7 @@ jobs:
           set -euo pipefail
           workspace="${{ github.workspace }}"
           machine="${{ matrix.build_matrix.machine }}"
+
           symlink_path="$workspace/build/tmp/deploy/images/$machine/qcom-multimedia-proprietary-image-${machine}.rootfs.qcomflash"
 
           if [ ! -L "$symlink_path" ]; then
@@ -118,27 +152,41 @@ jobs:
             exit 1
           fi
 
-          cd "$resolved_dir"
-          ls -larth
-
-          mkdir -p "$workspace/artifacts"
-          : > "$workspace/artifacts/file_list.txt"
-          : > "$workspace/artifacts/tar_list.txt"
-
-          find "$resolved_dir" -type f -exec realpath {} \; > "$workspace/artifacts/tar_list.txt"
-
-          if [ ! -s "$workspace/artifacts/tar_list.txt" ]; then
-            echo "⚠️ No files found to archive."
+          ROOTFS_IMG="$resolved_dir/rootfs.img"
+          if [ ! -f "$ROOTFS_IMG" ]; then
+            echo "❌ rootfs.img not found at: $ROOTFS_IMG"
             exit 1
           fi
 
-          tarball="${machine}_qcomflash_payload.tar.xz"
-          tar -cJf "$tarball" -T "$workspace/artifacts/tar_list.txt"
-          mv "$tarball" "$workspace"
-          echo "$workspace/$tarball" >> "$workspace/artifacts/file_list.txt"
+          echo "=== qcomflash contents ==="
+          ls -larth "$resolved_dir"
 
-          echo "✅ Tarball created: $tarball"
+          mkdir -p "$workspace/artifacts"
+          : > "$workspace/artifacts/file_list.txt"
 
+          FLASH_TAR="$workspace/${machine}_flash_files.tar"
+          ROOTFS_DEST="$workspace/${machine}_rootfs.img"
+
+          echo "📦 Creating flash_files.tar (excluding rootfs.img)..."
+          tar -cf "$FLASH_TAR" \
+            -C "$resolved_dir" \
+            --exclude='./rootfs.img' \
+            .
+          echo "✅ flash_files.tar: $(ls -lh "$FLASH_TAR" | awk '{print $5}')"
+
+          echo "📦 Copying injected rootfs.img..."
+          cp "$ROOTFS_IMG" "$ROOTFS_DEST"
+          echo "✅ rootfs.img: $(ls -lh "$ROOTFS_DEST" | awk '{print $5}')"
+
+          echo "$FLASH_TAR"   >> "$workspace/artifacts/file_list.txt"
+          echo "$ROOTFS_DEST" >> "$workspace/artifacts/file_list.txt"
+
+          echo "=== Queued for upload ==="
+          cat "$workspace/artifacts/file_list.txt"
+
+      # ------------------------------------------------------------------ #
+      #  S3 upload — generates presigned_urls.json (used by LAVA)          #
+      # ------------------------------------------------------------------ #
       - name: Upload artifacts to S3
         id: upload-artifacts
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@meta-qcom
@@ -150,20 +198,71 @@ jobs:
         env:
           machine: ${{ matrix.build_matrix.machine }}
 
+      # ------------------------------------------------------------------ #
+      #  GitHub Artifacts — persistent backup when S3 URLs expire          #
+      # ------------------------------------------------------------------ #
+
+      # ⚠️  rootfs.img is ~7–8 GB — uses org artifact storage quota.
+      # Set compression-level to 0 (already a binary image; compression
+      # adds time with no size benefit). Retention kept at 7 days to
+      # balance quota vs. re-run window.
+
+      - name: Upload flash_files.tar to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flash-files-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_flash_files.tar
+          retention-days: 7
+          compression-level: 0   # tar is uncompressed binary; skip CPU cost
+
+      - name: Upload rootfs.img to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rootfs-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_rootfs.img
+          retention-days: 7
+          compression-level: 0   # ext4 image; compression gives no benefit
+
+      # ------------------------------------------------------------------ #
+      #  Upload machine-scoped presigned URLs (consumed by _test job)      #
+      # ------------------------------------------------------------------ #
+      - name: Upload machine-specific presigned URLs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: presigned-urls-${{ matrix.build_matrix.machine }}
+          path: ${{ github.workspace }}/presigned_urls.json
+          retention-days: 3
+
       - name: Clean up
+        if: always()
         shell: bash
         run: |
-          rm -rf "${{ github.workspace }}/artifacts"
-          rm -rf "${{ github.workspace }}/build"
-          rm -f "${{ github.workspace }}/modules.tar.xz"
+          rm -rf "${{ github.workspace }}/artifacts"           || true
+          rm -rf "${{ github.workspace }}/build"               || true
+          rm -rf "${{ github.workspace }}/downloads"           || true
+          rm -f  "${{ github.workspace }}/"*_flash_files.tar   || true
+          rm -f  "${{ github.workspace }}/"*_rootfs.img        || true
 
       - name: Update summary
         if: success() || failure()
         shell: bash
         run: |
+          machine="${{ matrix.build_matrix.machine }}"
+          run_id="${{ github.run_id }}"
+          attempt="${{ github.run_attempt }}"
+
           if [ "${{ job.status }}" == "success" ]; then
-            summary=":heavy_check_mark: Build Success for ${{ matrix.build_matrix.machine }}"
+            summary=":heavy_check_mark: Build Success for ${machine}"
           else
-            summary=":x: Build Failed for ${{ matrix.build_matrix.machine }}"
+            summary=":x: Build Failed for ${machine}"
           fi
-          echo -e "<details><summary><i>Build Summary</i></summary>\n${summary}\n</details>" >> "$GITHUB_STEP_SUMMARY"
+
+          artifact_flash="flash-files-${machine}-${run_id}-${attempt}"
+          artifact_rootfs="rootfs-${machine}-${run_id}-${attempt}"
+
+          echo -e "<details><summary><i>Build Summary</i></summary>\n\
+          ${summary}\n\n\
+          **GitHub Artifacts (7-day retention):**\n\
+          - \`${artifact_flash}\`\n\
+          - \`${artifact_rootfs}\`\n\
+          </details>" >> "$GITHUB_STEP_SUMMARY"
