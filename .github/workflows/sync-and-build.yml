@@ -11,6 +11,10 @@ on:
         description: Build matrix for multi target builds
         type: string
         required: true
+      commit_sha:
+        description: "Exact commit SHA to build (PR HEAD or push HEAD)"
+        type: string
+        required: true
 
 jobs:
   build:
@@ -34,6 +38,28 @@ jobs:
           df -h
           free -h
 
+      # ------------------------------------------------------------------ #
+      #  Checkout the exact HEAD commit for both push and PR events.       #
+      #  - pull_request → checks out the PR HEAD sha (not merge commit)   #
+      #  - push         → checks out the pushed HEAD sha                  #
+      #  commit_sha is resolved in pre_merge.yml and passed down here.    #
+      # ------------------------------------------------------------------ #
+      - name: Checkout exact HEAD commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Print commit being built
+        shell: bash
+        run: |
+          echo "========================================"
+          echo "  Event     : ${{ github.event_name }}"
+          echo "  Commit SHA: ${{ inputs.commit_sha }}"
+          echo "  Branch    : ${{ github.ref_name }}"
+          git log -1 --oneline
+          echo "========================================"
+
       - name: Sync video-driver codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@meta-qcom
         with:
@@ -41,6 +67,7 @@ jobs:
           pr_ref: ${{ github.event.pull_request.head.ref || '' }}
           pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
           base_ref: ${{ github.ref_name }}
+          commit_sha: ${{ inputs.commit_sha }}
 
       - name: Clone meta-qcom as sibling repo
         shell: bash
@@ -86,11 +113,12 @@ jobs:
       # ------------------------------------------------------------------ #
       #  Single kas invocation — KAS_LOCAL_CONF_HEADER injects the         #
       #  EXTERNALSRC overrides into build/conf/local.conf during kas init, #
-      #  before bitbake runs. Yocto then uses the already-checked-out      #
-      #  video-driver workspace (this PR's commit) instead of fetching     #
-      #  iris-video-dlkm from GitHub.                                      #
-      #  Replaces both the old patch_srcrev.sh step and the double kas     #
-      #  invocation approach.                                              #
+      #  before bitbake runs. Yocto builds the already-checked-out         #
+      #  video-driver workspace (exact PR/push HEAD commit) instead of     #
+      #  fetching iris-video-dlkm from GitHub.                             #
+      #                                                                    #
+      #  IMPORTANT: Paths use /workspace/video-driver (container mount)    #
+      #  NOT github.workspace (host path) — bitbake runs inside Docker.   #
       # ------------------------------------------------------------------ #
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@meta-qcom
@@ -101,11 +129,11 @@ jobs:
         env:
           machine: ${{ matrix.build_matrix.machine }}
           KAS_LOCAL_CONF_HEADER: |
-            # === iris-video-dlkm CI override (injected via KAS_LOCAL_CONF_HEADER) ===
-            # Uses the checked-out video-driver workspace — skips do_fetch/do_unpack/do_patch.
-            # The workspace already contains this PR's commit; no SRC_URI/SRCREV patching needed.
-            EXTERNALSRC:pn-iris-video-dlkm = "${{ github.workspace }}"
-            EXTERNALSRC_BUILD:pn-iris-video-dlkm = "${{ github.workspace }}/build_iris"
+            # === iris-video-dlkm CI override ===
+            # Builds the exact checked-out commit (PR HEAD or push HEAD).
+            # Uses container-relative path /workspace/video-driver, NOT host path.
+            EXTERNALSRC:pn-iris-video-dlkm = "/workspace/video-driver"
+            EXTERNALSRC_BUILD:pn-iris-video-dlkm = "/workspace/video-driver/build_iris"
             S:pn-iris-video-dlkm = "${EXTERNALSRC}"
             B:pn-iris-video-dlkm = "${EXTERNALSRC_BUILD}"
             do_fetch:pn-iris-video-dlkm[noexec] = "1"
@@ -223,22 +251,13 @@ jobs:
         env:
           machine: ${{ matrix.build_matrix.machine }}
 
-      # ------------------------------------------------------------------ #
-      #  GitHub Artifacts — persistent backup when S3 URLs expire          #
-      # ------------------------------------------------------------------ #
-
-      # ⚠️  rootfs.img is ~7–8 GB — uses org artifact storage quota.
-      # Set compression-level to 0 (already a binary image; compression
-      # adds time with no size benefit). Retention kept at 7 days to
-      # balance quota vs. re-run window.
-
       - name: Upload flash_files.tar to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: flash-files-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_flash_files.tar
           retention-days: 7
-          compression-level: 0   # tar is uncompressed binary; skip CPU cost
+          compression-level: 0
 
       - name: Upload rootfs.img to GitHub Artifacts
         uses: actions/upload-artifact@v4
@@ -246,11 +265,8 @@ jobs:
           name: rootfs-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_rootfs.img
           retention-days: 7
-          compression-level: 0   # ext4 image; compression gives no benefit
+          compression-level: 0
 
-      # ------------------------------------------------------------------ #
-      #  Upload machine-scoped presigned URLs (consumed by _test job)      #
-      # ------------------------------------------------------------------ #
       - name: Upload machine-specific presigned URLs artifact
         uses: actions/upload-artifact@v4
         with:
@@ -275,6 +291,7 @@ jobs:
           machine="${{ matrix.build_matrix.machine }}"
           run_id="${{ github.run_id }}"
           attempt="${{ github.run_attempt }}"
+          commit="${{ inputs.commit_sha }}"
 
           if [ "${{ job.status }}" == "success" ]; then
             summary=":heavy_check_mark: Build Success for ${machine}"
@@ -287,6 +304,8 @@ jobs:
 
           echo -e "<details><summary><i>Build Summary</i></summary>\n\
           ${summary}\n\n\
+          **Event:** \`${{ github.event_name }}\`\n\
+          **Commit:** \`${commit}\`\n\n\
           **GitHub Artifacts (7-day retention):**\n\
           - \`${artifact_flash}\`\n\
           - \`${artifact_rootfs}\`\n\

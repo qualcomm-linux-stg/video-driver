@@ -3,9 +3,11 @@ run-name: Pre Merge Workflow
 
 on:
   workflow_dispatch:
+
   push:
     branches:
       - meta-qcom
+
   pull_request:
     types: [opened, synchronize, reopened]
     branches:
@@ -16,7 +18,7 @@ jobs:
     uses: ./.github/workflows/loading.yml
     secrets: inherit
     with:
-      event_name: ${{ github.event_name }}   # ✅ pass original trigger event
+      event_name: ${{ github.event_name }}
 
   build:
     needs: loading
@@ -25,6 +27,10 @@ jobs:
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
+      # ✅ Resolve the correct commit SHA for both push and PR events
+      # - pull_request → use PR HEAD sha (exact developer commit, not merge commit)
+      # - push / workflow_dispatch → use github.sha (the pushed commit)
+      commit_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
   lava-test:
     needs: [loading, build]
