@@ -15,6 +15,8 @@ jobs:
   loading:
     uses: ./.github/workflows/loading.yml
     secrets: inherit
+    with:
+      event_name: ${{ github.event_name }}   # ✅ pass original trigger event
 
   build:
     needs: loading
@@ -23,7 +25,7 @@ jobs:
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
-  
+
   lava-test:
     needs: [loading, build]
     uses: ./.github/workflows/test.yml

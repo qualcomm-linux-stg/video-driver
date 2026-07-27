@@ -1,8 +1,11 @@
-name: _loading
-description: Load required parameters for the subsequent jobs
-
 on:
   workflow_call:
+    inputs:
+      event_name:                          # ✅ ADD THIS
+        description: Original trigger event name
+        type: string
+        required: false
+        default: ''
     outputs:
       build_matrix:
         description: Build matrix
@@ -17,7 +20,7 @@ jobs:
       - name: Sync codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@meta-qcom
         with:
-          event_name: ${{ github.event_name }}
+          event_name: ${{ inputs.event_name || github.event_name }}  # ✅ USE INPUT
           pr_ref: ${{ github.event.pull_request.head.ref || '' }}
           pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
           base_ref: ${{ github.ref_name }}
