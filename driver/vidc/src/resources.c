@@ -419,7 +419,7 @@ static int __init_power_domains(struct msm_vidc_core *core)
 	struct dev_pm_domain_attach_data opp_pd_data = {
 		.pd_names = opp_tbl,
 		.num_pd_names = opp_count,
-		.pd_flags = PD_FLAG_DEV_LINK_ON | PD_FLAG_REQUIRED_OPP,
+		.pd_flags = PD_FLAG_DEV_LINK_ON,
 	};
 	rc =  devm_pm_domain_attach_list(&core->pdev->dev, &opp_pd_data,
 				&core->platform->data.opp_pmdomain_tbl);

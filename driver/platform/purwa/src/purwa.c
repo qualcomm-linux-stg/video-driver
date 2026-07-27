@@ -4,9 +4,7 @@
  */
 
 #include <dt-bindings/clock/qcom,x1e80100-gcc.h>
-#ifdef MSM_VIDC_HAS_X1P42100_VIDEOCC
 #include <dt-bindings/clock/qcom,x1p42100-videocc.h>
-#endif
 #include <media/v4l2_vidc_extensions.h>
 
 #include "msm_vidc_purwa.h"
@@ -1811,13 +1809,11 @@ static const char * const purwa_opp_pd_table[] = { "mxc", "mmcx", NULL };
 /* name, clock id, scaling */
 static const struct clk_table purwa_clk_table[] = {
 	{ "iface",                    GCC_VIDEO_AXI0_CLK,      0},
-#ifdef MSM_VIDC_HAS_X1P42100_VIDEOCC
 	{ "core",                     VIDEO_CC_MVS0C_CLK,      0},
 	{ "vcodec0_core",             VIDEO_CC_MVS0_CLK,       1,
 	 (u64[]) {500000000, 424000000, 335000000, 300000000, 210000000}, 5},
 	{ "vcodec0_bse",              VIDEO_CC_MVS0_BSE_CLK,   1,
 	 (u64[]) {250000000, 212000000, 167500000, 150000000, 105000000}, 5},
-#endif
 };
 
 /* name */
@@ -1960,10 +1956,9 @@ static int msm_vidc_purwa_init_cb_devs(struct msm_vidc_core *core)
 	static const struct {
 		const char *cb_name;
 		u32 fid;
-		const char *cb_node_name;
 	} purwa_cb_fid[] = {
-		{ "qcom,vidc,cb-ns",     0, "non-pixel" },
-		{ "qcom,vidc,cb-ns-pxl", 1, "pixel"     },
+		{ "qcom,vidc,cb-ns",     0 },
+		{ "qcom,vidc,cb-ns-pxl", 1 },
 	};
 	struct context_bank_info *cb;
 	int i, rc;
@@ -1973,8 +1968,8 @@ static int msm_vidc_purwa_init_cb_devs(struct msm_vidc_core *core)
 			if (strcmp(cb->name, purwa_cb_fid[i].cb_name))
 				continue;
 
-			rc = msm_vidc_create_child_device_and_map(core, cb, purwa_cb_fid[i].fid,
-								  purwa_cb_fid[i].cb_node_name);
+			rc = msm_vidc_create_child_device_and_map(core, cb,
+								  purwa_cb_fid[i].fid);
 			if (rc) {
 				d_vpr_e("%s: failed to create child device for %s rc %d\n",
 					__func__, cb->name, rc);
