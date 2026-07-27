@@ -24,6 +24,16 @@ jobs:
         build_matrix: ${{ fromJson(inputs.build_matrix) }}
 
     steps:
+      - name: Pre-clean workspace
+        shell: bash
+        run: |
+          echo "=== Disk before clean ==="
+          df -h
+          rm -rf "${{ github.workspace }}/build/tmp" || true
+          echo "=== Disk after clean ==="
+          df -h
+          free -h
+
       - name: Sync video-driver codebase
         uses: qualcomm-linux-stg/video-driver/.github/actions/sync@meta-qcom
         with:
@@ -52,6 +62,17 @@ jobs:
         with:
           image: ${{ inputs.docker_image }}
           registry: artifacts.codelinaro.org/clo-420-qli-registry
+
+      - name: Add swap space
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "=== Memory after swap ==="
+          free -h
 
       - name: Retag Docker image
         shell: bash
@@ -93,6 +114,10 @@ jobs:
             MAKE_TARGETS:pn-iris-video-dlkm = ""
             EXTRA_OEMAKE:pn-iris-video-dlkm = "-C ${STAGING_KERNEL_DIR} M=${S} modules"
             # === end iris-video-dlkm CI override ===
+
+            # === OOM mitigation: limit parallel tasks ===
+            BB_NUMBER_THREADS = "6"
+            PARALLEL_MAKE = "-j6"
 
       - name: Download iris_test_app from S3
         shell: bash
