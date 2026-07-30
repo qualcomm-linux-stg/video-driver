@@ -39,10 +39,11 @@ jobs:
           free -h
 
       # ------------------------------------------------------------------ #
-      #  Checkout the exact HEAD commit for both push and PR events.       #
-      #  - pull_request → checks out the PR HEAD sha (not merge commit)   #
-      #  - push         → checks out the pushed HEAD sha                  #
-      #  commit_sha is resolved in pre_merge.yml and passed down here.    #
+      #  Checkout the exact HEAD commit for push, PR and workflow_dispatch  #
+      #  commit_sha is resolved in pre_merge.yml and passed down here.      #
+      #  - pull_request      → github.event.pull_request.head.sha           #
+      #  - push              → github.sha                                   #
+      #  - workflow_dispatch → github.sha                                   #
       # ------------------------------------------------------------------ #
       - name: Checkout exact HEAD commit
         uses: actions/checkout@v4
@@ -50,24 +51,57 @@ jobs:
           ref: ${{ inputs.commit_sha }}
           fetch-depth: 0
 
-      - name: Print commit being built
+      # ------------------------------------------------------------------ #
+      #  Verify the checked-out commit matches expected SHA                 #
+      #  AND confirm the PR diff is physically present in workspace         #
+      #  before wasting 7+ hours on bitbake.                               #
+      # ------------------------------------------------------------------ #
+      - name: Verify commit and PR changes before build
         shell: bash
         run: |
+          set -euo pipefail
           echo "========================================"
-          echo "  Event     : ${{ github.event_name }}"
-          echo "  Commit SHA: ${{ inputs.commit_sha }}"
-          echo "  Branch    : ${{ github.ref_name }}"
-          git log -1 --oneline
+          echo "  Event      : ${{ github.event_name }}"
+          echo "  Input SHA  : ${{ inputs.commit_sha }}"
+          echo "  HEAD SHA   : $(git rev-parse HEAD)"
+          echo "  Branch     : ${{ github.ref_name }}"
+          echo "  Commit msg : $(git log -1 --pretty=format:'%s')"
+          echo "  Author     : $(git log -1 --pretty=format:'%an <%ae>')"
+          echo "  Date       : $(git log -1 --pretty=format:'%ci')"
           echo "========================================"
 
-      - name: Sync video-driver codebase
-        uses: qualcomm-linux-stg/video-driver/.github/actions/sync@meta-qcom
-        with:
-          event_name: ${{ github.event_name }}
-          pr_ref: ${{ github.event.pull_request.head.ref || '' }}
-          pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
-          base_ref: ${{ github.ref_name }}
-          commit_sha: ${{ inputs.commit_sha }}
+          # ✅ Confirm input SHA matches actual HEAD
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_SHA="${{ inputs.commit_sha }}"
+
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "❌ SHA MISMATCH — wrong commit checked out!"
+            echo "   Expected : $EXPECTED_SHA"
+            echo "   Actual   : $ACTUAL_SHA"
+            exit 1
+          fi
+          echo "✅ SHA verified — correct commit checked out"
+          echo ""
+
+          # ✅ Print lines around msm_vidc_probe.c line 1160
+          # so we can visually confirm PR diff is present
+          echo "--- Lines 1157-1165 of driver/vidc/src/msm_vidc_probe.c ---"
+          sed -n '1157,1165p' driver/vidc/src/msm_vidc_probe.c || \
+            echo "⚠️  File not found at expected path"
+          echo "------------------------------------------------------------"
+
+          # ✅ Show what changed vs base branch
+          echo ""
+          echo "--- Git diff HEAD vs origin/meta-qcom ---"
+          git fetch origin meta-qcom --depth=1 2>/dev/null || true
+          git diff origin/meta-qcom...HEAD -- \
+            driver/vidc/src/msm_vidc_probe.c || true
+          echo "------------------------------------------------------------"
+
+      # ------------------------------------------------------------------ #
+      #  NOTE: Sync step removed — checkout@v4 above already handles        #
+      #  the correct commit for PR, push and workflow_dispatch events.      #
+      # ------------------------------------------------------------------ #
 
       - name: Clone meta-qcom as sibling repo
         shell: bash
@@ -131,7 +165,7 @@ jobs:
           KAS_LOCAL_CONF_HEADER: |
             # === iris-video-dlkm CI override ===
             # Builds the exact checked-out commit (PR HEAD or push HEAD).
-            # Uses container-relative path /workspace/video-driver, NOT host path.
+            # /workspace/video-driver = container mount of github.workspace
             EXTERNALSRC:pn-iris-video-dlkm = "/workspace/video-driver"
             EXTERNALSRC_BUILD:pn-iris-video-dlkm = "/workspace/video-driver/build_iris"
             S:pn-iris-video-dlkm = "${EXTERNALSRC}"
@@ -237,9 +271,6 @@ jobs:
           echo "=== Queued for upload ==="
           cat "$workspace/artifacts/file_list.txt"
 
-      # ------------------------------------------------------------------ #
-      #  S3 upload — generates presigned_urls.json (used by LAVA)          #
-      # ------------------------------------------------------------------ #
       - name: Upload artifacts to S3
         id: upload-artifacts
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@meta-qcom
