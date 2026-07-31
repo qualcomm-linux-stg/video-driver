@@ -1,76 +1,105 @@
-name: Build Docker Image
-description: Build docker image from qualcomm-linux/kmake-image repository
+name: Build
+description: Build the project using a Docker container
 
 inputs:
-  image_name:
-    description: Docker image name to create
+  docker_image:
+    description: Docker image to use for the build job
     required: true
-  repo:
-    description: Repository containing the Dockerfile
+  kas_file:
+    description: KAS file to use for the build job
+    required: true
+  build_command:
+    description: Command to run for the build
     required: false
-    default: "https://github.com/qualcomm-linux/kmake-image.git"
-  branch:
-    description: Branch or tag to checkout
-    required: false
-    default: "main"
-  dockerfile:
-    description: Dockerfile path relative to cloned repo
-    required: false
-    default: "Dockerfile"
-  context:
-    description: Build context relative to cloned repo
-    required: false
-    default: "."
-  http_proxy:
-    description: HTTP proxy
-    required: false
-    default: ""
-  https_proxy:
-    description: HTTPS proxy
-    required: false
-    default: ""
-  no_proxy:
-    description: no_proxy
-    required: false
-    default: ""
-
-outputs:
-  image_name:
-    description: Built image name
-    value: ${{ steps.build.outputs.image_name }}
+    default: "bitbake core-image-base"
 
 runs:
   using: "composite"
   steps:
-    - name: Clone kmake-image repo
-      shell: bash
-      run: |
-        set -euo pipefail
-        REPO_DIR="${{ runner.temp }}/kmake-image-src"
-        rm -rf "${REPO_DIR}"
-        git clone --depth 1 --branch "${{ inputs.branch }}" "${{ inputs.repo }}" "${REPO_DIR}"
-        ls -la "${REPO_DIR}"
-
-    - name: Build docker image
-      id: build
+    - name: Build ${{ env.machine }}
       shell: bash
       run: |
         set -euo pipefail
 
-        IMAGE_NAME="${{ inputs.image_name }}"
-        REPO_DIR="${{ runner.temp }}/kmake-image-src"
-        DOCKERFILE_PATH="${REPO_DIR}/${{ inputs.dockerfile }}"
-        CONTEXT_PATH="${REPO_DIR}/${{ inputs.context }}"
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
+        MACHINE="${{ env.machine }}"
+        KAS_FILE="${{ inputs.kas_file }}"
+        BUILD_COMMAND="${{ inputs.build_command }}"
+        WORKSPACE_ROOT="$(dirname "${PWD}")"
+        REPO_NAME="$(basename "${PWD}")"
 
-        docker build \
-          --build-arg http_proxy="${{ inputs.http_proxy }}" \
-          --build-arg https_proxy="${{ inputs.https_proxy }}" \
-          --build-arg no_proxy="${{ inputs.no_proxy }}" \
-          --build-arg HTTP_PROXY="${{ inputs.http_proxy }}" \
-          --build-arg HTTPS_PROXY="${{ inputs.https_proxy }}" \
-          --build-arg NO_PROXY="${{ inputs.no_proxy }}" \
-          -t "${IMAGE_NAME}" \
-          -f "${DOCKERFILE_PATH}" \
-          "${CONTEXT_PATH}"
+        echo "Machine: ${MACHINE}"
+        echo "Docker image: ${{ inputs.docker_image }}"
+        echo "KAS file: ${KAS_FILE}"
+        echo "Build command: ${BUILD_COMMAND}"
+        echo "WORKSPACE_ROOT: ${WORKSPACE_ROOT}"
+        echo "REPO_NAME: ${REPO_NAME}"
 
-        echo "image_name=${IMAGE_NAME}" >> "${GITHUB_OUTPUT}"
+        # ------------------------------------------------------------------ #
+        #  Write KAS_LOCAL_CONF_HEADER to a file and mount into Docker.       #
+        #  Multiline env vars are silently truncated by -e "VAR=..." in       #
+        #  docker run — file mount is the only reliable way to pass them.     #
+        # ------------------------------------------------------------------ #
+        KAS_CONF_FILE="${WORKSPACE_ROOT}/kas_local_conf_header.txt"
+        printf '%s' "${KAS_LOCAL_CONF_HEADER:-}" > "${KAS_CONF_FILE}"
+
+        echo "=== KAS_LOCAL_CONF_HEADER written to file (HOST) ==="
+        cat "${KAS_CONF_FILE}"
+        echo "====================================================="
+
+        docker run --rm \
+          --user "${USER_ID}:${GROUP_ID}" \
+          -v "${WORKSPACE_ROOT}:/workspace" \
+          -w "/workspace/${REPO_NAME}" \
+          -e "MACHINE=${MACHINE}" \
+          -e "KAS_FILE=${KAS_FILE}" \
+          -e "BUILD_COMMAND=${BUILD_COMMAND}" \
+          "${{ inputs.docker_image }}" \
+          bash -lc '
+            set -euo pipefail
+
+            # ✅ Load KAS_LOCAL_CONF_HEADER from mounted file
+            KAS_CONF_FILE="/workspace/kas_local_conf_header.txt"
+            if [ -f "${KAS_CONF_FILE}" ] && [ -s "${KAS_CONF_FILE}" ]; then
+              export KAS_LOCAL_CONF_HEADER="$(cat "${KAS_CONF_FILE}")"
+              echo "✅ KAS_LOCAL_CONF_HEADER loaded from file"
+            else
+              echo "❌ KAS_LOCAL_CONF_HEADER file missing or empty: ${KAS_CONF_FILE}"
+              exit 1
+            fi
+
+            echo "=== inside container ==="
+            echo "pwd: $(pwd)"
+            echo "=== /workspace ==="
+            ls -la /workspace
+            echo "=== /workspace/video-driver ==="
+            ls -la .
+            echo "=== /workspace/meta-qcom/ci ==="
+            ls -la ../meta-qcom/ci || true
+
+            # ✅ Confirm KAS_LOCAL_CONF_HEADER is correct inside Docker
+            echo "=== KAS_LOCAL_CONF_HEADER inside Docker (first 5 lines) ==="
+            echo "${KAS_LOCAL_CONF_HEADER}" | head -5
+            echo "============================================================"
+
+            # ✅ Confirm PR file is present inside Docker
+            echo "=== Lines 1157-1165 of msm_vidc_probe.c (DOCKER) ==="
+            sed -n '"'"'1157,1165p'"'"' driver/vidc/src/msm_vidc_probe.c || \
+              echo "⚠️  File not found"
+            echo "====================================================="
+
+            echo "Starting build for ${MACHINE}"
+            echo "Using kas file: ${KAS_FILE}"
+            echo "Running build command: ${BUILD_COMMAND}"
+            which kas
+            kas --version
+            kas shell -c "${BUILD_COMMAND}" "${KAS_FILE}"
+
+            # ✅ After kas init verify EXTERNALSRC is in local.conf
+            echo "=== local.conf EXTERNALSRC lines (after kas init) ==="
+            grep -n "EXTERNALSRC\|iris-video-dlkm\|do_fetch\|do_patch" \
+              /workspace/video-driver/build/conf/local.conf \
+              || echo "❌ NO EXTERNALSRC FOUND IN local.conf!"
+            echo "====================================================="
+          '

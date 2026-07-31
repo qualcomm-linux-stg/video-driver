@@ -40,7 +40,6 @@ jobs:
 
       # ------------------------------------------------------------------ #
       #  Checkout the exact HEAD commit for push, PR and workflow_dispatch  #
-      #  commit_sha is resolved in pre_merge.yml and passed down here.      #
       #  - pull_request      → github.event.pull_request.head.sha           #
       #  - push              → github.sha                                   #
       #  - workflow_dispatch → github.sha                                   #
@@ -52,9 +51,8 @@ jobs:
           fetch-depth: 0
 
       # ------------------------------------------------------------------ #
-      #  Verify the checked-out commit matches expected SHA                 #
-      #  AND confirm the PR diff is physically present in workspace         #
-      #  before wasting 7+ hours on bitbake.                               #
+      #  Verify checked-out commit matches expected SHA and PR diff is      #
+      #  physically present in workspace before running bitbake.            #
       # ------------------------------------------------------------------ #
       - name: Verify commit and PR changes before build
         shell: bash
@@ -72,7 +70,6 @@ jobs:
 
           ACTUAL_SHA="$(git rev-parse HEAD)"
           EXPECTED_SHA="${{ inputs.commit_sha }}"
-
           if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
             echo "❌ SHA MISMATCH — wrong commit checked out!"
             echo "   Expected : $EXPECTED_SHA"
@@ -81,14 +78,13 @@ jobs:
           fi
           echo "✅ SHA verified — correct commit checked out"
           echo ""
-
           echo "--- Lines 1157-1165 of driver/vidc/src/msm_vidc_probe.c ---"
           sed -n '1157,1165p' driver/vidc/src/msm_vidc_probe.c || \
             echo "⚠️  File not found at expected path"
           echo "------------------------------------------------------------"
 
       # ------------------------------------------------------------------ #
-      #  NOTE: Sync step intentionally removed.                             #
+      #  Sync step intentionally removed.                                   #
       #  checkout@v4 above already handles the correct commit for           #
       #  PR, push and workflow_dispatch events via commit_sha input.        #
       # ------------------------------------------------------------------ #
@@ -101,7 +97,8 @@ jobs:
           META_QCOM_DIR="${PARENT_DIR}/meta-qcom"
 
           rm -rf "${META_QCOM_DIR}"
-          git clone --depth 1 https://github.com/qualcomm-linux/meta-qcom "${META_QCOM_DIR}"
+          git clone --depth 1 \
+            https://github.com/qualcomm-linux/meta-qcom "${META_QCOM_DIR}"
 
           echo "=== parent workspace ==="
           ls -la "${PARENT_DIR}"
@@ -135,17 +132,12 @@ jobs:
           docker images | grep kmake-image || true
 
       # ------------------------------------------------------------------ #
-      #  Single kas invocation — KAS_LOCAL_CONF_HEADER injects the         #
-      #  EXTERNALSRC overrides into build/conf/local.conf during kas init, #
-      #  before bitbake runs. Yocto builds the already-checked-out         #
-      #  video-driver workspace (exact PR/push HEAD commit) instead of     #
-      #  fetching iris-video-dlkm from GitHub.                             #
-      #                                                                    #
+      #  KAS_LOCAL_CONF_HEADER is written to kas_local_conf_header.txt      #
+      #  by build/action.yml and read inside Docker from the mounted file.  #
+      #  This avoids multiline env var truncation by docker run -e.         #
+      #                                                                     #
       #  IMPORTANT: Paths use /workspace/video-driver (container mount)    #
-      #  NOT github.workspace (host path) — bitbake runs inside Docker.   #
-      #                                                                    #
-      #  KAS_LOCAL_CONF_HEADER is set as env: here on the host runner      #
-      #  and forwarded into Docker via -e in build/action.yml              #
+      #  NOT github.workspace (host path) — bitbake runs inside Docker.    #
       # ------------------------------------------------------------------ #
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@meta-qcom
@@ -202,7 +194,6 @@ jobs:
             echo "❌ Failed to download video_clips_iris.tar.gz"
             exit 1
           }
-
           ls -la "${{ github.workspace }}/downloads/"
 
       - name: Inject Iris test app to rootfs
@@ -226,7 +217,6 @@ jobs:
           fi
 
           resolved_dir=$(readlink -f "$symlink_path")
-
           if [ ! -d "$resolved_dir" ]; then
             echo "❌ Resolved .qcomflash directory not found: $resolved_dir"
             exit 1
@@ -302,11 +292,13 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -rf "${{ github.workspace }}/artifacts"           || true
-          rm -rf "${{ github.workspace }}/build"               || true
-          rm -rf "${{ github.workspace }}/downloads"           || true
-          rm -f  "${{ github.workspace }}/"*_flash_files.tar   || true
-          rm -f  "${{ github.workspace }}/"*_rootfs.img        || true
+          rm -rf "${{ github.workspace }}/artifacts"              || true
+          rm -rf "${{ github.workspace }}/build"                  || true
+          rm -rf "${{ github.workspace }}/downloads"              || true
+          rm -f  "${{ github.workspace }}/"*_flash_files.tar      || true
+          rm -f  "${{ github.workspace }}/"*_rootfs.img           || true
+          # ✅ Clean up kas conf header temp file
+          rm -f  "$(dirname "${{ github.workspace }}")/kas_local_conf_header.txt" || true
 
       - name: Update summary
         if: success() || failure()
