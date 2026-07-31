@@ -70,7 +70,6 @@ jobs:
           echo "  Date       : $(git log -1 --pretty=format:'%ci')"
           echo "========================================"
 
-          # ✅ Confirm input SHA matches actual HEAD
           ACTUAL_SHA="$(git rev-parse HEAD)"
           EXPECTED_SHA="${{ inputs.commit_sha }}"
 
@@ -83,24 +82,15 @@ jobs:
           echo "✅ SHA verified — correct commit checked out"
           echo ""
 
-          # ✅ Print lines around msm_vidc_probe.c line 1160
-          # so we can visually confirm PR diff is present
           echo "--- Lines 1157-1165 of driver/vidc/src/msm_vidc_probe.c ---"
           sed -n '1157,1165p' driver/vidc/src/msm_vidc_probe.c || \
             echo "⚠️  File not found at expected path"
           echo "------------------------------------------------------------"
 
-          # ✅ Show what changed vs base branch
-          echo ""
-          echo "--- Git diff HEAD vs origin/meta-qcom ---"
-          git fetch origin meta-qcom --depth=1 2>/dev/null || true
-          git diff origin/meta-qcom...HEAD -- \
-            driver/vidc/src/msm_vidc_probe.c || true
-          echo "------------------------------------------------------------"
-
       # ------------------------------------------------------------------ #
-      #  NOTE: Sync step removed — checkout@v4 above already handles        #
-      #  the correct commit for PR, push and workflow_dispatch events.      #
+      #  NOTE: Sync step intentionally removed.                             #
+      #  checkout@v4 above already handles the correct commit for           #
+      #  PR, push and workflow_dispatch events via commit_sha input.        #
       # ------------------------------------------------------------------ #
 
       - name: Clone meta-qcom as sibling repo
@@ -153,6 +143,9 @@ jobs:
       #                                                                    #
       #  IMPORTANT: Paths use /workspace/video-driver (container mount)    #
       #  NOT github.workspace (host path) — bitbake runs inside Docker.   #
+      #                                                                    #
+      #  KAS_LOCAL_CONF_HEADER is set as env: here on the host runner      #
+      #  and forwarded into Docker via -e in build/action.yml              #
       # ------------------------------------------------------------------ #
       - name: Build ${{ matrix.build_matrix.machine }}
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@meta-qcom
