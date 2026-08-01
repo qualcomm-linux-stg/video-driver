@@ -37,7 +37,7 @@ runs:
         echo "REPO_NAME: ${REPO_NAME}"
 
         # ------------------------------------------------------------------ #
-        #  Step 1: Write KAS_LOCAL_CONF_HEADER to a mounted file.            #
+        #  Write KAS_LOCAL_CONF_HEADER to a mounted file.                    #
         #  Multiline env vars are silently truncated by docker run -e.       #
         # ------------------------------------------------------------------ #
         KAS_CONF_FILE="${WORKSPACE_ROOT}/kas_local_conf_header.txt"
@@ -53,20 +53,24 @@ runs:
         fi
 
         # ------------------------------------------------------------------ #
-        #  Step 2: Write the full build script to a file.                    #
-        #  This avoids ALL shell quoting issues with kas shell -c '...'      #
+        #  Write build script using python3 — NO heredoc (breaks YAML).     #
+        #  Script runs inside Docker:                                        #
+        #    1. kas checkout  → sets up layers + writes local.conf           #
+        #    2. append header → injects EXTERNALSRC into local.conf          #
+        #    3. kas shell -c  → sets up OE env + runs bitbake                #
         # ------------------------------------------------------------------ #
         BUILD_SCRIPT="${WORKSPACE_ROOT}/ci_build.sh"
 
-        cat > "${BUILD_SCRIPT}" << 'EOF'
-#!/bin/bash
+        python3 - <<'PYEOF'
+import os
+
+script = r"""#!/bin/bash
 set -euo pipefail
 
-# ✅ Load KAS_LOCAL_CONF_HEADER from mounted file
 KAS_CONF_FILE="/workspace/kas_local_conf_header.txt"
 if [ -f "${KAS_CONF_FILE}" ] && [ -s "${KAS_CONF_FILE}" ]; then
   export KAS_LOCAL_CONF_HEADER="$(cat "${KAS_CONF_FILE}")"
-  echo "✅ KAS_LOCAL_CONF_HEADER loaded from file"
+  echo "✅ KAS_LOCAL_CONF_HEADER loaded from file inside Docker"
 else
   echo "❌ KAS_LOCAL_CONF_HEADER file missing or empty!"
   exit 1
@@ -89,23 +93,60 @@ which kas
 kas --version
 
 # ------------------------------------------------------------------ #
-#  kas shell sets up the full OE environment (BBPATH, PATH etc.)     #
-#  KAS_LOCAL_CONF_HEADER is exported above so kas reads it and       #
-#  appends it to build/conf/local.conf during initialization.        #
+#  Step 1: kas checkout — sets up all layers and writes local.conf   #
 # ------------------------------------------------------------------ #
-echo "=== Running: kas shell -c BUILD_COMMAND KAS_FILE ==="
-kas shell -c "${BUILD_COMMAND}" "${KAS_FILE}"
-EOF
+echo "=== Step 1: kas checkout ==="
+kas checkout "${KAS_FILE}"
 
-        chmod +x "${BUILD_SCRIPT}"
+LOCAL_CONF="/workspace/video-driver/build/conf/local.conf"
+if [ ! -f "${LOCAL_CONF}" ]; then
+  echo "❌ local.conf not found after kas checkout: ${LOCAL_CONF}"
+  exit 1
+fi
+echo "✅ local.conf found: ${LOCAL_CONF}"
 
-        echo "=== ci_build.sh contents ==="
-        cat "${BUILD_SCRIPT}"
-        echo "============================"
+# ------------------------------------------------------------------ #
+#  Step 2: Append EXTERNALSRC overrides to local.conf                #
+#  This happens AFTER kas checkout so kas cannot overwrite it        #
+# ------------------------------------------------------------------ #
+echo "=== Step 2: Appending KAS_LOCAL_CONF_HEADER to local.conf ==="
+printf '\n%s\n' "${KAS_LOCAL_CONF_HEADER}" >> "${LOCAL_CONF}"
+echo "✅ Appended successfully"
 
-        # ------------------------------------------------------------------ #
-        #  Step 3: Run Docker — execute the build script inside container.   #
-        # ------------------------------------------------------------------ #
+echo "=== local.conf EXTERNALSRC lines ==="
+grep -n "EXTERNALSRC\|iris-video-dlkm\|do_fetch\|do_patch\|BB_NUMBER" \
+  "${LOCAL_CONF}" || echo "❌ NO EXTERNALSRC FOUND!"
+echo "====================================="
+
+if ! grep -q "EXTERNALSRC:pn-iris-video-dlkm" "${LOCAL_CONF}"; then
+  echo "❌ EXTERNALSRC override missing from local.conf!"
+  exit 1
+fi
+echo "✅ EXTERNALSRC confirmed in local.conf"
+
+# ------------------------------------------------------------------ #
+#  Step 3: Run bitbake inside kas shell                              #
+#  kas shell sets up the full OE environment (BBPATH, PATH etc)     #
+#  We pass --no-checkout to prevent kas from overwriting local.conf  #
+# ------------------------------------------------------------------ #
+echo "=== Step 3: Running bitbake via kas shell --no-checkout ==="
+kas shell --no-checkout -c "${BUILD_COMMAND}" "${KAS_FILE}"
+
+echo "✅ Build completed successfully"
+"""
+
+workspace_root = os.environ.get('WORKSPACE_ROOT', '')
+build_script = os.path.join(workspace_root, 'ci_build.sh')
+with open(build_script, 'w') as f:
+    f.write(script)
+os.chmod(build_script, 0o755)
+print(f"✅ Build script written to: {build_script}")
+PYEOF
+
+        echo "=== Build script written ==="
+        head -20 "${BUILD_SCRIPT}"
+        echo "==========================="
+
         docker run --rm \
           --user "${USER_ID}:${GROUP_ID}" \
           -v "${WORKSPACE_ROOT}:/workspace" \
@@ -115,3 +156,6 @@ EOF
           -e "BUILD_COMMAND=${BUILD_COMMAND}" \
           "${{ inputs.docker_image }}" \
           bash -l /workspace/ci_build.sh
+
+        # Cleanup temp files
+        rm -f "${BUILD_SCRIPT}" "${KAS_CONF_FILE}" || true
