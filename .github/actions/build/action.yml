@@ -38,8 +38,8 @@ runs:
 
         # ------------------------------------------------------------------ #
         #  Write KAS_LOCAL_CONF_HEADER to a file mounted into Docker.        #
-        #  kas shell -c does NOT process KAS_LOCAL_CONF_HEADER.              #
-        #  We use kas checkout (writes local.conf) then bitbake directly.    #
+        #  kas checkout / kas shell -c do NOT process KAS_LOCAL_CONF_HEADER. #
+        #  We manually append it to local.conf after kas checkout runs.      #
         # ------------------------------------------------------------------ #
         KAS_CONF_FILE="${WORKSPACE_ROOT}/kas_local_conf_header.txt"
         printf '%s' "${KAS_LOCAL_CONF_HEADER:-}" > "${KAS_CONF_FILE}"
@@ -48,6 +48,7 @@ runs:
         cat "${KAS_CONF_FILE}"
         echo "==================================================="
 
+        # ✅ Fail immediately if header file is empty
         if [ ! -s "${KAS_CONF_FILE}" ]; then
           echo "❌ KAS_LOCAL_CONF_HEADER is EMPTY — EXTERNALSRC override will not apply!"
           exit 1
@@ -83,16 +84,16 @@ runs:
             echo "=== /workspace/meta-qcom/ci ==="
             ls -la ../meta-qcom/ci || true
 
-            # ✅ Confirm KAS_LOCAL_CONF_HEADER inside Docker
+            # ✅ Confirm KAS_LOCAL_CONF_HEADER content
             echo "=== KAS_LOCAL_CONF_HEADER inside Docker (first 5 lines) ==="
             echo "${KAS_LOCAL_CONF_HEADER}" | head -5
             echo "============================================================"
 
-            # ✅ Confirm PR file present inside Docker
+            # ✅ Confirm PR file is present inside Docker
             echo "=== Lines 1157-1165 of msm_vidc_probe.c (DOCKER) ==="
             sed -n '"'"'1157,1165p'"'"' driver/vidc/src/msm_vidc_probe.c || \
               echo "⚠️  File not found"
-            echo "====================================================="
+            echo "======================================================"
 
             echo "Starting build for ${MACHINE}"
             echo "Using kas file: ${KAS_FILE}"
@@ -100,39 +101,51 @@ runs:
             which kas
             kas --version
 
-            # ---------------------------------------------------------------- #
-            #  Step 1: kas checkout — initializes layers + writes local.conf   #
-            #  KAS_LOCAL_CONF_HEADER is processed HERE and written to          #
-            #  build/conf/local.conf BEFORE bitbake runs.                      #
-            #  kas shell -c does NOT do this — that was the root cause.        #
-            # ---------------------------------------------------------------- #
-            echo "=== Step 1: kas checkout (writes local.conf) ==="
+            # ------------------------------------------------------------------ #
+            #  Step 1: kas checkout — sets up layers and writes local.conf       #
+            #  KAS_LOCAL_CONF_HEADER is NOT processed by kas checkout alone.     #
+            #  We manually append it to local.conf immediately after.            #
+            # ------------------------------------------------------------------ #
+            echo "=== Step 1: kas checkout ==="
             kas checkout "${KAS_FILE}"
 
-            # ✅ Verify local.conf has EXTERNALSRC BEFORE bitbake runs
-            echo "=== local.conf EXTERNALSRC lines (BEFORE bitbake) ==="
-            grep -n "EXTERNALSRC\|iris-video-dlkm\|do_fetch\|do_patch" \
-              /workspace/video-driver/build/conf/local.conf \
-              || echo "❌ NO EXTERNALSRC FOUND — override not applied!"
-            echo "======================================================"
+            LOCAL_CONF="/workspace/video-driver/build/conf/local.conf"
 
-            # ✅ Fail immediately if EXTERNALSRC not in local.conf
-            if ! grep -q "EXTERNALSRC:pn-iris-video-dlkm" \
-              /workspace/video-driver/build/conf/local.conf 2>/dev/null; then
-              echo "❌ EXTERNALSRC override missing from local.conf!"
-              echo "   KAS_LOCAL_CONF_HEADER was not applied by kas checkout."
+            if [ ! -f "${LOCAL_CONF}" ]; then
+              echo "❌ local.conf not found after kas checkout: ${LOCAL_CONF}"
               exit 1
             fi
-            echo "✅ EXTERNALSRC confirmed in local.conf — PR code will be built"
+            echo "✅ local.conf found after kas checkout"
 
-            # ---------------------------------------------------------------- #
-            #  Step 2: source oe-init-build-env and run bitbake directly       #
-            #  This is equivalent to kas shell -c but local.conf is already    #
-            #  correctly set up by kas checkout above.                         #
-            # ---------------------------------------------------------------- #
-            echo "=== Step 2: sourcing oe-init-build-env and running bitbake ==="
+            # ------------------------------------------------------------------ #
+            #  Step 2: Manually append EXTERNALSRC overrides to local.conf       #
+            #  This is the ONLY reliable way — kas checkout does not do it.      #
+            # ------------------------------------------------------------------ #
+            echo "=== Step 2: Appending KAS_LOCAL_CONF_HEADER to local.conf ==="
+            echo "" >> "${LOCAL_CONF}"
+            echo "${KAS_LOCAL_CONF_HEADER}" >> "${LOCAL_CONF}"
+            echo "✅ KAS_LOCAL_CONF_HEADER appended to local.conf"
+
+            # ✅ Verify EXTERNALSRC is now in local.conf
+            echo "=== local.conf EXTERNALSRC lines (AFTER append) ==="
+            grep -n "EXTERNALSRC\|iris-video-dlkm\|do_fetch\|do_patch\|BB_NUMBER" \
+              "${LOCAL_CONF}" \
+              || echo "❌ NO EXTERNALSRC FOUND — append failed!"
+            echo "==================================================="
+
+            # ✅ Fail early if EXTERNALSRC still missing
+            if ! grep -q "EXTERNALSRC:pn-iris-video-dlkm" "${LOCAL_CONF}"; then
+              echo "❌ EXTERNALSRC override missing from local.conf — cannot proceed!"
+              exit 1
+            fi
+            echo "✅ EXTERNALSRC confirmed in local.conf"
+
+            # ------------------------------------------------------------------ #
+            #  Step 3: Run bitbake directly — local.conf already has overrides   #
+            # ------------------------------------------------------------------ #
+            echo "=== Step 3: Running bitbake directly ==="
+            source /workspace/video-driver/build/conf/../../oe-core/oe-init-build-env \
+              /workspace/video-driver/build 2>/dev/null || true
             cd /workspace/video-driver
-            source /workspace/oe-core/oe-init-build-env build
-            echo "Running: ${BUILD_COMMAND}"
-            ${BUILD_COMMAND}
+            bash -c "source ../oe-core/oe-init-build-env build && ${BUILD_COMMAND}"
           '
