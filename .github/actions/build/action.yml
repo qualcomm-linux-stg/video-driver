@@ -36,10 +36,24 @@ runs:
         echo "WORKSPACE_ROOT: ${WORKSPACE_ROOT}"
         echo "REPO_NAME: ${REPO_NAME}"
 
-        # ✅ Confirm KAS_LOCAL_CONF_HEADER is set on host before passing into Docker
-        echo "=== KAS_LOCAL_CONF_HEADER on host ==="
-        echo "${KAS_LOCAL_CONF_HEADER:-<EMPTY — NOT SET>}" | head -5
-        echo "====================================="
+        # ------------------------------------------------------------------ #
+        #  Write KAS_LOCAL_CONF_HEADER to a file mounted into Docker.        #
+        #  Multiline env vars are SILENTLY TRUNCATED by docker run -e.       #
+        #  Writing to a file and reading inside Docker is the only           #
+        #  reliable way to pass multiline values into the container.         #
+        # ------------------------------------------------------------------ #
+        KAS_CONF_FILE="${WORKSPACE_ROOT}/kas_local_conf_header.txt"
+        printf '%s' "${KAS_LOCAL_CONF_HEADER:-}" > "${KAS_CONF_FILE}"
+
+        echo "=== KAS_LOCAL_CONF_HEADER written to HOST file ==="
+        cat "${KAS_CONF_FILE}"
+        echo "==================================================="
+
+        # ✅ Fail early if KAS_LOCAL_CONF_HEADER is empty
+        if [ ! -s "${KAS_CONF_FILE}" ]; then
+          echo "❌ KAS_LOCAL_CONF_HEADER is empty — EXTERNALSRC override will not apply!"
+          exit 1
+        fi
 
         docker run --rm \
           --user "${USER_ID}:${GROUP_ID}" \
@@ -48,10 +62,22 @@ runs:
           -e "MACHINE=${MACHINE}" \
           -e "KAS_FILE=${KAS_FILE}" \
           -e "BUILD_COMMAND=${BUILD_COMMAND}" \
-          -e "KAS_LOCAL_CONF_HEADER=${KAS_LOCAL_CONF_HEADER:-}" \
           "${{ inputs.docker_image }}" \
           bash -lc '
             set -euo pipefail
+
+            # ✅ Read KAS_LOCAL_CONF_HEADER from mounted file
+            # -e "VAR=multiline" in docker run silently truncates — file is reliable
+            KAS_CONF_FILE="/workspace/kas_local_conf_header.txt"
+            if [ -f "${KAS_CONF_FILE}" ] && [ -s "${KAS_CONF_FILE}" ]; then
+              export KAS_LOCAL_CONF_HEADER="$(cat "${KAS_CONF_FILE}")"
+              echo "✅ KAS_LOCAL_CONF_HEADER loaded from file inside Docker"
+            else
+              echo "❌ KAS_LOCAL_CONF_HEADER file missing or empty inside Docker!"
+              echo "   Expected at: ${KAS_CONF_FILE}"
+              exit 1
+            fi
+
             echo "=== inside container ==="
             echo "pwd: $(pwd)"
             echo "=== /workspace ==="
@@ -61,16 +87,16 @@ runs:
             echo "=== /workspace/meta-qcom/ci ==="
             ls -la ../meta-qcom/ci || true
 
-            # ✅ Confirm KAS_LOCAL_CONF_HEADER reached inside Docker
-            echo "=== KAS_LOCAL_CONF_HEADER inside Docker ==="
-            echo "${KAS_LOCAL_CONF_HEADER:-<EMPTY — NOT SET>}" | head -5
-            echo "==========================================="
+            # ✅ Confirm KAS_LOCAL_CONF_HEADER is correct inside Docker
+            echo "=== KAS_LOCAL_CONF_HEADER inside Docker (first 8 lines) ==="
+            echo "${KAS_LOCAL_CONF_HEADER}" | head -8
+            echo "============================================================"
 
             # ✅ Confirm PR file is present inside Docker
-            echo "=== Lines 1158-1165 of msm_vidc_probe.c (DOCKER) ==="
-            sed -n '"'"'1158,1165p'"'"' driver/vidc/src/msm_vidc_probe.c || \
+            echo "=== Lines 1157-1165 of msm_vidc_probe.c (DOCKER) ==="
+            sed -n '"'"'1157,1165p'"'"' driver/vidc/src/msm_vidc_probe.c || \
               echo "⚠️  File not found"
-            echo "====================================================="
+            echo "======================================================"
 
             echo "Starting build for ${MACHINE}"
             echo "Using kas file: ${KAS_FILE}"
@@ -79,10 +105,10 @@ runs:
             kas --version
             kas shell -c "${BUILD_COMMAND}" "${KAS_FILE}"
 
-            # ✅ After kas init verify local.conf has EXTERNALSRC override
-            echo "=== local.conf EXTERNALSRC lines ==="
+            # ✅ After kas init verify EXTERNALSRC is in local.conf
+            echo "=== local.conf EXTERNALSRC lines (after kas init) ==="
             grep -n "EXTERNALSRC\|iris-video-dlkm\|do_fetch\|do_patch" \
               /workspace/video-driver/build/conf/local.conf \
               || echo "❌ NO EXTERNALSRC FOUND IN local.conf!"
-            echo "====================================="
+            echo "======================================================"
           '
