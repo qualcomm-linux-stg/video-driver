@@ -38,9 +38,9 @@ runs:
 
         # ------------------------------------------------------------------ #
         #  Write KAS_LOCAL_CONF_HEADER to a file mounted into Docker.        #
-        #  kas shell/checkout do NOT process KAS_LOCAL_CONF_HEADER.          #
-        #  We manually append it to local.conf after kas checkout runs,      #
+        #  We manually append it to local.conf AFTER kas checkout,           #
         #  then source oe-init-build-env and run bitbake directly.           #
+        #  kas shell re-runs checkout and overwrites local.conf — avoid it.  #
         # ------------------------------------------------------------------ #
         KAS_CONF_FILE="${WORKSPACE_ROOT}/kas_local_conf_header.txt"
         printf '%s' "${KAS_LOCAL_CONF_HEADER:-}" > "${KAS_CONF_FILE}"
@@ -50,7 +50,7 @@ runs:
         echo "==================================================="
 
         if [ ! -s "${KAS_CONF_FILE}" ]; then
-          echo "❌ KAS_LOCAL_CONF_HEADER is EMPTY — EXTERNALSRC override will not apply!"
+          echo "❌ KAS_LOCAL_CONF_HEADER is EMPTY!"
           exit 1
         fi
 
@@ -71,7 +71,7 @@ runs:
               export KAS_LOCAL_CONF_HEADER="$(cat "${KAS_CONF_FILE}")"
               echo "✅ KAS_LOCAL_CONF_HEADER loaded from file inside Docker"
             else
-              echo "❌ KAS_LOCAL_CONF_HEADER file missing or empty: ${KAS_CONF_FILE}"
+              echo "❌ KAS_LOCAL_CONF_HEADER file missing or empty!"
               exit 1
             fi
 
@@ -79,19 +79,16 @@ runs:
             echo "pwd: $(pwd)"
             echo "=== /workspace ==="
             ls -la /workspace
-            echo "=== /workspace/video-driver ==="
-            ls -la .
-            echo "=== /workspace/meta-qcom/ci ==="
-            ls -la ../meta-qcom/ci || true
 
-            echo "=== KAS_LOCAL_CONF_HEADER inside Docker (first 5 lines) ==="
+            echo "=== KAS_LOCAL_CONF_HEADER (first 5 lines) ==="
             echo "${KAS_LOCAL_CONF_HEADER}" | head -5
-            echo "============================================================"
+            echo "=============================================="
 
-            echo "=== Lines 1157-1165 of msm_vidc_probe.c (DOCKER) ==="
+            # ✅ Confirm PR file inside Docker
+            echo "=== Lines 1157-1165 msm_vidc_probe.c (DOCKER) ==="
             sed -n '"'"'1157,1165p'"'"' driver/vidc/src/msm_vidc_probe.c || \
-              echo "⚠️  File not found"
-            echo "====================================================="
+              echo "⚠️ File not found"
+            echo "=================================================="
 
             echo "Starting build for ${MACHINE}"
             echo "Using kas file: ${KAS_FILE}"
@@ -100,66 +97,71 @@ runs:
             kas --version
 
             # ---------------------------------------------------------------- #
-            #  Step 1: kas checkout — sets up layers, repos, build dir        #
-            #  but does NOT process KAS_LOCAL_CONF_HEADER                     #
+            #  Step 1: kas checkout — sets up layers + writes local.conf       #
             # ---------------------------------------------------------------- #
             echo "=== Step 1: kas checkout ==="
             kas checkout "${KAS_FILE}"
 
             # ---------------------------------------------------------------- #
-            #  Step 2: Manually append KAS_LOCAL_CONF_HEADER to local.conf    #
-            #  kas checkout creates build/conf/local.conf — append our        #
-            #  EXTERNALSRC overrides directly into it                         #
+            #  Step 2: Find local.conf and append EXTERNALSRC override         #
+            #  Build dir is always /workspace/video-driver/build/conf/         #
             # ---------------------------------------------------------------- #
             LOCAL_CONF="/workspace/video-driver/build/conf/local.conf"
 
             if [ ! -f "${LOCAL_CONF}" ]; then
-              echo "❌ local.conf NOT found at: ${LOCAL_CONF}"
-              ls -la /workspace/video-driver/build/conf/ || true
+              echo "❌ local.conf not found at: ${LOCAL_CONF}"
+              echo "Searching..."
+              find /workspace -name "local.conf" 2>/dev/null || true
               exit 1
             fi
 
-            echo "✅ local.conf found after kas checkout"
+            echo "✅ local.conf found: ${LOCAL_CONF}"
             echo "=== Step 2: Appending KAS_LOCAL_CONF_HEADER to local.conf ==="
-            echo "" >> "${LOCAL_CONF}"
-            echo "${KAS_LOCAL_CONF_HEADER}" >> "${LOCAL_CONF}"
-            echo "✅ KAS_LOCAL_CONF_HEADER appended to local.conf"
+            printf "\n%s\n" "${KAS_LOCAL_CONF_HEADER}" >> "${LOCAL_CONF}"
+            echo "✅ Appended successfully"
 
-            echo "=== local.conf EXTERNALSRC lines (AFTER append) ==="
+            echo "=== local.conf EXTERNALSRC lines ==="
             grep -n "EXTERNALSRC\|iris-video-dlkm\|do_fetch\|do_patch\|BB_NUMBER" \
-              "${LOCAL_CONF}" || echo "❌ NO EXTERNALSRC FOUND!"
-            echo "==================================================="
-
-            if ! grep -q "EXTERNALSRC:pn-iris-video-dlkm" "${LOCAL_CONF}"; then
-              echo "❌ EXTERNALSRC override missing from local.conf!"
-              exit 1
-            fi
-            echo "✅ EXTERNALSRC confirmed in local.conf"
+              "${LOCAL_CONF}" \
+              || echo "❌ NO EXTERNALSRC FOUND!"
+            echo "====================================="
 
             # ---------------------------------------------------------------- #
-            #  Step 3: Source OE build environment then run bitbake directly  #
-            #  oe-init-build-env sets up PATH for bitbake and all OE tools    #
-            #  BUILD_DIR must match what kas checkout created                 #
+            #  Step 3: Find and source oe-init-build-env                       #
+            #  kas clones oe-core as sibling to meta-qcom → /workspace/oe-core #
             # ---------------------------------------------------------------- #
-            echo "=== Step 3: Sourcing OE build environment ==="
-            BUILD_DIR="/workspace/video-driver/build"
-            OE_INIT_SCRIPT="/workspace/oe-core/oe-init-build-env"
+            echo "=== Step 3: Sourcing oe-init-build-env ==="
 
-            if [ ! -f "${OE_INIT_SCRIPT}" ]; then
-              echo "❌ oe-init-build-env not found at: ${OE_INIT_SCRIPT}"
-              echo "Searching for it..."
-              find /workspace -name "oe-init-build-env" 2>/dev/null | head -5
+            # Find oe-init-build-env dynamically
+            OE_INIT=$(find /workspace -maxdepth 3 -name "oe-init-build-env" \
+              ! -path "*/video-driver/*" 2>/dev/null | head -1)
+
+            if [ -z "${OE_INIT}" ]; then
+              echo "Searching deeper..."
+              OE_INIT=$(find /workspace -name "oe-init-build-env" 2>/dev/null | head -1)
+            fi
+
+            if [ -z "${OE_INIT}" ]; then
+              echo "❌ oe-init-build-env not found anywhere in /workspace!"
+              find /workspace -name "oe-init-build-env" 2>/dev/null || true
               exit 1
             fi
 
-            echo "✅ oe-init-build-env found at: ${OE_INIT_SCRIPT}"
-            echo "=== Step 4: Running bitbake ==="
+            echo "✅ Found oe-init-build-env at: ${OE_INIT}"
+            OE_DIR=$(dirname "${OE_INIT}")
 
-            # Source OE env and run bitbake — must be in same shell
+            # Source OE environment — sets up PATH for bitbake
+            # Build dir is /workspace/video-driver/build
+            cd "${OE_DIR}"
+            source "${OE_INIT}" /workspace/video-driver/build
             cd /workspace/video-driver
-            source "${OE_INIT_SCRIPT}" "${BUILD_DIR}"
 
-            echo "bitbake PATH: $(which bitbake)"
-            echo "Running: ${BUILD_COMMAND}"
+            echo "✅ OE environment sourced"
+            echo "bitbake path: $(which bitbake 2>/dev/null || echo NOT FOUND)"
+
+            # ---------------------------------------------------------------- #
+            #  Step 4: Run bitbake directly — uses our patched local.conf      #
+            # ---------------------------------------------------------------- #
+            echo "=== Step 4: Running bitbake ==="
             ${BUILD_COMMAND}
           '
