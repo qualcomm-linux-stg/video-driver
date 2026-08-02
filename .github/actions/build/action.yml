@@ -16,7 +16,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Write KAS conf and build script
+    - name: Write KAS overlay and build script
       shell: bash
       run: |
         set -euo pipefail
@@ -35,50 +35,82 @@ runs:
           exit 1
         fi
 
+        # ------------------------------------------------------------------ #
+        #  Write a KAS overlay YAML with local_conf_header.                  #
+        #  kas processes local_conf_header natively and writes it to         #
+        #  local.conf DURING kas shell init — it cannot be wiped.            #
+        #  This is the only reliable way to inject EXTERNALSRC into kas.     #
+        # ------------------------------------------------------------------ #
+        KAS_OVERLAY="${WORKSPACE_ROOT}/ci_externalsrc_overlay.yml"
+
+        # Write header of overlay YAML
+        printf '%s\n' 'header:'                               > "${KAS_OVERLAY}"
+        printf '%s\n' '  version: 14'                        >> "${KAS_OVERLAY}"
+        printf '%s\n' ''                                      >> "${KAS_OVERLAY}"
+        printf '%s\n' 'local_conf_header:'                   >> "${KAS_OVERLAY}"
+        printf '%s\n' '  iris-video-ci-override: |'          >> "${KAS_OVERLAY}"
+
+        # Append each line of KAS_LOCAL_CONF_HEADER indented with 4 spaces
+        while IFS= read -r line; do
+          printf '    %s\n' "${line}"                         >> "${KAS_OVERLAY}"
+        done < "${KAS_CONF_FILE}"
+
+        echo "=== KAS overlay YAML written ==="
+        cat "${KAS_OVERLAY}"
+        echo "================================="
+
+        # ------------------------------------------------------------------ #
+        #  Write ci_build.sh using printf line by line — no heredoc.         #
+        # ------------------------------------------------------------------ #
         BUILD_SCRIPT="${WORKSPACE_ROOT}/ci_build.sh"
         rm -f "${BUILD_SCRIPT}"
 
-        printf '%s\n' '#!/bin/bash'                                                           >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'set -euo pipefail'                                                     >> "${BUILD_SCRIPT}"
-        printf '%s\n' ''                                                                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'KAS_CONF_FILE="/workspace/kas_local_conf_header.txt"'                  >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'if [ -f "${KAS_CONF_FILE}" ] && [ -s "${KAS_CONF_FILE}" ]; then'       >> "${BUILD_SCRIPT}"
-        printf '%s\n' '  export KAS_LOCAL_CONF_HEADER="$(cat "${KAS_CONF_FILE}")"'            >> "${BUILD_SCRIPT}"
-        printf '%s\n' '  echo "✅ KAS_LOCAL_CONF_HEADER loaded from file"'                    >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'else'                                                                   >> "${BUILD_SCRIPT}"
-        printf '%s\n' '  echo "❌ KAS_LOCAL_CONF_HEADER file missing or empty!"'              >> "${BUILD_SCRIPT}"
-        printf '%s\n' '  exit 1'                                                               >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'fi'                                                                     >> "${BUILD_SCRIPT}"
-        printf '%s\n' ''                                                                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "=== inside container ==="'                                        >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "pwd: $(pwd)"'                                                     >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "=== KAS_LOCAL_CONF_HEADER first 3 lines ==="'                    >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "${KAS_LOCAL_CONF_HEADER}" | head -3'                             >> "${BUILD_SCRIPT}"
-        printf '%s\n' ''                                                                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "=== Step 1: kas checkout ==="'                                   >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'kas checkout "${KAS_FILE}"'                                            >> "${BUILD_SCRIPT}"
-        printf '%s\n' ''                                                                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'LOCAL_CONF="/workspace/video-driver/build/conf/local.conf"'            >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'if [ ! -f "${LOCAL_CONF}" ]; then'                                    >> "${BUILD_SCRIPT}"
-        printf '%s\n' '  echo "❌ local.conf not found: ${LOCAL_CONF}"'                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' '  exit 1'                                                               >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'fi'                                                                     >> "${BUILD_SCRIPT}"
-        printf '%s\n' ''                                                                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "=== Step 2: Appending EXTERNALSRC to local.conf ==="'           >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'printf "\n%s\n" "${KAS_LOCAL_CONF_HEADER}" >> "${LOCAL_CONF}"'        >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "✅ Appended to local.conf"'                                      >> "${BUILD_SCRIPT}"
-        printf '%s\n' ''                                                                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "=== EXTERNALSRC lines in local.conf ==="'                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'grep -n "EXTERNALSRC\|do_fetch\|do_patch" "${LOCAL_CONF}" || echo "❌ NOT FOUND"' >> "${BUILD_SCRIPT}"
-        printf '%s\n' ''                                                                       >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'echo "=== Step 3: Running bitbake via kas shell ==="'                 >> "${BUILD_SCRIPT}"
-        printf '%s\n' 'kas shell "${KAS_FILE}" -c "${BUILD_COMMAND}"'                        >> "${BUILD_SCRIPT}"
+        printf '%s\n' '#!/bin/bash'                                                                     >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'set -euo pipefail'                                                               >> "${BUILD_SCRIPT}"
+        printf '%s\n' ''                                                                                 >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "=== inside container ==="'                                                  >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "pwd: $(pwd)"'                                                               >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "=== /workspace ==="'                                                        >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'ls -la /workspace'                                                                >> "${BUILD_SCRIPT}"
+        printf '%s\n' ''                                                                                 >> "${BUILD_SCRIPT}"
+        printf '%s\n' '# ✅ Verify KAS overlay exists'                                                   >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'KAS_OVERLAY="/workspace/ci_externalsrc_overlay.yml"'                             >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'if [ ! -f "${KAS_OVERLAY}" ]; then'                                              >> "${BUILD_SCRIPT}"
+        printf '%s\n' '  echo "❌ KAS overlay not found: ${KAS_OVERLAY}"'                               >> "${BUILD_SCRIPT}"
+        printf '%s\n' '  exit 1'                                                                         >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'fi'                                                                               >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "=== KAS overlay contents ==="'                                              >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'cat "${KAS_OVERLAY}"'                                                             >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "============================="'                                             >> "${BUILD_SCRIPT}"
+        printf '%s\n' ''                                                                                 >> "${BUILD_SCRIPT}"
+        printf '%s\n' '# ✅ Combine kas file with overlay'                                               >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'FULL_KAS_FILE="${KAS_FILE}:${KAS_OVERLAY}"'                                      >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "=== Full KAS file: ${FULL_KAS_FILE} ==="'                                  >> "${BUILD_SCRIPT}"
+        printf '%s\n' ''                                                                                 >> "${BUILD_SCRIPT}"
+        printf '%s\n' '# ✅ Verify PR file is present'                                                   >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "=== Lines 1157-1165 msm_vidc_probe.c ==="'                                 >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'sed -n "1157,1165p" driver/vidc/src/msm_vidc_probe.c || echo "File not found"'  >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "======================================"'                                    >> "${BUILD_SCRIPT}"
+        printf '%s\n' ''                                                                                 >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "Starting build for ${MACHINE}"'                                            >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "KAS file: ${FULL_KAS_FILE}"'                                               >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'echo "Build command: ${BUILD_COMMAND}"'                                          >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'which kas && kas --version'                                                       >> "${BUILD_SCRIPT}"
+        printf '%s\n' ''                                                                                 >> "${BUILD_SCRIPT}"
+        printf '%s\n' '# ✅ kas shell with overlay — kas writes local_conf_header to local.conf'        >> "${BUILD_SCRIPT}"
+        printf '%s\n' '# during init, BEFORE bitbake runs — cannot be wiped'                            >> "${BUILD_SCRIPT}"
+        printf '%s\n' 'kas shell "${FULL_KAS_FILE}" -c "'                                               >> "${BUILD_SCRIPT}"
+        printf '%s\n' '  echo \"=== local.conf EXTERNALSRC lines ===\"'                                 >> "${BUILD_SCRIPT}"
+        printf '%s\n' '  grep -n \"EXTERNALSRC\|do_fetch\|do_patch\" build/conf/local.conf || echo \"❌ NOT FOUND\"' >> "${BUILD_SCRIPT}"
+        printf '%s\n' '  echo \"=====================================\"'                                >> "${BUILD_SCRIPT}"
+        printf '%s\n' '  ${BUILD_COMMAND}'                                                              >> "${BUILD_SCRIPT}"
+        printf '%s\n' '"'                                                                                >> "${BUILD_SCRIPT}"
 
         chmod +x "${BUILD_SCRIPT}"
 
         echo "=== ci_build.sh written ==="
         cat "${BUILD_SCRIPT}"
-        echo "============================="
+        echo "==========================="
 
     - name: Build ${{ env.machine }}
       shell: bash
