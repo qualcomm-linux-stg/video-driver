@@ -1,0 +1,461 @@
+name: test
+
+on:
+  workflow_call:
+    inputs:
+      docker_image:
+        description: Docker image
+        type: string
+        required: true
+
+      build_matrix:
+        description: Build matrix as stringified JSON
+        type: string
+        required: true
+
+      commit_sha:
+        description: Exact commit SHA tested
+        type: string
+        required: true
+
+      build_run_id:
+        description: Build workflow run ID containing the artifacts
+        type: string
+        required: true
+
+      build_repository:
+        description: Repository containing the build artifacts
+        type: string
+        required: true
+
+    secrets:
+      LAVA_OSS_TOKEN:
+        description: LAVA authentication token
+        required: true
+
+      LAVA_OSS_USER:
+        description: LAVA username
+        required: true
+
+jobs:
+  test:
+    name: LAVA test - ${{ matrix.build_matrix.machine }}
+
+    runs-on:
+      group: GHA-video-Prd-SelfHosted-RG
+      labels:
+        - self-hosted
+        - video-prd-u2204-x64-large-od-ephem 
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build_matrix: ${{ fromJson(inputs.build_matrix) }}
+
+    steps:
+      - name: Pull Docker image
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        with:
+          image: ${{ inputs.docker_image }}
+          registry: artifacts.codelinaro.org/clo-420-qli-registry
+
+      - name: Retag Docker image
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker tag \
+            "artifacts.codelinaro.org/clo-420-qli-registry/${{ inputs.docker_image }}" \
+            "${{ inputs.docker_image }}" || true
+
+          docker images | grep "${{ inputs.docker_image }}" || true
+      
+      - name: Record tested PR commit
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          BUILD_REPOSITORY: ${{ inputs.build_repository }}
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid commit SHA: $COMMIT_SHA"
+            exit 1
+          fi
+
+          echo "Build repository: $BUILD_REPOSITORY"
+          echo "Build run ID:      $BUILD_RUN_ID"
+          echo "PR commit SHA:     $COMMIT_SHA"
+
+          {
+            echo "## LAVA Test Provenance"
+            echo ""
+            echo "- Repository: \`$BUILD_REPOSITORY\`"
+            echo "- Commit: \`$COMMIT_SHA\`"
+            echo "- Build run: \`$BUILD_RUN_ID\`"
+            echo "- Machine: \`${{ matrix.build_matrix.machine }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download machine-scoped presigned URLs
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ inputs.build_repository }}
+          run-id: ${{ inputs.build_run_id }}
+          name: presigned-urls-${{ matrix.build_matrix.machine }}
+          path: ${{ github.workspace }}
+
+      - name: Verify presigned_urls.json
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          PRESIGNED="$WORKSPACE/presigned_urls.json"
+
+          if [ ! -f "$PRESIGNED" ]; then
+            echo "::error::presigned_urls.json not found"
+            ls -la "$WORKSPACE"
+            exit 1
+          fi
+
+          echo "=== presigned_urls.json keys ==="
+          jq -r 'keys[]' "$PRESIGNED"
+
+      - name: Clone LAVA job render scripts
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd ..
+          rm -rf job_render
+
+          git clone \
+            --depth 1 \
+            https://github.com/Manigurr/job_render \
+            job_render
+
+          echo "✅ job_render cloned"
+
+          grep -A2 "timeout:" \
+            job_render/templates/boot/flasher.jinja2 || true
+
+      - name: Render LAVA job definition
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        uses: qualcomm-linux/video-driver/.github/actions/lava_job_render@video.qclinux.main
+        with:
+          docker_image: ${{ inputs.docker_image }}
+          machine: ${{ matrix.build_matrix.machine }}
+          lavaname: ${{ matrix.build_matrix.lavaname }}
+          presigned_urls_file: ${{ github.workspace }}/presigned_urls.json
+
+      - name: Verify rendered LAVA job
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          JOB_RENDER_DIR="$(dirname "${{ github.workspace }}")/job_render"
+          JOB_FILE="$JOB_RENDER_DIR/renders/lava_job_definition.yaml"
+
+          if [ ! -f "$JOB_FILE" ]; then
+            echo "::error::Rendered LAVA job not found: $JOB_FILE"
+            find "$JOB_RENDER_DIR" -maxdepth 4 -type f -print || true
+            exit 1
+          fi
+
+          echo "=== Rendered LAVA job ==="
+          sed -n '1,240p' "$JOB_FILE"
+
+      - name: Submit LAVA job
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        id: submit_job
+        shell: bash
+        env:
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+          LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
+          LAVA_OSS_USER: ${{ secrets.LAVA_OSS_USER }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$LAVA_OSS_TOKEN" ] || [ -z "$LAVA_OSS_USER" ]; then
+            echo "::error::LAVA credentials are unavailable"
+            exit 1
+          fi
+
+          JOB_RENDER_DIR="$(dirname "${{ github.workspace }}")/job_render"
+
+          job_id="$(
+            docker run -i --rm \
+              --workdir="$JOB_RENDER_DIR" \
+              -v "$(dirname "$JOB_RENDER_DIR"):$(dirname "$JOB_RENDER_DIR")" \
+              -e LAVA_OSS_TOKEN \
+              -e LAVA_OSS_USER \
+              "$DOCKER_IMAGE" \
+              bash -c '
+                set -euo pipefail
+
+                lavacli identities add \
+                  --token "$LAVA_OSS_TOKEN" \
+                  --uri https://lava-oss.qualcomm.com/RPC2 \
+                  --username "$LAVA_OSS_USER" \
+                  production
+
+                lavacli -i production jobs submit \
+                  ./renders/lava_job_definition.yaml
+              '
+          )"
+
+          job_id="$(echo "$job_id" | tail -n 1 | tr -d '[:space:]')"
+
+          if ! [[ "$job_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid LAVA job ID: $job_id"
+            exit 1
+          fi
+
+          echo "JOB_ID=$job_id" >> "$GITHUB_ENV"
+          echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
+          echo "job_url=https://lava-oss.qualcomm.com/scheduler/job/$job_id" >> "$GITHUB_OUTPUT"
+
+          echo "🚀 LAVA job submitted: https://lava-oss.qualcomm.com/scheduler/job/$job_id"
+
+      - name: Save Job ID for reporting
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          MACHINE: ${{ matrix.build_matrix.machine }}
+          JOB_ID: ${{ env.JOB_ID }}
+        run: |
+          set -euo pipefail
+
+          printf '{"id":"%s","machine":"%s"}\n' \
+            "${JOB_ID:-unknown}" \
+            "$MACHINE" \
+            > "lava-job-${MACHINE}.json"
+
+      - name: Upload Job ID artifact
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lava-job-data-${{ matrix.build_matrix.machine }}
+          path: lava-job-${{ matrix.build_matrix.machine }}.json
+          retention-days: 7
+
+      - name: Poll LAVA job
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        id: check_job
+        shell: bash
+        env:
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+          LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
+          LAVA_OSS_USER: ${{ secrets.LAVA_OSS_USER }}
+        run: |
+          set -euo pipefail
+
+          JOB_ID="${JOB_ID:-}"
+
+          if [ -z "$JOB_ID" ] || [ "$JOB_ID" = "unknown" ]; then
+            echo "::error::No valid LAVA job ID available"
+            exit 1
+          fi
+
+          JOB_RENDER_DIR="$(dirname "${{ github.workspace }}")/job_render"
+          STATE=""
+          HEALTH=""
+          START_TIME="$(date +%s)"
+          TIMEOUT_SECONDS=$((4 * 60 * 60))
+
+          get_lava_field() {
+            local content="$1"
+            local field="$2"
+
+            printf '%s\n' "$content" |
+              sed -nE \
+                "s/^[[:space:]]*-?[[:space:]]*${field}[[:space:]]*:[[:space:]]*(.*)[[:space:]]*$/\1/pI" |
+              head -n 1 |
+              xargs
+          }
+
+          echo "Waiting for LAVA job $JOB_ID"
+
+          while [ "$STATE" != "Finished" ]; do
+            JOB_INFO="$(
+              docker run -i --rm \
+                --workdir="$JOB_RENDER_DIR" \
+                -v "$(dirname "$JOB_RENDER_DIR"):$(dirname "$JOB_RENDER_DIR")" \
+                -e LAVA_OSS_TOKEN \
+                -e LAVA_OSS_USER \
+                "$DOCKER_IMAGE" \
+                bash -c '
+                  set -euo pipefail
+
+                  lavacli identities add \
+                    --token "$LAVA_OSS_TOKEN" \
+                    --uri https://lava-oss.qualcomm.com/RPC2 \
+                    --username "$LAVA_OSS_USER" \
+                    production >/dev/null 2>&1 || true
+
+                  lavacli -i production jobs show "$1"
+                ' bash "$JOB_ID"
+            )"
+
+            STATE="$(get_lava_field "$JOB_INFO" state)"
+            HEALTH="$(get_lava_field "$JOB_INFO" Health)"
+
+            echo "State: ${STATE:-UNKNOWN}; Health: ${HEALTH:-UNKNOWN}"
+
+            if [ "$STATE" = "Finished" ]; then
+              break
+            fi
+
+            ELAPSED=$(( $(date +%s) - START_TIME ))
+
+            if [ "$ELAPSED" -ge "$TIMEOUT_SECONDS" ]; then
+              echo "::error::LAVA timeout reached after four hours"
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+          if [ "$HEALTH" = "Canceled" ]; then
+            echo "::error::LAVA job was canceled"
+            exit 1
+          fi
+
+          if [ "$HEALTH" = "Incomplete" ]; then
+            echo "⚠️ LAVA health is Incomplete; validating test result directly"
+          fi
+
+          docker run -i --rm \
+            --workdir="$JOB_RENDER_DIR" \
+            -v "$(dirname "$JOB_RENDER_DIR"):$(dirname "$JOB_RENDER_DIR")" \
+            -e LAVA_OSS_TOKEN \
+            -e LAVA_OSS_USER \
+            "$DOCKER_IMAGE" \
+            bash -c '
+              set -euo pipefail
+
+              lavacli identities add \
+                --token "$LAVA_OSS_TOKEN" \
+                --uri https://lava-oss.qualcomm.com/RPC2 \
+                --username "$LAVA_OSS_USER" \
+                production >/dev/null 2>&1 || true
+
+              lavacli -i production results "$1"
+            ' bash "$JOB_ID" > lava_results.txt
+
+          echo "=== Raw LAVA results ==="
+          cat lava_results.txt
+
+          RESULTS="$(
+            grep -E \
+              '^\* 0_video_pre-merge-tests\.Video_V4L2_Runner \[(pass|fail)\]' \
+              lava_results.txt || true
+          )"
+
+          if [ -z "$RESULTS" ]; then
+            echo "::error::Video_V4L2_Runner result was not found"
+            exit 1
+          fi
+
+          echo "Found: $RESULTS"
+
+          if echo "$RESULTS" | grep -q '\[fail\]'; then
+            echo "::error::Video_V4L2_Runner failed"
+            exit 1
+          fi
+
+          echo "✅ Video_V4L2_Runner passed"
+
+      - name: Clean up test workspace
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        run: |
+          rm -rf "${{ github.workspace }}/presigned_urls.json" || true
+          rm -rf "$(dirname "${{ github.workspace }}")/job_render" || true
+
+  generate-summary:
+    name: Generate LAVA summary
+    needs:
+      - test
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all Job ID artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lava-job-data-*
+          merge-multiple: true
+          path: artifacts
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq curl
+
+      - name: Generate LAVA summary
+        shell: bash
+        env:
+          LAVA_URL: https://lava-oss.qualcomm.com
+          LAVA_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$LAVA_TOKEN" ]; then
+            echo "::error::LAVA token is unavailable"
+            exit 1
+          fi
+
+          SUMMARY_FILE="$GITHUB_WORKSPACE/step-summary.md"
+
+          {
+            echo "### LAVA Test Summary"
+            echo ""
+            echo "| Job ID | Machine | State | Health | Link |"
+            echo "| :--- | :--- | :--- | :--- | :--- |"
+
+            find artifacts -name 'lava-job-*.json' -print0 |
+            while IFS= read -r -d '' file; do
+              job_id="$(jq -r '.id' "$file")"
+              machine="$(jq -r '.machine' "$file")"
+
+              if [ -z "$job_id" ] || [ "$job_id" = "unknown" ]; then
+                printf "| - | %s | Not submitted | - | - |\n" "$machine"
+                continue
+              fi
+
+              details="$(
+                curl -sf \
+                  -H "Authorization: Token $LAVA_TOKEN" \
+                  "$LAVA_URL/api/v0.2/jobs/$job_id/"
+              )"
+
+              state="$(echo "$details" | jq -r '.state // "unknown"')"
+              health="$(echo "$details" | jq -r '.health // "unknown"')"
+              url="$LAVA_URL/results/$job_id"
+
+              printf "| %s | %s | %s | %s | [View](%s) |\n" \
+                "$job_id" \
+                "$machine" \
+                "$state" \
+                "$health" \
+                "$url"
+            done
+          } | tee "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lava-summary-report
+          path: step-summary.md
+          retention-days: 7

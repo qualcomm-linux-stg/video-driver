@@ -1,0 +1,30 @@
+on:
+  workflow_call:
+    inputs:
+      event_name:                          # ✅ ADD THIS
+        description: Original trigger event name
+        type: string
+        required: false
+        default: ''
+    outputs:
+      build_matrix:
+        description: Build matrix
+        value: ${{ jobs.loading.outputs.build_matrix }}
+
+jobs:
+  loading:
+    runs-on: ubuntu-latest
+    outputs:
+      build_matrix: ${{ steps.loading.outputs.build_matrix }}
+    steps:
+      - name: Sync codebase
+        uses:  qualcomm-linux/video-driver/.github/actions/sync@video.qclinux.main
+        with:
+          event_name: ${{ inputs.event_name || github.event_name }}  # ✅ USE INPUT
+          pr_ref: ${{ github.event.pull_request.head.ref || '' }}
+          pr_repo: ${{ github.event.pull_request.head.repo.full_name || '' }}
+          base_ref: ${{ github.ref_name }}
+
+      - name: Load Parameters
+        id: loading
+        uses:  qualcomm-linux/video-driver/.github/actions/loading@video.qclinux.main

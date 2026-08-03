@@ -1,0 +1,77 @@
+name: Sync Action
+description: Checks out the correct code depending on event and repo context.
+
+inputs:
+  event_name:
+    description: Event type that triggered the workflow
+    required: true
+  pr_ref:
+    description: PR branch ref
+    required: false
+    default: ''
+  pr_repo:
+    description: PR repo full name
+    required: false
+    default: ''
+  base_ref:
+    description: Base branch ref
+    required: false
+    default: ''
+  commit_sha:
+    description: Exact commit SHA (takes priority over all other inputs)
+    required: false
+    default: ''
+
+runs:
+  using: "composite"
+  steps:
+
+    # ✅ PRIORITY — exact SHA provided (PR / push / workflow_dispatch via _build.yml)
+    - name: Checkout exact commit SHA
+      if: ${{ inputs.commit_sha != '' }}
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.commit_sha }}
+        repository: ${{ inputs.pr_repo != '' && inputs.pr_repo || github.repository }}
+
+    # Fallback — PR by branch ref (loading.yml — no commit_sha available)
+    - name: Checkout PR head (pull_request / pull_request_target)
+      if: ${{ inputs.commit_sha == '' && (inputs.event_name == 'pull_request' || inputs.event_name == 'pull_request_target') && inputs.pr_ref != '' && inputs.pr_repo != '' }}
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.pr_ref }}
+        repository: ${{ inputs.pr_repo }}
+
+    # Fallback — push / workflow_dispatch by base_ref
+    - name: Checkout branch for push or workflow_dispatch
+      if: ${{ inputs.commit_sha == '' && (inputs.event_name == 'push' || inputs.event_name == 'workflow_dispatch') && inputs.base_ref != '' }}
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.base_ref }}
+
+    # Fallback — last resort
+    - name: Checkout current ref fallback
+      if: ${{ inputs.commit_sha == '' && inputs.event_name != 'pull_request' && inputs.event_name != 'pull_request_target' && inputs.base_ref == '' }}
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ github.ref }}
+
+    # ✅ Always verify what was checked out
+    - name: Verify checked-out commit
+      shell: bash
+      run: |
+        echo "========================================"
+        echo "  event_name : ${{ inputs.event_name }}"
+        echo "  commit_sha : ${{ inputs.commit_sha }}"
+        echo "  HEAD SHA   : $(git rev-parse HEAD)"
+        echo "========================================"
+        if [ -n "${{ inputs.commit_sha }}" ] && \
+           [ "$(git rev-parse HEAD)" != "${{ inputs.commit_sha }}" ]; then
+          echo "❌ MISMATCH — wrong commit checked out!"
+          exit 1
+        fi
+        echo "✅ Correct commit verified"

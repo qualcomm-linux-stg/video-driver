@@ -1,0 +1,99 @@
+name: Build
+description: Build the project using a Docker container
+
+inputs:
+  docker_image:
+    description: Docker image to use for the build job
+    required: true
+  kas_file:
+    description: KAS file to use for the build job
+    required: true
+  build_command:
+    description: Command to run for the build
+    required: false
+    default: "bitbake core-image-base"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build ${{ env.machine }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
+        MACHINE="${{ env.machine }}"
+        KAS_FILE="${{ inputs.kas_file }}"
+        BUILD_COMMAND="${{ inputs.build_command }}"
+        WORKSPACE_ROOT="$(dirname "${PWD}")"
+        REPO_NAME="$(basename "${PWD}")"
+
+        echo "Machine: ${MACHINE}"
+        echo "Docker image: ${{ inputs.docker_image }}"
+        echo "KAS file: ${KAS_FILE}"
+        echo "Build command: ${BUILD_COMMAND}"
+        echo "WORKSPACE_ROOT: ${WORKSPACE_ROOT}"
+        echo "REPO_NAME: ${REPO_NAME}"
+
+        # ------------------------------------------------------------------ #
+        #  Write KAS_LOCAL_CONF_HEADER to a file and mount into Docker.       #
+        #  Multiline env vars are silently truncated by -e "VAR=..." in       #
+        #  docker run — file mount is the only reliable way to pass them.     #
+        # ------------------------------------------------------------------ #
+        KAS_CONF_FILE="${WORKSPACE_ROOT}/kas_local_conf_header.txt"
+        printf '%s' "${KAS_LOCAL_CONF_HEADER:-}" > "${KAS_CONF_FILE}"
+
+        echo "=== KAS_LOCAL_CONF_HEADER written to file (HOST) ==="
+        cat "${KAS_CONF_FILE}"
+        echo "====================================================="
+
+        docker run --rm \
+          --user "${USER_ID}:${GROUP_ID}" \
+          -v "${WORKSPACE_ROOT}:/workspace" \
+          -w "/workspace/${REPO_NAME}" \
+          -e "MACHINE=${MACHINE}" \
+          -e "KAS_FILE=${KAS_FILE}" \
+          -e "BUILD_COMMAND=${BUILD_COMMAND}" \
+          "${{ inputs.docker_image }}" \
+          bash -lc '
+            set -euo pipefail
+
+            # ✅ Load KAS_LOCAL_CONF_HEADER from mounted file
+            KAS_CONF_FILE="/workspace/kas_local_conf_header.txt"
+            if [ -f "${KAS_CONF_FILE}" ] && [ -s "${KAS_CONF_FILE}" ]; then
+              export KAS_LOCAL_CONF_HEADER="$(cat "${KAS_CONF_FILE}")"
+              echo "✅ KAS_LOCAL_CONF_HEADER loaded from file"
+            else
+              echo "❌ KAS_LOCAL_CONF_HEADER file missing or empty: ${KAS_CONF_FILE}"
+              exit 1
+            fi
+
+            echo "=== inside container ==="
+            echo "pwd: $(pwd)"
+            echo "=== /workspace ==="
+            ls -la /workspace
+            echo "=== /workspace/video-driver ==="
+            ls -la .
+            echo "=== /workspace/meta-qcom/ci ==="
+            ls -la ../meta-qcom/ci || true
+
+            # ✅ Confirm KAS_LOCAL_CONF_HEADER is correct inside Docker
+            echo "=== KAS_LOCAL_CONF_HEADER inside Docker (first 5 lines) ==="
+            echo "${KAS_LOCAL_CONF_HEADER}" | head -5
+            echo "============================================================"
+
+            echo "Starting build for ${MACHINE}"
+            echo "Using kas file: ${KAS_FILE}"
+            echo "Running build command: ${BUILD_COMMAND}"
+            which kas
+            kas --version
+            kas shell -c "${BUILD_COMMAND}" "${KAS_FILE}"
+
+            # ✅ After kas init verify EXTERNALSRC is in local.conf
+            echo "=== local.conf EXTERNALSRC lines (after kas init) ==="
+            grep -n "EXTERNALSRC\|iris-video-dlkm\|do_fetch\|do_patch" \
+              /workspace/video-driver/build/conf/local.conf \
+              || echo "❌ NO EXTERNALSRC FOUND IN local.conf!"
+            echo "====================================================="
+          '

@@ -1,0 +1,297 @@
+name: owl_build
+
+on:
+  workflow_dispatch:
+
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  DOCKER_IMAGE: kmake-image:ver.1.0
+  DOCKER_REGISTRY: artifacts.codelinaro.org/clo-420-qli-registry
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+
+      matrix:
+        include:
+          - name: torvalds-master
+            repository: https://github.com/torvalds/linux
+            checkout_type: branch
+            branch: master
+            tag_pattern: ""
+
+          - name: torvalds-v6.18
+            repository: https://github.com/torvalds/linux
+            checkout_type: tag
+            branch: ""
+            tag_pattern: v6.18*
+
+          - name: linux-yocto-dev-master
+            repository: https://git.yoctoproject.org/linux-yocto-dev.git
+            checkout_type: branch
+            branch: master
+            tag_pattern: ""
+
+          - name: linux-yocto-v6.18-standard-base
+            repository: https://git.yoctoproject.org/linux-yocto.git
+            checkout_type: branch
+            branch: v6.18/standard/base
+            tag_pattern: ""
+
+    runs-on:
+      group: GHA-video-Prd-SelfHosted-RG
+      labels:
+        - self-hosted
+        - video-prd-u2204-x64-large-od-ephem
+
+    timeout-minutes: 720
+
+    steps:
+      - name: Checkout video-driver code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: video-driver
+          repository: >-
+            ${{ github.event_name == 'pull_request'
+                && github.event.pull_request.head.repo.full_name
+                || github.repository }}
+          ref: >-
+            ${{ github.event_name == 'pull_request'
+                && github.event.pull_request.head.sha
+                || github.sha }}
+
+      - name: Clone kernel repository
+        shell: bash
+        env:
+          REPOSITORY: ${{ matrix.repository }}
+          CHECKOUT_TYPE: ${{ matrix.checkout_type }}
+          BRANCH: ${{ matrix.branch }}
+          TAG_PATTERN: ${{ matrix.tag_pattern }}
+
+        run: |
+          set -euo pipefail
+
+          echo "Repository: ${REPOSITORY}"
+          echo "Checkout type: ${CHECKOUT_TYPE}"
+
+          rm -rf kernel
+
+          if [[ "${CHECKOUT_TYPE}" == "branch" ]]; then
+            if [[ -z "${BRANCH}" ]]; then
+              echo "ERROR: Branch is empty."
+              exit 1
+            fi
+
+            echo "Checking branch availability..."
+
+            git ls-remote \
+              --exit-code \
+              --heads \
+              "${REPOSITORY}" \
+              "refs/heads/${BRANCH}"
+
+            echo "Cloning branch: ${BRANCH}"
+
+            git clone \
+              --branch "${BRANCH}" \
+              --single-branch \
+              "${REPOSITORY}" \
+              kernel
+
+            SELECTED_REF="${BRANCH}"
+
+          elif [[ "${CHECKOUT_TYPE}" == "tag" ]]; then
+            if [[ -z "${TAG_PATTERN}" ]]; then
+              echo "ERROR: Tag pattern is empty."
+              exit 1
+            fi
+
+            echo "Searching for tags matching: ${TAG_PATTERN}"
+
+            MATCHING_TAGS="$(
+              git ls-remote \
+                --exit-code \
+                --refs \
+                --tags \
+                "${REPOSITORY}" \
+                "refs/tags/${TAG_PATTERN}" \
+              | awk '{sub("refs/tags/", "", $2); print $2}' \
+              | sort -V
+            )"
+
+            if [[ -z "${MATCHING_TAGS}" ]]; then
+              echo "ERROR: No tags matched pattern: ${TAG_PATTERN}"
+              exit 1
+            fi
+
+            SELECTED_TAG="$(printf '%s\n' "${MATCHING_TAGS}" | tail -n 1)"
+
+            echo "Selected latest matching tag: ${SELECTED_TAG}"
+
+            git clone \
+              --branch "${SELECTED_TAG}" \
+              --single-branch \
+              "${REPOSITORY}" \
+              kernel
+
+            SELECTED_REF="${SELECTED_TAG}"
+
+          else
+            echo "ERROR: Invalid checkout type: ${CHECKOUT_TYPE}"
+            exit 1
+          fi
+
+          echo "Kernel repository cloned successfully."
+          echo "Selected kernel ref: ${SELECTED_REF}"
+
+          git -C kernel status --short --branch
+          git -C kernel describe --tags --always --dirty
+          git -C kernel log -1 --oneline
+
+      - name: Show directories after code sync
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
+          pwd
+
+          echo "Workspace contents:"
+          ls -al
+
+          echo "video-driver contents:"
+          ls -al video-driver
+
+          echo "kernel contents:"
+          ls -al kernel
+
+      - name: Pull Docker image
+        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        with:
+          image: ${{ env.DOCKER_IMAGE }}
+          registry: ${{ env.DOCKER_REGISTRY }}
+
+      - name: Add swap space
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if sudo swapon --show | grep -q '/swapfile'; then
+            echo "Swap is already enabled."
+          else
+            if [[ ! -f /swapfile ]]; then
+              echo "Creating 16 GB swap file..."
+              sudo fallocate -l 16G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+            fi
+
+            sudo swapon /swapfile
+          fi
+
+          free -h
+          sudo swapon --show
+
+      - name: Retag Docker image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_IMAGE="${DOCKER_REGISTRY}/${DOCKER_IMAGE}"
+          TARGET_IMAGE="${DOCKER_IMAGE}"
+
+          echo "Source Docker image: ${SOURCE_IMAGE}"
+          echo "Target Docker image: ${TARGET_IMAGE}"
+
+          if docker image inspect "${TARGET_IMAGE}" >/dev/null 2>&1; then
+            echo "Target Docker image already exists locally."
+
+          elif docker image inspect "${SOURCE_IMAGE}" >/dev/null 2>&1; then
+            docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE}"
+
+          else
+            echo "ERROR: Docker image was not found locally."
+            exit 1
+          fi
+
+          docker image inspect "${TARGET_IMAGE}" >/dev/null
+
+      - name: Build workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -f kernel_version.txt
+
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --workdir="${PWD}" \
+            -v "$(dirname "${PWD}"):$(dirname "${PWD}")" \
+            "${DOCKER_IMAGE}" \
+            bash -c '
+              set -euo pipefail
+
+              echo "=== Kernel commit ==="
+              git -C kernel log -1 --oneline
+
+              echo "=== Configuring kernel ==="
+              make -C kernel defconfig
+
+              echo "=== Kernel version ==="
+              KERNEL_VERSION="$(make -s -C kernel kernelversion)"
+              echo "Kernel version: ${KERNEL_VERSION}"
+              printf "%s\n" "${KERNEL_VERSION}" > kernel_version.txt
+
+              echo "=== Building kernel ==="
+              make -C kernel -j"$(nproc)"
+
+              echo "=== Verifying kernel build outputs ==="
+              test -f kernel/vmlinux
+              test -f kernel/Module.symvers
+
+              echo "=== Building video-driver out-of-tree modules ==="
+              make -C video-driver \
+                modules \
+                KERNEL_SRC="${PWD}/kernel" \
+                -j"$(nproc)"
+
+              echo "=== Video-driver build completed ==="
+            '
+
+          if [[ ! -s kernel_version.txt ]]; then
+            echo "ERROR: kernel_version.txt was not generated."
+            exit 1
+          fi
+
+          KERNEL_VERSION="$(tr -d '[:space:]' < kernel_version.txt)"
+
+          if [[ -z "${KERNEL_VERSION}" ]]; then
+            echo "ERROR: Kernel version is empty."
+            exit 1
+          fi
+
+          echo "Kernel version: ${KERNEL_VERSION}"
+
+      - name: Upload build outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owl-build-outputs-${{ matrix.name }}
+          path: |
+            kernel/vmlinux
+            kernel/Module.symvers
+            kernel/System.map
+            kernel/.config
+            video-driver/**/*.ko
+            kernel_version.txt
+          if-no-files-found: warn
+          retention-days: 7
