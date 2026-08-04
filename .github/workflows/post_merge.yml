@@ -3,8 +3,7 @@ name: post_merge_weekly
 on:
   schedule:
     # Every Monday and Thursday at 02:30 UTC
-    - cron: "2 * * * *"
-  workflow_dispatch:
+    - cron: "* * * * *"
 
 jobs:
   loading:
