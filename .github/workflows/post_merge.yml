@@ -5,8 +5,8 @@ description: |
 
 on:
   schedule:
-    # Every Monday and Thursday at 02:30 UTC (8:00 AM IST)
-    - cron: "30 2 * * 1,4"
+    # Every Monday and Thursday at 02:30 UTC (8:00 AM IST)"30 2 * * 1,4"
+    - cron: "5 * * * *"
   workflow_dispatch:
 
 jobs:
