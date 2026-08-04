@@ -3,7 +3,7 @@ name: post_merge_weekly
 on:
   schedule:
     # Every Monday and Thursday at 02:30 UTC
-    - cron: "30 2 * * 1,4"
+    - cron: "2 * * * *"
   workflow_dispatch:
 
 jobs:
