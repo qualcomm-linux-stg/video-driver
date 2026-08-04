@@ -2,8 +2,8 @@ name: post_merge_weekly
 
 on:
   schedule:
-    # Every Monday and Thursday at 02:30 UTC
-    - cron: "* * * * *"
+    # Temporary test: every 5 minutes
+    - cron: "*/5 * * * *"
 
 jobs:
   loading:
