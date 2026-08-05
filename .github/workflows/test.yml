@@ -41,8 +41,6 @@ jobs:
   test:
     name: LAVA test - ${{ matrix.build_matrix.machine }}
 
-    if: ${{ matrix.build_matrix.lavaname != '' }}
-
     runs-on:
       group: GHA-video-Stg-SelfHosted-RG
       labels:
@@ -56,12 +54,14 @@ jobs:
 
     steps:
       - name: Checkout exact tested commit
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
           fetch-depth: 0
 
       - name: Verify checked-out commit
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         env:
           EXPECTED_SHA: ${{ inputs.commit_sha }}
@@ -81,12 +81,14 @@ jobs:
           echo "✅ Checked-out SHA matches the build SHA"
 
       - name: Pull Docker image
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
           image: ${{ inputs.docker_image }}
           registry: artifacts.codelinaro.org/clo-420-qli-registry
 
       - name: Retag Docker image
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -98,6 +100,7 @@ jobs:
           docker images | grep "${{ inputs.docker_image }}" || true
 
       - name: Download machine-scoped presigned URLs
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
@@ -107,6 +110,7 @@ jobs:
           path: ${{ github.workspace }}
 
       - name: Verify presigned_urls.json
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         env:
           WORKSPACE: ${{ github.workspace }}
@@ -125,6 +129,7 @@ jobs:
           jq -r 'keys[]' "$PRESIGNED"
 
       - name: Clone LAVA job render scripts
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -143,6 +148,7 @@ jobs:
             job_render/templates/boot/flasher.jinja2 || true
 
       - name: Render LAVA job definition
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@meta-qcom
         with:
           docker_image: ${{ inputs.docker_image }}
@@ -151,6 +157,7 @@ jobs:
           presigned_urls_file: ${{ github.workspace }}/presigned_urls.json
 
       - name: Verify rendered LAVA job
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -168,6 +175,7 @@ jobs:
           sed -n '1,240p' "$JOB_FILE"
 
       - name: Submit LAVA job
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         id: submit_job
         shell: bash
         env:
@@ -219,7 +227,7 @@ jobs:
           echo "🚀 LAVA job submitted: https://lava-oss.qualcomm.com/scheduler/job/$job_id"
 
       - name: Save Job ID for reporting
-        if: always()
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
         shell: bash
         env:
           MACHINE: ${{ matrix.build_matrix.machine }}
@@ -233,7 +241,7 @@ jobs:
             > "lava-job-${MACHINE}.json"
 
       - name: Upload Job ID artifact
-        if: always()
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: lava-job-data-${{ matrix.build_matrix.machine }}
@@ -241,6 +249,7 @@ jobs:
           retention-days: 7
 
       - name: Poll LAVA job
+        if: ${{ matrix.build_matrix.lavaname != '' }}
         id: check_job
         shell: bash
         env:
@@ -367,7 +376,7 @@ jobs:
           echo "✅ Video_V4L2_Runner passed"
 
       - name: Clean up test workspace
-        if: always()
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
         shell: bash
         run: |
           rm -rf "${{ github.workspace }}/presigned_urls.json" || true
