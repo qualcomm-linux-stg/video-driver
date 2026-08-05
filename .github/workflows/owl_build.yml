@@ -111,9 +111,12 @@ jobs:
               # Step 1: Configure the kernel
               make -C kernel defconfig
 
-              # Step 2: Prepare kernel headers/symbols for OOT module build
-              make -C kernel modules_prepare -j$(nproc)
+              # Step 2: Full kernel build — generates vmlinux + Module.symvers
+              make -C kernel -j$(nproc)
 
-              # Step 3: Build video-driver as an OOT module only
+              # Step 3: Verify Module.symvers was produced
+              ls -lh kernel/Module.symvers
+
+              # Step 4: Build video-driver OOT module
               make -C video-driver modules KERNEL_SRC="$PWD/kernel" -j$(nproc)
             '
