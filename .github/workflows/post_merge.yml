@@ -1,31 +1,58 @@
-name: post_merge_weekly
+name: post_merge
+
+run-name: Post Merge Build and LAVA Test
 
 on:
   schedule:
-    # Temporary test: run every 5 minutes
+    # GitHub Actions supports a minimum schedule interval of 5 minutes.
     - cron: "*/5 * * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: post-merge-build-and-test
+  cancel-in-progress: false
 
 jobs:
   loading:
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@meta-qcom
-    secrets: inherit
+    name: Load build configuration
+    uses: ./.github/workflows/loading.yml
     with:
-      event_name: ${{ github.event_name }}
+      event_name: schedule
 
   build:
-    needs: loading
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@meta-qcom
-    secrets: inherit
+    name: Build
+    needs:
+      - loading
+
+    uses: ./.github/workflows/sync-and-build.yml
+
     with:
-      commit_sha: ${{ github.sha }}
-      docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
+      docker_image: kmake-image:ver.1.0
+      commit_sha: ${{ github.sha }}
 
   lava-test:
-    needs: [loading, build]
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@meta-qcom
-    secrets: inherit
+    name: Run LAVA tests
+    needs:
+      - loading
+      - build
+
+    uses: ./.github/workflows/test.yml
+
     with:
-      commit_sha: ${{ github.sha }}
       docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
+      commit_sha: ${{ github.sha }}
+
+      # sync-and-build uploads its artifacts during this workflow run.
+      build_run_id: ${{ github.run_id }}
+      build_repository: ${{ github.repository }}
+
+    secrets:
+      LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
+      LAVA_OSS_USER: ${{ secrets.LAVA_OSS_USER }}
