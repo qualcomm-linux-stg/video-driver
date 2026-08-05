@@ -1,4 +1,4 @@
-name: _test
+name: test
 
 on:
   workflow_call:
@@ -19,7 +19,7 @@ on:
         required: true
 
       build_run_id:
-        description: Build workflow run ID
+        description: Build workflow run ID containing the artifacts
         type: string
         required: true
 
@@ -95,6 +95,8 @@ jobs:
             "artifacts.codelinaro.org/clo-420-qli-registry/${{ inputs.docker_image }}" \
             "${{ inputs.docker_image }}" || true
 
+          docker images | grep "${{ inputs.docker_image }}" || true
+
       - name: Download machine-scoped presigned URLs
         uses: actions/download-artifact@v4
         with:
@@ -137,6 +139,9 @@ jobs:
 
           echo "✅ job_render cloned"
 
+          grep -A2 "timeout:" \
+            job_render/templates/boot/flasher.jinja2 || true
+
       - name: Render LAVA job definition
         uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@meta-qcom
         with:
@@ -144,6 +149,23 @@ jobs:
           machine: ${{ matrix.build_matrix.machine }}
           lavaname: ${{ matrix.build_matrix.lavaname }}
           presigned_urls_file: ${{ github.workspace }}/presigned_urls.json
+
+      - name: Verify rendered LAVA job
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          JOB_RENDER_DIR="$(dirname "${{ github.workspace }}")/job_render"
+          JOB_FILE="$JOB_RENDER_DIR/renders/lava_job_definition.yaml"
+
+          if [ ! -f "$JOB_FILE" ]; then
+            echo "::error::Rendered LAVA job not found: $JOB_FILE"
+            find "$JOB_RENDER_DIR" -maxdepth 4 -type f -print || true
+            exit 1
+          fi
+
+          echo "=== Rendered LAVA job ==="
+          sed -n '1,240p' "$JOB_FILE"
 
       - name: Submit LAVA job
         id: submit_job
@@ -252,6 +274,8 @@ jobs:
               xargs
           }
 
+          echo "Waiting for LAVA job $JOB_ID"
+
           while [ "$STATE" != "Finished" ]; do
             JOB_INFO="$(
               docker run -i --rm \
@@ -297,6 +321,10 @@ jobs:
             exit 1
           fi
 
+          if [ "$HEALTH" = "Incomplete" ]; then
+            echo "⚠️ LAVA health is Incomplete; validating test result directly"
+          fi
+
           docker run -i --rm \
             --workdir="$JOB_RENDER_DIR" \
             -v "$(dirname "$JOB_RENDER_DIR"):$(dirname "$JOB_RENDER_DIR")" \
@@ -315,6 +343,7 @@ jobs:
               lavacli -i production results "$1"
             ' bash "$JOB_ID" > lava_results.txt
 
+          echo "=== Raw LAVA results ==="
           cat lava_results.txt
 
           RESULTS="$(
@@ -328,6 +357,8 @@ jobs:
             exit 1
           fi
 
+          echo "Found: $RESULTS"
+
           if echo "$RESULTS" | grep -q '\[fail\]'; then
             echo "::error::Video_V4L2_Runner failed"
             exit 1
@@ -335,13 +366,18 @@ jobs:
 
           echo "✅ Video_V4L2_Runner passed"
 
+      - name: Clean up test workspace
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "${{ github.workspace }}/presigned_urls.json" || true
+          rm -rf "$(dirname "${{ github.workspace }}")/job_render" || true
+
   generate-summary:
     name: Generate LAVA summary
     needs:
       - test
-
     if: always()
-
     runs-on: ubuntu-latest
 
     steps:
@@ -357,13 +393,18 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y jq curl
 
-      - name: Generate summary
+      - name: Generate LAVA summary
         shell: bash
         env:
           LAVA_URL: https://lava-oss.qualcomm.com
           LAVA_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
         run: |
           set -euo pipefail
+
+          if [ -z "$LAVA_TOKEN" ]; then
+            echo "::error::LAVA token is unavailable"
+            exit 1
+          fi
 
           SUMMARY_FILE="$GITHUB_WORKSPACE/step-summary.md"
 

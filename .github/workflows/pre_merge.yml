@@ -27,8 +27,6 @@ jobs:
     uses: ./.github/workflows/loading.yml
     with:
       event_name: ${{ github.event_name }}
-    # Do not use secrets: inherit unless loading.yml really needs secrets.
-    # Fork PRs cannot access protected repository secrets.
 
   build:
     name: Build
@@ -42,4 +40,78 @@ jobs:
         ${{ github.event_name == 'pull_request'
             && github.event.pull_request.head.sha
             || github.sha }}
-    # Do not use secrets: inherit for fork-safe builds.
+
+  create-metadata:
+    name: Create build metadata
+    needs:
+      - loading
+      - build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create metadata directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/metadata"
+
+      - name: Generate build metadata
+        shell: bash
+        env:
+          BUILD_MATRIX: ${{ needs.loading.outputs.build_matrix }}
+          DOCKER_IMAGE: kmake-image:ver.1.0
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            COMMIT_SHA="$PR_HEAD_SHA"
+          else
+            COMMIT_SHA="$GITHUB_SHA_VALUE"
+          fi
+
+          if [ -z "${COMMIT_SHA:-}" ]; then
+            echo "::error::Unable to determine commit SHA"
+            exit 1
+          fi
+
+          if [ -z "${BUILD_MATRIX:-}" ]; then
+            echo "::error::Build matrix is empty"
+            exit 1
+          fi
+
+          echo "$BUILD_MATRIX" | jq empty
+
+          jq -n \
+            --arg docker_image "$DOCKER_IMAGE" \
+            --argjson build_matrix "$BUILD_MATRIX" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg event_name "$EVENT_NAME" \
+            --arg build_run_id "${{ github.run_id }}" \
+            --arg build_run_attempt "${{ github.run_attempt }}" \
+            --arg repository "${{ github.repository }}" \
+            --arg pr_number "${{ github.event.pull_request.number || '' }}" \
+            --arg pr_head_repository "${{ github.event.pull_request.head.repo.full_name || github.repository }}" \
+            '{
+              docker_image: $docker_image,
+              build_matrix: $build_matrix,
+              commit_sha: $commit_sha,
+              event_name: $event_name,
+              build_run_id: $build_run_id,
+              build_run_attempt: $build_run_attempt,
+              repository: $repository,
+              pr_number: $pr_number,
+              pr_head_repository: $pr_head_repository
+            }' > "$GITHUB_WORKSPACE/metadata/build-metadata.json"
+
+          echo "=== Generated build metadata ==="
+          jq . "$GITHUB_WORKSPACE/metadata/build-metadata.json"
+
+      - name: Upload build metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-metadata
+          path: ${{ github.workspace }}/metadata/build-metadata.json
+          retention-days: 7

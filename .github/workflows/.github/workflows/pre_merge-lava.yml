@@ -1,0 +1,128 @@
+name: pre_merge_lava
+
+run-name: LAVA Test - ${{ github.event.workflow_run.display_title }}
+
+on:
+  workflow_run:
+    workflows:
+      - pre_merge
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify-build:
+    name: Verify completed build
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      (
+        github.event.workflow_run.event == 'pull_request' ||
+        github.event.workflow_run.event == 'push' ||
+        github.event.workflow_run.event == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+
+    outputs:
+      docker_image: ${{ steps.metadata.outputs.docker_image }}
+      build_matrix: ${{ steps.metadata.outputs.build_matrix }}
+      commit_sha: ${{ steps.metadata.outputs.commit_sha }}
+      build_run_id: ${{ steps.metadata.outputs.build_run_id }}
+      build_repository: ${{ steps.metadata.outputs.build_repository }}
+
+    steps:
+      - name: Download build metadata
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: build-metadata
+          path: metadata
+
+      - name: Read and validate build metadata
+        id: metadata
+        shell: bash
+        env:
+          METADATA_FILE: metadata/build-metadata.json
+          EXPECTED_RUN_ID: ${{ github.event.workflow_run.id }}
+          EXPECTED_REPOSITORY: ${{ github.event.workflow_run.repository.full_name }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -f "$METADATA_FILE" ]; then
+            echo "::error::Build metadata was not found"
+            find metadata -maxdepth 3 -type f -print || true
+            exit 1
+          fi
+
+          echo "=== Build metadata ==="
+          jq . "$METADATA_FILE"
+
+          jq empty "$METADATA_FILE"
+
+          METADATA_RUN_ID="$(jq -r '.build_run_id' "$METADATA_FILE")"
+          METADATA_REPOSITORY="$(jq -r '.repository' "$METADATA_FILE")"
+          DOCKER_IMAGE="$(jq -r '.docker_image' "$METADATA_FILE")"
+          COMMIT_SHA="$(jq -r '.commit_sha' "$METADATA_FILE")"
+          BUILD_MATRIX="$(jq -c '.build_matrix' "$METADATA_FILE")"
+
+          if [ "$METADATA_RUN_ID" != "$EXPECTED_RUN_ID" ]; then
+            echo "::error::Metadata run ID does not match workflow_run ID"
+            echo "Metadata run ID: $METADATA_RUN_ID"
+            echo "Workflow run ID: $EXPECTED_RUN_ID"
+            exit 1
+          fi
+
+          if [ "$METADATA_REPOSITORY" != "$EXPECTED_REPOSITORY" ]; then
+            echo "::error::Metadata repository does not match workflow repository"
+            echo "Metadata repository: $METADATA_REPOSITORY"
+            echo "Workflow repository: $EXPECTED_REPOSITORY"
+            exit 1
+          fi
+
+          if [ -z "$DOCKER_IMAGE" ] || [ "$DOCKER_IMAGE" = "null" ]; then
+            echo "::error::docker_image is missing from metadata"
+            exit 1
+          fi
+
+          if [ -z "$COMMIT_SHA" ] || [ "$COMMIT_SHA" = "null" ]; then
+            echo "::error::commit_sha is missing from metadata"
+            exit 1
+          fi
+
+          echo "$BUILD_MATRIX" | jq empty
+
+          {
+            echo "docker_image=$DOCKER_IMAGE"
+            echo "commit_sha=$COMMIT_SHA"
+            echo "build_run_id=$METADATA_RUN_ID"
+            echo "build_repository=$METADATA_REPOSITORY"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "build_matrix<<BUILD_MATRIX_EOF"
+            echo "$BUILD_MATRIX"
+            echo "BUILD_MATRIX_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  lava-test:
+    name: Run LAVA tests
+    needs:
+      - verify-build
+    if: ${{ needs.verify-build.result == 'success' }}
+
+    uses: ./.github/workflows/test.yml
+
+    with:
+      docker_image: ${{ needs.verify-build.outputs.docker_image }}
+      build_matrix: ${{ needs.verify-build.outputs.build_matrix }}
+      commit_sha: ${{ needs.verify-build.outputs.commit_sha }}
+      build_run_id: ${{ needs.verify-build.outputs.build_run_id }}
+      build_repository: ${{ needs.verify-build.outputs.build_repository }}
+
+    secrets:
+      LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
+      LAVA_OSS_USER: ${{ secrets.LAVA_OSS_USER }}

@@ -1,4 +1,4 @@
-name: _build
+name: sync-and-build
 
 on:
   workflow_call:
@@ -119,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if sudo swapon --show | grep -q /swapfile; then
+          if sudo swapon --show | grep -q '/swapfile'; then
             echo "Swap already enabled"
           else
             sudo fallocate -l 16G /swapfile
@@ -194,7 +194,10 @@ jobs:
             "https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz" \
             -O "$WORKSPACE/downloads/video_clips_iris.tar.gz"
 
-          test -f "$WORKSPACE/downloads/video_clips_iris.tar.gz"
+          if [ ! -f "$WORKSPACE/downloads/video_clips_iris.tar.gz" ]; then
+            echo "::error::Video contents download failed"
+            exit 1
+          fi
 
           ls -la "$WORKSPACE/downloads"
 
@@ -222,7 +225,7 @@ jobs:
           resolved_dir="$(readlink -f "$symlink_path")"
 
           if [ ! -d "$resolved_dir" ]; then
-            echo "::error::Resolved qcomflash directory not found"
+            echo "::error::Resolved qcomflash directory not found: $resolved_dir"
             exit 1
           fi
 
@@ -232,6 +235,9 @@ jobs:
             echo "::error::rootfs.img not found: $rootfs_img"
             exit 1
           fi
+
+          echo "=== qcomflash contents ==="
+          ls -larth "$resolved_dir"
 
           mkdir -p "$WORKSPACE/artifacts"
           : > "$WORKSPACE/artifacts/file_list.txt"
@@ -246,8 +252,11 @@ jobs:
 
           cp "$rootfs_img" "$rootfs_dest"
 
-          printf '%s\n' "$flash_tar" >> "$WORKSPACE/artifacts/file_list.txt"
-          printf '%s\n' "$rootfs_dest" >> "$WORKSPACE/artifacts/file_list.txt"
+          printf '%s\n' "$flash_tar" \
+            >> "$WORKSPACE/artifacts/file_list.txt"
+
+          printf '%s\n' "$rootfs_dest" \
+            >> "$WORKSPACE/artifacts/file_list.txt"
 
           echo "=== Artifact file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
@@ -283,7 +292,7 @@ jobs:
         with:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}/presigned_urls.json
-          retention-days: 3
+          retention-days: 7
 
       - name: Clean up
         if: always()
@@ -303,6 +312,8 @@ jobs:
           MACHINE: ${{ matrix.build_matrix.machine }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
         run: |
+          set -u
+
           if [ "${{ job.status }}" = "success" ]; then
             summary=":heavy_check_mark: Build Success"
           else
