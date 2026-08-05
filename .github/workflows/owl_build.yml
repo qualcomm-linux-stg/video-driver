@@ -1,0 +1,114 @@
+name: owl_build
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker_image:
+        description: Docker image
+        type: string
+        required: true
+
+      branch:
+        description: Branch name
+        type: string
+        required: false
+
+      repo:
+        description: Target repository
+        type: string
+        required: true
+
+
+jobs:
+  build:
+    runs-on:
+      group: GHA-video-Stg-SelfHosted-RG
+      labels:
+        - self-hosted
+        - video-stg-u2204-x64-large-od-ephem
+
+    outputs:
+      kernel_version: ${{ steps.build_workspace.outputs.kernel_version }}
+
+    steps:
+      - name: Checkout video-driver code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: video-driver
+          repository: qualcomm-linux-stg/video-driver
+          ref: meta-qcom
+
+      - name: Checkout kernel code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: kernel
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
+
+      - name: Dirs after code sync
+        run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          pwd
+          ls -al
+          ls -al video-driver
+          ls -al kernel
+
+      - name: Pull Docker image
+        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        with:
+          image: ${{ inputs.docker_image }}
+          registry: artifacts.codelinaro.org/clo-420-qli-registry
+
+      - name: Add swap space
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if sudo swapon --show | grep -q '/swapfile'; then
+            echo "Swap already enabled"
+          else
+            sudo fallocate -l 16G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+          fi
+
+          echo "=== Memory ==="
+          free -h
+
+      - name: Retag Docker image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker tag \
+            "artifacts.codelinaro.org/clo-420-qli-registry/${{ inputs.docker_image }}" \
+            "${{ inputs.docker_image }}" || true
+
+          docker images | grep "${{ inputs.docker_image }}" || true
+
+      - name: Build workspace
+        id: build_workspace
+        run: |
+          set -e
+
+          echo "Workspace: $PWD"
+          ls -al
+
+          docker run -i --rm \
+            --user "$(id -u):$(id -g)" \
+            --workdir="$PWD" \
+            -v "$(dirname "$PWD"):$(dirname "$PWD")" \
+            "${{ inputs.docker_image }}" \
+            bash -c '
+              set -e
+
+              echo "Container workspace: $PWD"
+              ls -al
+
+              make -C kernel defconfig
+              make -C kernel
+              make -C video-driver KERNEL_SRC="$PWD/kernel"
+            '
