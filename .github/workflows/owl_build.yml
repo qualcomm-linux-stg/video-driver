@@ -108,7 +108,12 @@ jobs:
               echo "Container workspace: $PWD"
               ls -al
 
+              # Step 1: Configure the kernel
               make -C kernel defconfig
-              make -C kernel
-              make -C video-driver KERNEL_SRC="$PWD/kernel"
+
+              # Step 2: Prepare kernel headers/symbols for OOT module build
+              make -C kernel modules_prepare -j$(nproc)
+
+              # Step 3: Build video-driver as an OOT module only
+              make -C video-driver modules KERNEL_SRC="$PWD/kernel" -j$(nproc)
             '
