@@ -1,4 +1,5 @@
 name: pre_merge
+
 run-name: Pre Merge Workflow
 
 on:
@@ -9,33 +10,36 @@ on:
       - meta-qcom
 
   pull_request:
-    types: [opened, synchronize, reopened]
+    types:
+      - opened
+      - synchronize
+      - reopened
     branches:
       - meta-qcom
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   loading:
+    name: Load build configuration
     uses: ./.github/workflows/loading.yml
-    secrets: inherit
     with:
       event_name: ${{ github.event_name }}
+    # Do not use secrets: inherit unless loading.yml really needs secrets.
+    # Fork PRs cannot access protected repository secrets.
 
   build:
-    needs: loading
+    name: Build
+    needs:
+      - loading
     uses: ./.github/workflows/sync-and-build.yml
-    secrets: inherit
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
-      # ✅ Resolve the correct commit SHA for both push and PR events
-      # - pull_request → use PR HEAD sha (exact developer commit, not merge commit)
-      # - push / workflow_dispatch → use github.sha (the pushed commit)
-      commit_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-
-  lava-test:
-    needs: [loading, build]
-    uses: ./.github/workflows/test.yml
-    secrets: inherit
-    with:
-      build_matrix: ${{ needs.loading.outputs.build_matrix }}
-      docker_image: kmake-image:ver.1.0
+      commit_sha: >-
+        ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.head.sha
+            || github.sha }}
+    # Do not use secrets: inherit for fork-safe builds.
