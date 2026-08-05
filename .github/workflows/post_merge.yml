@@ -4,7 +4,6 @@ run-name: Post Merge Build and LAVA Test
 
 on:
   schedule:
-    # GitHub Actions supports a minimum schedule interval of 5 minutes.
     - cron: "*/5 * * * *"
 
   workflow_dispatch:
@@ -22,7 +21,7 @@ jobs:
     name: Load build configuration
     uses: ./.github/workflows/loading.yml
     with:
-      event_name: schedule
+      event_name: ${{ github.event_name }}
 
   build:
     name: Build
@@ -48,8 +47,6 @@ jobs:
       docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       commit_sha: ${{ github.sha }}
-
-      # sync-and-build uploads its artifacts during this workflow run.
       build_run_id: ${{ github.run_id }}
       build_repository: ${{ github.repository }}
 
