@@ -2,7 +2,7 @@ name: post_merge_weekly
 
 on:
   schedule:
-    # Temporary test: every 5 minutes
+    # Temporary test: run every 5 minutes
     - cron: "*/5 * * * *"
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@meta-qcom
     secrets: inherit
     with:
-      commit_sha: ${{ github.sha }}
+      event_name: ${{ github.event_name }}
 
   build:
     needs: loading
@@ -29,4 +29,3 @@ jobs:
       commit_sha: ${{ github.sha }}
       docker_image: kmake-image:ver.1.0
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
-      full_matrix: ${{ needs.loading.outputs.full_matrix }}
