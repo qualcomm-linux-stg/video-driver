@@ -12,12 +12,13 @@ on:
         description: Kernel repository branch
         type: string
         required: false
-        default: meta-qcom
+        default: standard/base
 
       repo:
         description: Kernel repository URL
         type: string
         required: true
+        default: https://git.yoctoproject.org/linux-yocto-dev.git
 
 jobs:
   build:
@@ -64,7 +65,22 @@ jobs:
             exit 1
           fi
 
+          # Convert the git:// URL to HTTPS because the git:// protocol
+          # may be blocked by the self-hosted runner network.
+          if [[ "${REPOSITORY}" == git://* ]]; then
+            REPOSITORY="https://${REPOSITORY#git://}"
+          fi
+
+          echo "Using clone URL: ${REPOSITORY}"
+
           rm -rf kernel
+
+          echo "Checking repository and branch availability..."
+          git ls-remote \
+            --exit-code \
+            --heads \
+            "${REPOSITORY}" \
+            "refs/heads/${BRANCH}"
 
           git clone \
             --branch "${BRANCH}" \
@@ -140,19 +156,19 @@ jobs:
           echo "Target Docker image: ${TARGET_IMAGE}"
 
           if docker image inspect "${TARGET_IMAGE}" >/dev/null 2>&1; then
-            echo "Docker image already exists locally: ${TARGET_IMAGE}"
+            echo "Target Docker image already exists locally."
           elif docker image inspect "${SOURCE_IMAGE}" >/dev/null 2>&1; then
             docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE}"
             echo "Docker image retagged successfully."
           else
-            echo "ERROR: Docker image was not found."
-            echo "Checked:"
-            echo "  ${SOURCE_IMAGE}"
-            echo "  ${TARGET_IMAGE}"
+            echo "ERROR: Docker image was not found locally."
+            echo "Expected source image: ${SOURCE_IMAGE}"
             exit 1
           fi
 
-          docker image inspect "${TARGET_IMAGE}"
+          docker image inspect "${TARGET_IMAGE}" >/dev/null
+          docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}" \
+            | grep -F "${TARGET_IMAGE}" || true
 
       - name: Build workspace
         id: build_workspace
@@ -162,13 +178,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Workspace: ${PWD}"
+          echo "Host workspace: ${PWD}"
           ls -al
 
-          docker run -i --rm \
+          rm -f kernel_version.txt
+
+          docker run --rm \
             --user "$(id -u):$(id -g)" \
             --workdir="${PWD}" \
-            -v "$(dirname "${PWD}")":"$(dirname "${PWD}")" \
+            -v "$(dirname "${PWD}"):$(dirname "${PWD}")" \
             "${DOCKER_IMAGE}" \
             bash -c '
               set -euo pipefail
@@ -176,56 +194,42 @@ jobs:
               echo "Container workspace: ${PWD}"
               ls -al
 
-              if [[ ! -d kernel ]]; then
-                echo "ERROR: kernel directory does not exist."
-                exit 1
-              fi
+              echo "=== Kernel commit ==="
+              git -C kernel log -1 --oneline
 
-              if [[ ! -d video-driver ]]; then
-                echo "ERROR: video-driver directory does not exist."
-                exit 1
-              fi
-
-              echo "=== Kernel repository ==="
-              git -C kernel status --short --branch || true
-              git -C kernel log -1 --oneline || true
-
-              echo "=== Video-driver repository ==="
-              git -C video-driver status --short --branch || true
-              git -C video-driver log -1 --oneline || true
-
-              echo "=== Kernel defconfig ==="
+              echo "=== Configuring kernel ==="
               make -C kernel defconfig
 
-              echo "=== Kernel build ==="
+              echo "=== Kernel version ==="
+              KERNEL_VERSION="$(make -s -C kernel kernelversion)"
+              echo "Kernel version: ${KERNEL_VERSION}"
+              printf "%s\n" "${KERNEL_VERSION}" > kernel_version.txt
+
+              echo "=== Building kernel ==="
               make -C kernel -j"$(nproc)"
 
-              echo "=== Verify kernel build artifacts ==="
+              echo "=== Verifying kernel build outputs ==="
               test -f kernel/vmlinux
               test -f kernel/Module.symvers
 
-              ls -lh \
-                kernel/vmlinux \
-                kernel/Module.symvers
+              ls -lh kernel/vmlinux
+              ls -lh kernel/Module.symvers
 
-              echo "=== Kernel version ==="
-              make -s -C kernel kernelrelease | tee kernel_version.txt
-
-              echo "=== Build video-driver out-of-tree modules ==="
+              echo "=== Building video-driver out-of-tree modules ==="
               make -C video-driver \
                 modules \
                 KERNEL_SRC="${PWD}/kernel" \
                 -j"$(nproc)"
 
-              echo "=== Build completed successfully ==="
+              echo "=== Video-driver build completed ==="
             '
 
-          if [[ ! -f kernel/kernel_version.txt ]]; then
+          if [[ ! -s kernel_version.txt ]]; then
             echo "ERROR: kernel_version.txt was not generated."
             exit 1
           fi
 
-          KERNEL_VERSION="$(tr -d '[:space:]' < kernel/kernel_version.txt)"
+          KERNEL_VERSION="$(tr -d '[:space:]' < kernel_version.txt)"
 
           if [[ -z "${KERNEL_VERSION}" ]]; then
             echo "ERROR: Kernel version is empty."
@@ -233,27 +237,19 @@ jobs:
           fi
 
           echo "kernel_version=${KERNEL_VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "Kernel version: ${KERNEL_VERSION}"
+          echo "Kernel version output: ${KERNEL_VERSION}"
 
-      - name: Verify build outputs
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "=== Kernel build outputs ==="
-          test -f kernel/vmlinux
-          test -f kernel/Module.symvers
-          test -f kernel/kernel_version.txt
-
-          ls -lh \
-            kernel/vmlinux \
-            kernel/Module.symvers \
-            kernel/kernel_version.txt
-
-          echo "=== Video-driver build outputs ==="
-          find video-driver \
-            -type f \
-            \( -name '*.ko' -o -name '*.ko.gz' -o -name '*.ko.zst' \) \
-            -print
-
-          echo "Build verification completed successfully."
+      - name: Upload build outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owl-build-outputs
+          path: |
+            kernel/vmlinux
+            kernel/Module.symvers
+            kernel/System.map
+            kernel/.config
+            video-driver/**/*.ko
+            kernel_version.txt
+          if-no-files-found: warn
+          retention-days: 7
