@@ -53,33 +53,6 @@ jobs:
         build_matrix: ${{ fromJson(inputs.build_matrix) }}
 
     steps:
-      - name: Checkout exact tested commit
-        if: ${{ matrix.build_matrix.lavaname != '' }}
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.commit_sha }}
-          fetch-depth: 0
-
-      - name: Verify checked-out commit
-        if: ${{ matrix.build_matrix.lavaname != '' }}
-        shell: bash
-        env:
-          EXPECTED_SHA: ${{ inputs.commit_sha }}
-        run: |
-          set -euo pipefail
-
-          ACTUAL_SHA="$(git rev-parse HEAD)"
-
-          echo "Expected SHA: $EXPECTED_SHA"
-          echo "Actual SHA:   $ACTUAL_SHA"
-
-          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
-            echo "::error::Checked-out SHA does not match the build SHA"
-            exit 1
-          fi
-
-          echo "✅ Checked-out SHA matches the build SHA"
-
       - name: Pull Docker image
         if: ${{ matrix.build_matrix.lavaname != '' }}
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
@@ -98,6 +71,34 @@ jobs:
             "${{ inputs.docker_image }}" || true
 
           docker images | grep "${{ inputs.docker_image }}" || true
+      
+      - name: Record tested PR commit
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          BUILD_REPOSITORY: ${{ inputs.build_repository }}
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid commit SHA: $COMMIT_SHA"
+            exit 1
+          fi
+
+          echo "Build repository: $BUILD_REPOSITORY"
+          echo "Build run ID:      $BUILD_RUN_ID"
+          echo "PR commit SHA:     $COMMIT_SHA"
+
+          {
+            echo "## LAVA Test Provenance"
+            echo ""
+            echo "- Repository: \`$BUILD_REPOSITORY\`"
+            echo "- Commit: \`$COMMIT_SHA\`"
+            echo "- Build run: \`$BUILD_RUN_ID\`"
+            echo "- Machine: \`${{ matrix.build_matrix.machine }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download machine-scoped presigned URLs
         if: ${{ matrix.build_matrix.lavaname != '' }}
