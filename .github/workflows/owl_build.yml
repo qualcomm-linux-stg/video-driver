@@ -39,13 +39,21 @@ jobs:
           repository: qualcomm-linux-stg/video-driver
           ref: meta-qcom
 
-      - name: Checkout kernel code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          path: kernel
-          repository: ${{ inputs.repo }}
-          ref: ${{ inputs.branch }}
+      - name: Clone kernel repository
+        shell: bash
+        env:
+          REPOSITORY: ${{ inputs.target_repository }}
+          BRANCH: ${{ inputs.branch_name }}
+        run: |
+          set -euo pipefail
+
+          rm -rf kernel
+
+          git clone \
+            --branch "$BRANCH" \
+            --single-branch \
+            "$REPOSITORY" \
+            kernel
 
       - name: Dirs after code sync
         run: |
