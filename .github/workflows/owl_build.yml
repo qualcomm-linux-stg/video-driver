@@ -15,7 +15,7 @@ on:
         default: meta-qcom
 
       repo:
-        description: Kernel repository URL or owner/repository
+        description: Kernel repository URL
         type: string
         required: true
 
@@ -44,7 +44,6 @@ jobs:
           ref: meta-qcom
 
       - name: Clone kernel repository
-        name: Clone kernel repository
         shell: bash
         env:
           REPOSITORY: ${{ inputs.repo }}
@@ -130,26 +129,26 @@ jobs:
         shell: bash
         env:
           DOCKER_IMAGE: ${{ inputs.docker_image }}
-          REGISTRY: artifacts.codelinaro.org/clo-420-qli-registry
+          DOCKER_REGISTRY: artifacts.codelinaro.org/clo-420-qli-registry
         run: |
           set -euo pipefail
 
-          SOURCE_IMAGE="${REGISTRY}/${DOCKER_IMAGE}"
+          SOURCE_IMAGE="${DOCKER_REGISTRY}/${DOCKER_IMAGE}"
           TARGET_IMAGE="${DOCKER_IMAGE}"
 
-          echo "Source image: ${SOURCE_IMAGE}"
-          echo "Target image: ${TARGET_IMAGE}"
+          echo "Source Docker image: ${SOURCE_IMAGE}"
+          echo "Target Docker image: ${TARGET_IMAGE}"
 
-          if docker image inspect "${SOURCE_IMAGE}" >/dev/null 2>&1; then
+          if docker image inspect "${TARGET_IMAGE}" >/dev/null 2>&1; then
+            echo "Docker image already exists locally: ${TARGET_IMAGE}"
+          elif docker image inspect "${SOURCE_IMAGE}" >/dev/null 2>&1; then
             docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE}"
             echo "Docker image retagged successfully."
-          elif docker image inspect "${TARGET_IMAGE}" >/dev/null 2>&1; then
-            echo "Target Docker image already exists locally."
           else
-            echo "ERROR: Docker image was not found:"
+            echo "ERROR: Docker image was not found."
+            echo "Checked:"
             echo "  ${SOURCE_IMAGE}"
             echo "  ${TARGET_IMAGE}"
-            docker images
             exit 1
           fi
 
@@ -163,13 +162,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Host workspace: ${PWD}"
+          echo "Workspace: ${PWD}"
           ls -al
 
-          docker run --rm -i \
+          docker run -i --rm \
             --user "$(id -u):$(id -g)" \
-            --workdir "${PWD}" \
-            -v "$(dirname "${PWD}"):$(dirname "${PWD}")" \
+            --workdir="${PWD}" \
+            -v "$(dirname "${PWD}")":"$(dirname "${PWD}")" \
             "${DOCKER_IMAGE}" \
             bash -c '
               set -euo pipefail
@@ -177,25 +176,40 @@ jobs:
               echo "Container workspace: ${PWD}"
               ls -al
 
-              echo "=== Kernel source ==="
-              ls -al kernel
+              if [[ ! -d kernel ]]; then
+                echo "ERROR: kernel directory does not exist."
+                exit 1
+              fi
 
-              echo "=== Video-driver source ==="
-              ls -al video-driver
+              if [[ ! -d video-driver ]]; then
+                echo "ERROR: video-driver directory does not exist."
+                exit 1
+              fi
+
+              echo "=== Kernel repository ==="
+              git -C kernel status --short --branch || true
+              git -C kernel log -1 --oneline || true
+
+              echo "=== Video-driver repository ==="
+              git -C video-driver status --short --branch || true
+              git -C video-driver log -1 --oneline || true
 
               echo "=== Kernel defconfig ==="
               make -C kernel defconfig
 
-              echo "=== Full kernel build ==="
-              echo "Using $(nproc) parallel jobs."
+              echo "=== Kernel build ==="
               make -C kernel -j"$(nproc)"
 
-              echo "=== Verify kernel build outputs ==="
+              echo "=== Verify kernel build artifacts ==="
               test -f kernel/vmlinux
               test -f kernel/Module.symvers
 
-              ls -lh kernel/vmlinux
-              ls -lh kernel/Module.symvers
+              ls -lh \
+                kernel/vmlinux \
+                kernel/Module.symvers
+
+              echo "=== Kernel version ==="
+              make -s -C kernel kernelrelease | tee kernel_version.txt
 
               echo "=== Build video-driver out-of-tree modules ==="
               make -C video-driver \
@@ -203,25 +217,43 @@ jobs:
                 KERNEL_SRC="${PWD}/kernel" \
                 -j"$(nproc)"
 
-              echo "Kernel and video-driver builds completed successfully."
+              echo "=== Build completed successfully ==="
             '
 
-          KERNEL_VERSION="$(make -s -C kernel kernelversion)"
+          if [[ ! -f kernel/kernel_version.txt ]]; then
+            echo "ERROR: kernel_version.txt was not generated."
+            exit 1
+          fi
+
+          KERNEL_VERSION="$(tr -d '[:space:]' < kernel/kernel_version.txt)"
 
           if [[ -z "${KERNEL_VERSION}" ]]; then
             echo "ERROR: Kernel version is empty."
             exit 1
           fi
 
-          echo "Kernel version: ${KERNEL_VERSION}"
           echo "kernel_version=${KERNEL_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Kernel version: ${KERNEL_VERSION}"
 
-      - name: Build summary
+      - name: Verify build outputs
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Build completed successfully."
-          echo "Kernel version: ${{ steps.build_workspace.outputs.kernel_version }}"
-          echo "Kernel source: ${GITHUB_WORKSPACE}/kernel"
-          echo "Video-driver source: ${GITHUB_WORKSPACE}/video-driver"
+          echo "=== Kernel build outputs ==="
+          test -f kernel/vmlinux
+          test -f kernel/Module.symvers
+          test -f kernel/kernel_version.txt
+
+          ls -lh \
+            kernel/vmlinux \
+            kernel/Module.symvers \
+            kernel/kernel_version.txt
+
+          echo "=== Video-driver build outputs ==="
+          find video-driver \
+            -type f \
+            \( -name '*.ko' -o -name '*.ko.gz' -o -name '*.ko.zst' \) \
+            -print
+
+          echo "Build verification completed successfully."
