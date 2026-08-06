@@ -9,23 +9,27 @@ on:
         required: true
 
       branch:
-        description: Branch name
+        description: Kernel repository branch
         type: string
         required: false
+        default: meta-qcom
 
       repo:
-        description: Target repository
+        description: Kernel repository URL or owner/repository
         type: string
         required: true
 
-
 jobs:
   build:
+    name: Build kernel and video driver
+
     runs-on:
       group: GHA-video-Stg-SelfHosted-RG
       labels:
         - self-hosted
         - video-stg-u2204-x64-large-od-ephem
+
+    timeout-minutes: 720
 
     outputs:
       kernel_version: ${{ steps.build_workspace.outputs.kernel_version }}
@@ -40,27 +44,55 @@ jobs:
           ref: meta-qcom
 
       - name: Clone kernel repository
+        name: Clone kernel repository
         shell: bash
         env:
-          REPOSITORY: ${{ inputs.target_repository }}
-          BRANCH: ${{ inputs.branch_name }}
+          REPOSITORY: ${{ inputs.repo }}
+          BRANCH: ${{ inputs.branch }}
         run: |
           set -euo pipefail
+
+          echo "Repository: ${REPOSITORY}"
+          echo "Branch: ${BRANCH}"
+
+          if [[ -z "${REPOSITORY}" ]]; then
+            echo "ERROR: The 'repo' workflow input is empty."
+            exit 1
+          fi
+
+          if [[ -z "${BRANCH}" ]]; then
+            echo "ERROR: The 'branch' workflow input is empty."
+            exit 1
+          fi
 
           rm -rf kernel
 
           git clone \
-            --branch "$BRANCH" \
+            --branch "${BRANCH}" \
             --single-branch \
-            "$REPOSITORY" \
+            "${REPOSITORY}" \
             kernel
 
-      - name: Dirs after code sync
+          echo "Kernel repository cloned successfully."
+          git -C kernel status --short --branch
+          git -C kernel log -1 --oneline
+
+      - name: Show directories after code sync
+        shell: bash
         run: |
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          set -euo pipefail
+
+          echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
+          echo "Current directory:"
           pwd
+
+          echo "Workspace contents:"
           ls -al
+
+          echo "video-driver contents:"
           ls -al video-driver
+
+          echo "kernel contents:"
           ls -al kernel
 
       - name: Pull Docker image
@@ -75,56 +107,121 @@ jobs:
           set -euo pipefail
 
           if sudo swapon --show | grep -q '/swapfile'; then
-            echo "Swap already enabled"
+            echo "Swap is already enabled."
           else
-            sudo fallocate -l 16G /swapfile
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
+            if [[ ! -f /swapfile ]]; then
+              echo "Creating 16 GB swap file..."
+              sudo fallocate -l 16G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+            fi
+
             sudo swapon /swapfile
+            echo "Swap enabled."
           fi
 
-          echo "=== Memory ==="
+          echo "=== Memory information ==="
           free -h
 
+          echo "=== Swap information ==="
+          sudo swapon --show
+
       - name: Retag Docker image
+        shell: bash
+        env:
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+          REGISTRY: artifacts.codelinaro.org/clo-420-qli-registry
+        run: |
+          set -euo pipefail
+
+          SOURCE_IMAGE="${REGISTRY}/${DOCKER_IMAGE}"
+          TARGET_IMAGE="${DOCKER_IMAGE}"
+
+          echo "Source image: ${SOURCE_IMAGE}"
+          echo "Target image: ${TARGET_IMAGE}"
+
+          if docker image inspect "${SOURCE_IMAGE}" >/dev/null 2>&1; then
+            docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE}"
+            echo "Docker image retagged successfully."
+          elif docker image inspect "${TARGET_IMAGE}" >/dev/null 2>&1; then
+            echo "Target Docker image already exists locally."
+          else
+            echo "ERROR: Docker image was not found:"
+            echo "  ${SOURCE_IMAGE}"
+            echo "  ${TARGET_IMAGE}"
+            docker images
+            exit 1
+          fi
+
+          docker image inspect "${TARGET_IMAGE}"
+
+      - name: Build workspace
+        id: build_workspace
+        shell: bash
+        env:
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+        run: |
+          set -euo pipefail
+
+          echo "Host workspace: ${PWD}"
+          ls -al
+
+          docker run --rm -i \
+            --user "$(id -u):$(id -g)" \
+            --workdir "${PWD}" \
+            -v "$(dirname "${PWD}"):$(dirname "${PWD}")" \
+            "${DOCKER_IMAGE}" \
+            bash -c '
+              set -euo pipefail
+
+              echo "Container workspace: ${PWD}"
+              ls -al
+
+              echo "=== Kernel source ==="
+              ls -al kernel
+
+              echo "=== Video-driver source ==="
+              ls -al video-driver
+
+              echo "=== Kernel defconfig ==="
+              make -C kernel defconfig
+
+              echo "=== Full kernel build ==="
+              echo "Using $(nproc) parallel jobs."
+              make -C kernel -j"$(nproc)"
+
+              echo "=== Verify kernel build outputs ==="
+              test -f kernel/vmlinux
+              test -f kernel/Module.symvers
+
+              ls -lh kernel/vmlinux
+              ls -lh kernel/Module.symvers
+
+              echo "=== Build video-driver out-of-tree modules ==="
+              make -C video-driver \
+                modules \
+                KERNEL_SRC="${PWD}/kernel" \
+                -j"$(nproc)"
+
+              echo "Kernel and video-driver builds completed successfully."
+            '
+
+          KERNEL_VERSION="$(make -s -C kernel kernelversion)"
+
+          if [[ -z "${KERNEL_VERSION}" ]]; then
+            echo "ERROR: Kernel version is empty."
+            exit 1
+          fi
+
+          echo "Kernel version: ${KERNEL_VERSION}"
+          echo "kernel_version=${KERNEL_VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build summary
         shell: bash
         run: |
           set -euo pipefail
 
-          docker tag \
-            "artifacts.codelinaro.org/clo-420-qli-registry/${{ inputs.docker_image }}" \
-            "${{ inputs.docker_image }}" || true
-
-          docker images | grep "${{ inputs.docker_image }}" || true
-
-      - name: Build workspace
-        id: build_workspace
-        run: |
-          set -e
-
-          echo "Workspace: $PWD"
-          ls -al
-
-          docker run -i --rm \
-            --user "$(id -u):$(id -g)" \
-            --workdir="$PWD" \
-            -v "$(dirname "$PWD"):$(dirname "$PWD")" \
-            "${{ inputs.docker_image }}" \
-            bash -c '
-              set -e
-
-              echo "Container workspace: $PWD"
-              ls -al
-
-              # Step 1: Configure the kernel
-              make -C kernel defconfig
-
-              # Step 2: Full kernel build — generates vmlinux + Module.symvers
-              make -C kernel -j$(nproc)
-
-              # Step 3: Verify Module.symvers was produced
-              ls -lh kernel/Module.symvers
-
-              # Step 4: Build video-driver OOT module
-              make -C video-driver modules KERNEL_SRC="$PWD/kernel" -j$(nproc)
-            '
+          echo "Build completed successfully."
+          echo "Kernel version: ${{ steps.build_workspace.outputs.kernel_version }}"
+          echo "Kernel source: ${GITHUB_WORKSPACE}/kernel"
+          echo "Video-driver source: ${GITHUB_WORKSPACE}/video-driver"
