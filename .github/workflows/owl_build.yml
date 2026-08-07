@@ -2,42 +2,43 @@ name: owl_build
 
 on:
   workflow_dispatch:
-    inputs:
-      docker_image:
-        description: Docker image
-        type: string
-        required: true
 
-      repo:
-        description: Kernel repository URL
-        type: string
-        required: true
-        default: https://git.yoctoproject.org/linux-yocto-dev.git
-
-      checkout_type:
-        description: Kernel checkout type
-        type: choice
-        required: true
-        default: branch
-        options:
-          - branch
-          - tag
-
-      branch:
-        description: Kernel repository branch; used when checkout_type is branch
-        type: string
-        required: false
-        default: standard/base
-
-      tag_pattern:
-        description: Kernel tag pattern; used when checkout_type is tag
-        type: string
-        required: false
-        default: v6.18*
+env:
+  DOCKER_IMAGE: kmake-image:ver.1.0
+  DOCKER_REGISTRY: artifacts.codelinaro.org/clo-420-qli-registry
 
 jobs:
   build:
-    name: Build kernel and video driver
+    name: Build ${{ matrix.name }}
+
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - name: torvalds-master
+            repository: https://github.com/torvalds/linux
+            checkout_type: branch
+            branch: master
+            tag_pattern: ""
+
+          - name: torvalds-v6.18
+            repository: https://github.com/torvalds/linux
+            checkout_type: tag
+            branch: ""
+            tag_pattern: v6.18*
+
+          - name: linux-yocto-dev-master
+            repository: https://git.yoctoproject.org/linux-yocto-dev.git
+            checkout_type: branch
+            branch: master
+            tag_pattern: ""
+
+          - name: linux-yocto-v6.18-standard-base
+            repository: https://git.yoctoproject.org/linux-yocto.git
+            checkout_type: branch
+            branch: v6.18/standard/base
+            tag_pattern: ""
 
     runs-on:
       group: GHA-video-Stg-SelfHosted-RG
@@ -46,9 +47,6 @@ jobs:
         - video-stg-u2204-x64-large-od-ephem
 
     timeout-minutes: 720
-
-    outputs:
-      kernel_version: ${{ steps.build_workspace.outputs.kernel_version }}
 
     steps:
       - name: Checkout video-driver code
@@ -62,29 +60,12 @@ jobs:
       - name: Clone kernel repository
         shell: bash
         env:
-          REPOSITORY: ${{ inputs.repo }}
-          CHECKOUT_TYPE: ${{ inputs.checkout_type }}
-          BRANCH: ${{ inputs.branch }}
-          TAG_PATTERN: ${{ inputs.tag_pattern }}
+          REPOSITORY: ${{ matrix.repository }}
+          CHECKOUT_TYPE: ${{ matrix.checkout_type }}
+          BRANCH: ${{ matrix.branch }}
+          TAG_PATTERN: ${{ matrix.tag_pattern }}
         run: |
           set -euo pipefail
-
-          if [[ -z "${REPOSITORY}" ]]; then
-            echo "ERROR: The 'repo' workflow input is empty."
-            exit 1
-          fi
-
-          if [[ "${CHECKOUT_TYPE}" != "branch" && "${CHECKOUT_TYPE}" != "tag" ]]; then
-            echo "ERROR: Invalid checkout type: ${CHECKOUT_TYPE}"
-            echo "Expected either 'branch' or 'tag'."
-            exit 1
-          fi
-
-          # Convert git:// URLs to HTTPS because git:// may be blocked
-          # on the self-hosted runner network.
-          if [[ "${REPOSITORY}" == git://* ]]; then
-            REPOSITORY="https://${REPOSITORY#git://}"
-          fi
 
           echo "Repository: ${REPOSITORY}"
           echo "Checkout type: ${CHECKOUT_TYPE}"
@@ -93,11 +74,11 @@ jobs:
 
           if [[ "${CHECKOUT_TYPE}" == "branch" ]]; then
             if [[ -z "${BRANCH}" ]]; then
-              echo "ERROR: The 'branch' input is empty."
+              echo "ERROR: Branch is empty."
               exit 1
             fi
 
-            echo "Checking repository branch availability..."
+            echo "Checking branch availability..."
             git ls-remote \
               --exit-code \
               --heads \
@@ -113,15 +94,14 @@ jobs:
 
             SELECTED_REF="${BRANCH}"
 
-          else
+          elif [[ "${CHECKOUT_TYPE}" == "tag" ]]; then
             if [[ -z "${TAG_PATTERN}" ]]; then
-              echo "ERROR: The 'tag_pattern' input is empty."
+              echo "ERROR: Tag pattern is empty."
               exit 1
             fi
 
             echo "Searching for tags matching: ${TAG_PATTERN}"
 
-            # --refs excludes peeled ^{} entries for annotated tags.
             MATCHING_TAGS="$(
               git ls-remote \
                 --exit-code \
@@ -138,17 +118,9 @@ jobs:
               exit 1
             fi
 
-            # Select the numerically latest matching tag.
             SELECTED_TAG="$(printf '%s\n' "${MATCHING_TAGS}" | tail -n 1)"
 
             echo "Selected latest matching tag: ${SELECTED_TAG}"
-
-            echo "Checking selected tag availability..."
-            git ls-remote \
-              --exit-code \
-              --tags \
-              "${REPOSITORY}" \
-              "refs/tags/${SELECTED_TAG}"
 
             git clone \
               --branch "${SELECTED_TAG}" \
@@ -157,6 +129,10 @@ jobs:
               kernel
 
             SELECTED_REF="${SELECTED_TAG}"
+
+          else
+            echo "ERROR: Invalid checkout type: ${CHECKOUT_TYPE}"
+            exit 1
           fi
 
           echo "Kernel repository cloned successfully."
@@ -186,8 +162,8 @@ jobs:
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
         with:
-          image: ${{ inputs.docker_image }}
-          registry: artifacts.codelinaro.org/clo-420-qli-registry
+          image: ${{ env.DOCKER_IMAGE }}
+          registry: ${{ env.DOCKER_REGISTRY }}
 
       - name: Add swap space
         shell: bash
@@ -212,9 +188,6 @@ jobs:
 
       - name: Retag Docker image
         shell: bash
-        env:
-          DOCKER_IMAGE: ${{ inputs.docker_image }}
-          DOCKER_REGISTRY: artifacts.codelinaro.org/clo-420-qli-registry
         run: |
           set -euo pipefail
 
@@ -236,10 +209,7 @@ jobs:
           docker image inspect "${TARGET_IMAGE}" >/dev/null
 
       - name: Build workspace
-        id: build_workspace
         shell: bash
-        env:
-          DOCKER_IMAGE: ${{ inputs.docker_image }}
         run: |
           set -euo pipefail
 
@@ -292,14 +262,13 @@ jobs:
             exit 1
           fi
 
-          echo "kernel_version=${KERNEL_VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "Kernel version output: ${KERNEL_VERSION}"
+          echo "Kernel version: ${KERNEL_VERSION}"
 
       - name: Upload build outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: owl-build-outputs
+          name: owl-build-outputs-${{ matrix.name }}
           path: |
             kernel/vmlinux
             kernel/Module.symvers
