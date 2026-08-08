@@ -991,6 +991,7 @@ static int msm_vidc_probe_video_device(struct platform_device *pdev)
 	struct device_node *child = NULL;
 
 	d_vpr_h("%s: %s\n", __func__, dev_name(&pdev->dev));
+	d_vpr_h("testing the mani pr %s: %s\n", __func__, dev_name(&pdev->dev));
 
 	core = devm_kzalloc(&pdev->dev, sizeof(struct msm_vidc_core), GFP_KERNEL);
 	if (!core) {
