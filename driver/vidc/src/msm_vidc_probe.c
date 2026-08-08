@@ -920,6 +920,7 @@ static int msm_vidc_probe_without_context_bank(struct platform_device *pdev,
 	struct context_bank_info *cb = NULL;
 
 	if (core->platform->data.init_cb_devs) {
+
 		/*
 		 * iommu-map or subnode present: platform provides init_cb_devs to create
 		 * a child platform device for each CB with a valid fid.
@@ -1157,7 +1158,7 @@ static int msm_vidc_probe_context_bank(struct platform_device *pdev)
 
 static int msm_vidc_probe(struct platform_device *pdev)
 {
-	d_vpr_h("%s()\n", __func__);
+	d_vpr_h("%s()\n", __func__)
 
 	if (!pdev) {
 		d_vpr_e("%s: invalid params\n", __func__);
