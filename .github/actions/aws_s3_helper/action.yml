@@ -1,105 +1,177 @@
-# name: AWS S3 Helper
+name: AWS S3 Helper
 description: Upload and download files from AWS S3
 
 inputs:
   s3_bucket:
-    description: S3 Bucket Name
+    description: S3 bucket name
     required: true
+
   local_file:
-    description: Local file paths
+    description: Local file path or file-list path
     required: false
     default: ../artifacts/file_list.txt
+
   download_file:
-    description: Download file paths
+    description: S3 object path to download
     required: false
-    default: ''
+    default: ""
+
   download_location:
-    description: File download location
+    description: Local download directory
     required: false
     default: .
+
   mode:
-    description: Mode of operation (upload/download)
+    description: Mode of operation
     required: true
     default: single-upload
+
   upload_location:
-    description: Upload location
+    description: S3 upload prefix
     required: true
 
 outputs:
   presigned_url:
     description: Pre-signed URL for the uploaded file
     value: ${{ steps.sync-data.outputs.presigned_url }}
+
   s3_location:
     description: Upload location
     value: ${{ inputs.upload_location }}
 
 runs:
-  using: "composite"
+  using: composite
   steps:
-    - name: Sync Data
+    - name: Sync data
       id: sync-data
       shell: bash
       env:
+        S3_BUCKET: ${{ inputs.s3_bucket }}
+        LOCAL_FILE: ${{ inputs.local_file }}
+        DOWNLOAD_FILE: ${{ inputs.download_file }}
+        DOWNLOAD_LOCATION: ${{ inputs.download_location }}
+        MODE: ${{ inputs.mode }}
         UPLOAD_LOCATION: ${{ inputs.upload_location }}
+        WORKSPACE: ${{ github.workspace }}
       run: |
-        echo "::group::Uploading files to S3"
-        case "${{ inputs.mode }}" in
+        set -euo pipefail
+
+        echo "::group::S3 synchronization"
+
+        case "$MODE" in
           multi-upload)
-            if [ ! -s "${{ inputs.local_file }}" ]; then
-              echo "❌ File list is empty. No files to upload."
+            if [ ! -s "$LOCAL_FILE" ]; then
+              echo "::error::File list is empty: $LOCAL_FILE"
               exit 1
             fi
 
-            echo "📄 Contents of file list:"
-            cat "${{ inputs.local_file }}"
+            manifest="$WORKSPACE/presigned_urls.json"
+            manifest_parts="$WORKSPACE/.presigned_urls_parts"
 
-            first_line=true
-            manifest="${{ github.workspace }}/presigned_urls.json"
-            echo "{" > "${manifest}"
+            rm -rf "$manifest_parts"
+            mkdir -p "$manifest_parts"
 
-            while IFS= read -r file; do
-              resolved_file=$(readlink -f "$file")
-              if [ -f "$resolved_file" ]; then
-                filename=$(basename "$resolved_file")
-                echo "📤 Uploading $filename..."
-                aws s3 cp "$resolved_file" "s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/$filename"
-                presigned_url=$(aws s3 presign "s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/$filename" --expires-in 259200)
+            index=0
 
-                if [ "$first_line" = true ]; then
-                  first_line=false
-                else
-                  echo "," >> "${manifest}"
-                fi
+            while IFS= read -r file || [ -n "$file" ]; do
+              [ -n "$file" ] || continue
 
-                # Key = filename, Value = presigned_url
-                echo "  \"${filename}\": \"${presigned_url}\"" >> "${manifest}"
-                echo "✅ Pre-signed URL for $filename: $presigned_url"
-              else
-                echo "⚠️ Skipping: $file is not a regular file or not accessible."
+              resolved_file="$(readlink -f -- "$file")"
+
+              if [ ! -f "$resolved_file" ]; then
+                echo "::warning::Skipping non-regular file: $file"
+                continue
               fi
-            done < "${{ inputs.local_file }}"
 
-            echo "}" >> "${manifest}"
+              filename="$(basename -- "$resolved_file")"
+              object_key="$UPLOAD_LOCATION/$filename"
+              part_file="$manifest_parts/$index.json"
+
+              echo "Uploading $filename"
+
+              aws s3 cp \
+                "$resolved_file" \
+                "s3://$S3_BUCKET/$object_key"
+
+              presigned_url="$(
+                aws s3 presign \
+                  "s3://$S3_BUCKET/$object_key" \
+                  --expires-in 259200
+              )"
+
+              jq -n \
+                --arg filename "$filename" \
+                --arg url "$presigned_url" \
+                '{($filename): $url}' > "$part_file"
+
+              echo "Pre-signed URL generated for $filename"
+
+              index=$((index + 1))
+            done < "$LOCAL_FILE"
+
+            if [ "$index" -eq 0 ]; then
+              echo "::error::No files were uploaded"
+              exit 1
+            fi
+
+            jq -s 'add // {}' "$manifest_parts"/*.json > "$manifest"
+            rm -rf "$manifest_parts"
+
+            echo "Generated manifest:"
+            jq . "$manifest"
             ;;
+
           single-upload)
-            resolved_file=$(readlink -f "${{ inputs.local_file }}")
-            filename=$(basename "$resolved_file")
-            aws s3 cp "$resolved_file" "s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/$filename"
-            presigned_url=$(aws s3 presign "s3://${{ inputs.s3_bucket }}/${{ env.UPLOAD_LOCATION }}/$filename" --expires-in 259200)
-            echo "presigned_url=${presigned_url}" >> "$GITHUB_OUTPUT"
+            resolved_file="$(readlink -f -- "$LOCAL_FILE")"
+
+            if [ ! -f "$resolved_file" ]; then
+              echo "::error::File not found: $LOCAL_FILE"
+              exit 1
+            fi
+
+            filename="$(basename -- "$resolved_file")"
+            object_key="$UPLOAD_LOCATION/$filename"
+
+            aws s3 cp \
+              "$resolved_file" \
+              "s3://$S3_BUCKET/$object_key"
+
+            presigned_url="$(
+              aws s3 presign \
+                "s3://$S3_BUCKET/$object_key" \
+                --expires-in 259200
+            )"
+
+            printf 'presigned_url=%s\n' "$presigned_url" >> "$GITHUB_OUTPUT"
+
+            echo "Uploaded $filename"
             ;;
+
           download)
-            download_dir=$(realpath "${{ inputs.download_location }}")
-            aws s3 cp "s3://${{ inputs.s3_bucket }}/${{ inputs.download_file }}" "$download_dir"
+            if [ -z "$DOWNLOAD_FILE" ]; then
+              echo "::error::download_file is required for download mode"
+              exit 1
+            fi
+
+            mkdir -p "$DOWNLOAD_LOCATION"
+
+            aws s3 cp \
+              "s3://$S3_BUCKET/$DOWNLOAD_FILE" \
+              "$DOWNLOAD_LOCATION"
+
+            echo "Downloaded $DOWNLOAD_FILE"
             ;;
+
           *)
-            echo "Invalid mode. Use 'upload', 'multi-upload', or 'download'."
+            echo "::error::Invalid mode: $MODE"
+            echo "Supported modes: single-upload, multi-upload, download"
             exit 1
             ;;
         esac
+
         echo "::endgroup::"
 
-    - name: Upload presigned URL manifest
+    - name: Upload pre-signed URL manifest
       if: ${{ inputs.mode == 'multi-upload' }}
       uses: actions/upload-artifact@v4
       with:

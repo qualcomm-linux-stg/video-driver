@@ -18,11 +18,7 @@ jobs:
     name: Verify completed build
     if: >
       github.event.workflow_run.conclusion == 'success' &&
-      (
-        github.event.workflow_run.event == 'pull_request' ||
-        github.event.workflow_run.event == 'push' ||
-        github.event.workflow_run.event == 'workflow_dispatch'
-      )
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
 
     outputs:
@@ -47,8 +43,12 @@ jobs:
         shell: bash
         env:
           METADATA_FILE: metadata/build-metadata.json
+
           EXPECTED_RUN_ID: ${{ github.event.workflow_run.id }}
           EXPECTED_REPOSITORY: ${{ github.event.workflow_run.repository.full_name }}
+          EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          EXPECTED_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+
         run: |
           set -euo pipefail
 
@@ -58,28 +58,49 @@ jobs:
             exit 1
           fi
 
+          jq empty "$METADATA_FILE"
+
           echo "=== Build metadata ==="
           jq . "$METADATA_FILE"
 
-          jq empty "$METADATA_FILE"
-
-          METADATA_RUN_ID="$(jq -r '.build_run_id' "$METADATA_FILE")"
-          METADATA_REPOSITORY="$(jq -r '.repository' "$METADATA_FILE")"
-          DOCKER_IMAGE="$(jq -r '.docker_image' "$METADATA_FILE")"
-          COMMIT_SHA="$(jq -r '.commit_sha' "$METADATA_FILE")"
+          METADATA_RUN_ID="$(jq -r '.build_run_id // empty' "$METADATA_FILE")"
+          METADATA_REPOSITORY="$(jq -r '.repository // empty' "$METADATA_FILE")"
+          METADATA_SOURCE_REPOSITORY="$(jq -r '.source_repository // empty' "$METADATA_FILE")"
+          DOCKER_IMAGE="$(jq -r '.docker_image // empty' "$METADATA_FILE")"
+          COMMIT_SHA="$(jq -r '.commit_sha // empty' "$METADATA_FILE")"
           BUILD_MATRIX="$(jq -c '.build_matrix' "$METADATA_FILE")"
 
           if [ "$METADATA_RUN_ID" != "$EXPECTED_RUN_ID" ]; then
             echo "::error::Metadata run ID does not match workflow_run ID"
             echo "Metadata run ID: $METADATA_RUN_ID"
-            echo "Workflow run ID: $EXPECTED_RUN_ID"
+            echo "Expected run ID: $EXPECTED_RUN_ID"
             exit 1
           fi
 
           if [ "$METADATA_REPOSITORY" != "$EXPECTED_REPOSITORY" ]; then
             echo "::error::Metadata repository does not match workflow repository"
             echo "Metadata repository: $METADATA_REPOSITORY"
-            echo "Workflow repository: $EXPECTED_REPOSITORY"
+            echo "Expected repository: $EXPECTED_REPOSITORY"
+            exit 1
+          fi
+
+          if [ "$COMMIT_SHA" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "::error::Metadata commit does not match workflow_run head SHA"
+            echo "Metadata commit: $COMMIT_SHA"
+            echo "Expected commit: $EXPECTED_HEAD_SHA"
+            exit 1
+          fi
+
+          if [ -z "$METADATA_SOURCE_REPOSITORY" ] ||
+             [ "$METADATA_SOURCE_REPOSITORY" = "null" ]; then
+            echo "::error::source_repository is missing from metadata"
+            exit 1
+          fi
+
+          if [ "$METADATA_SOURCE_REPOSITORY" != "$EXPECTED_HEAD_REPOSITORY" ]; then
+            echo "::error::Metadata source repository does not match PR source repository"
+            echo "Metadata source repository: $METADATA_SOURCE_REPOSITORY"
+            echo "Expected source repository: $EXPECTED_HEAD_REPOSITORY"
             exit 1
           fi
 
@@ -93,12 +114,21 @@ jobs:
             exit 1
           fi
 
+          if [ "$BUILD_MATRIX" = "null" ] ||
+             [ -z "$BUILD_MATRIX" ]; then
+            echo "::error::build_matrix is missing from metadata"
+            exit 1
+          fi
+
           echo "$BUILD_MATRIX" | jq empty
 
           {
             echo "docker_image=$DOCKER_IMAGE"
             echo "commit_sha=$COMMIT_SHA"
             echo "build_run_id=$METADATA_RUN_ID"
+
+            # Artifacts were uploaded by the base repository workflow.
+            # Do not use the fork repository here.
             echo "build_repository=$METADATA_REPOSITORY"
           } >> "$GITHUB_OUTPUT"
 
@@ -107,6 +137,25 @@ jobs:
             echo "$BUILD_MATRIX"
             echo "BUILD_MATRIX_EOF"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Record fork provenance
+        shell: bash
+        env:
+          SOURCE_REPOSITORY: ${{ steps.metadata.outputs.build_repository }}
+          COMMIT_SHA: ${{ steps.metadata.outputs.commit_sha }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Fork PR LAVA Provenance"
+            echo ""
+            echo "- PR source repository: \`$HEAD_REPOSITORY\`"
+            echo "- Tested commit: \`$COMMIT_SHA\`"
+            echo "- Artifact repository: \`$SOURCE_REPOSITORY\`"
+            echo "- Build workflow run: \`$WORKFLOW_RUN_ID\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   lava-test:
     name: Run LAVA tests

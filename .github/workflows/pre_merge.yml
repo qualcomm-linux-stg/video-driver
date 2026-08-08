@@ -19,7 +19,7 @@ on:
 
 permissions:
   contents: read
-  actions: write
+  actions: read
 
 jobs:
   loading:
@@ -74,10 +74,13 @@ jobs:
           BUILD_MATRIX: ${{ needs.loading.outputs.build_matrix }}
           DOCKER_IMAGE: kmake-image:ver.1.0
           EVENT_NAME: ${{ github.event_name }}
+
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+
           GITHUB_SHA_VALUE: ${{ github.sha }}
           GITHUB_REPOSITORY_VALUE: ${{ github.repository }}
+
           BUILD_RUN_ID: ${{ github.run_id }}
           BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
           PR_NUMBER: ${{ github.event.pull_request.number || '' }}
