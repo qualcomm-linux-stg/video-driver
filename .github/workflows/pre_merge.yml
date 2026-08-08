@@ -66,6 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           mkdir -p "$GITHUB_WORKSPACE/metadata"
 
       - name: Generate build metadata
@@ -77,13 +78,13 @@ jobs:
 
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
 
           GITHUB_SHA_VALUE: ${{ github.sha }}
           GITHUB_REPOSITORY_VALUE: ${{ github.repository }}
 
           BUILD_RUN_ID: ${{ github.run_id }}
           BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
-          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
 
         run: |
           set -euo pipefail
@@ -122,6 +123,11 @@ jobs:
           fi
 
           echo "$BUILD_MATRIX" | jq empty
+
+          if [ "$(echo "$BUILD_MATRIX" | jq -r 'type')" != "array" ]; then
+            echo "::error::Build matrix must be a JSON array"
+            exit 1
+          fi
 
           jq -n \
             --arg docker_image "$DOCKER_IMAGE" \

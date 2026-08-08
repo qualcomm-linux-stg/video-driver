@@ -72,8 +72,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          source_image="artifacts.codelinaro.org/clo-420-qli-registry/$DOCKER_IMAGE"
+
           docker tag \
-            "artifacts.codelinaro.org/clo-420-qli-registry/$DOCKER_IMAGE" \
+            "$source_image" \
             "$DOCKER_IMAGE" || true
 
           docker images | grep -- "$DOCKER_IMAGE" || true
@@ -95,8 +97,9 @@ jobs:
           fi
 
           echo "Build repository: $BUILD_REPOSITORY"
-          echo "Build run ID:      $BUILD_RUN_ID"
-          echo "Commit SHA:        $COMMIT_SHA"
+          echo "Build run ID:     $BUILD_RUN_ID"
+          echo "Commit SHA:       $COMMIT_SHA"
+          echo "Machine:          $MACHINE"
 
           {
             echo "## LAVA Test Provenance"
@@ -107,7 +110,7 @@ jobs:
             echo "- Machine: \`$MACHINE\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Download machine-scoped pre-signed URLs
+      - name: Download machine-scoped presigned URLs
         if: ${{ matrix.build_matrix.lavaname != '' }}
         uses: actions/download-artifact@v4
         with:
@@ -183,8 +186,41 @@ jobs:
             exit 1
           fi
 
+          if [ ! -s "$job_file" ]; then
+            echo "::error::Rendered LAVA job is empty: $job_file"
+            exit 1
+          fi
+
           echo "=== Rendered LAVA job ==="
-          sed -n '1,240p' "$job_file"
+          sed -n '1,260p' "$job_file"
+
+      - name: Verify LAVA Docker environment
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+        run: |
+          set -euo pipefail
+
+          echo "=== Docker image ==="
+          docker image inspect "$DOCKER_IMAGE" >/dev/null
+
+          echo "=== lavacli path and version ==="
+          docker run --rm \
+            "$DOCKER_IMAGE" \
+            bash -c '
+              set -euo pipefail
+              command -v lavacli
+              lavacli --version
+            '
+
+          echo "=== LAVA DNS resolution ==="
+          docker run --rm \
+            "$DOCKER_IMAGE" \
+            bash -c '
+              set -euo pipefail
+              getent hosts lava-oss.qualcomm.com
+            '
 
       - name: Submit LAVA job
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -198,39 +234,82 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "$LAVA_OSS_TOKEN" ] || [ -z "$LAVA_OSS_USER" ]; then
-            echo "::error::LAVA credentials are unavailable"
+          if [ -z "${LAVA_OSS_TOKEN:-}" ]; then
+            echo "::error::LAVA_OSS_TOKEN is unavailable"
+            exit 1
+          fi
+
+          if [ -z "${LAVA_OSS_USER:-}" ]; then
+            echo "::error::LAVA_OSS_USER is unavailable"
             exit 1
           fi
 
           job_render_dir="$(dirname "$WORKSPACE")/job_render"
           parent_dir="$(dirname "$job_render_dir")"
+          job_file="$job_render_dir/renders/lava_job_definition.yaml"
+          submission_log="$WORKSPACE/lava-submit-output.txt"
+
+          if [ ! -f "$job_file" ]; then
+            echo "::error::LAVA job file not found: $job_file"
+            exit 1
+          fi
+
+          echo "=== LAVA job file before submission ==="
+          sed -n '1,260p' "$job_file"
+
+          echo "=== Starting LAVA submission ==="
+
+          set +e
+
+          docker run -i --rm \
+            --workdir="$job_render_dir" \
+            --mount "type=bind,src=$parent_dir,dst=$parent_dir" \
+            -e LAVA_OSS_TOKEN \
+            -e LAVA_OSS_USER \
+            "$DOCKER_IMAGE" \
+            bash -s 2>&1 <<'CONTAINER_SCRIPT' | tee "$submission_log"
+
+          set -euo pipefail
+
+          echo "Configuring lavacli identity"
+
+          lavacli identities add \
+            --token "$LAVA_OSS_TOKEN" \
+            --uri https://lava-oss.qualcomm.com/RPC2 \
+            --username "$LAVA_OSS_USER" \
+            production
+
+          echo "Submitting LAVA job"
+
+          lavacli -i production jobs submit \
+            ./renders/lava_job_definition.yaml
+
+          CONTAINER_SCRIPT
+
+          docker_status="${PIPESTATUS[0]}"
+
+          set -e
+
+          echo "=== Complete LAVA submission output ==="
+          cat "$submission_log"
+
+          if [ "$docker_status" -ne 0 ]; then
+            echo "::error::LAVA submission failed with exit code $docker_status"
+            exit "$docker_status"
+          fi
 
           job_id="$(
-            docker run -i --rm \
-              --workdir="$job_render_dir" \
-              -v "$parent_dir:$parent_dir" \
-              -e LAVA_OSS_TOKEN \
-              -e LAVA_OSS_USER \
-              "$DOCKER_IMAGE" \
-              bash -c '
-                set -euo pipefail
-
-                lavacli identities add \
-                  --token "$LAVA_OSS_TOKEN" \
-                  --uri https://lava-oss.qualcomm.com/RPC2 \
-                  --username "$LAVA_OSS_USER" \
-                  production
-
-                lavacli -i production jobs submit \
-                  ./renders/lava_job_definition.yaml
-              '
+            grep -Eo \
+              '(^|[^0-9])[0-9]{1,}([^0-9]|$)' \
+              "$submission_log" |
+              grep -Eo '[0-9]+' |
+              tail -n 1 |
+              tr -d '[:space:]'
           )"
 
-          job_id="$(echo "$job_id" | tail -n 1 | tr -d '[:space:]')"
-
           if ! [[ "$job_id" =~ ^[0-9]+$ ]]; then
-            echo "::error::Invalid LAVA job ID: $job_id"
+            echo "::error::Unable to extract a numeric LAVA job ID"
+            echo "::error::Review lava-submit-output.txt for the complete response"
             exit 1
           fi
 
@@ -239,6 +318,15 @@ jobs:
           echo "job_url=https://lava-oss.qualcomm.com/scheduler/job/$job_id" >> "$GITHUB_OUTPUT"
 
           echo "LAVA job submitted: https://lava-oss.qualcomm.com/scheduler/job/$job_id"
+
+      - name: Upload LAVA submission log
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lava-submit-log-${{ matrix.build_matrix.machine }}
+          path: ${{ github.workspace }}/lava-submit-output.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Save job ID for reporting
         if: ${{ always() && matrix.build_matrix.lavaname != '' }}
@@ -306,7 +394,7 @@ jobs:
             job_info="$(
               docker run -i --rm \
                 --workdir="$job_render_dir" \
-                -v "$parent_dir:$parent_dir" \
+                --mount "type=bind,src=$parent_dir,dst=$parent_dir" \
                 -e LAVA_OSS_TOKEN \
                 -e LAVA_OSS_USER \
                 "$DOCKER_IMAGE" \
@@ -348,12 +436,12 @@ jobs:
           fi
 
           if [ "$health" = "Incomplete" ]; then
-            echo "LAVA health is Incomplete; validating test result directly"
+            echo "LAVA health is Incomplete; validating the test result directly"
           fi
 
           docker run -i --rm \
             --workdir="$job_render_dir" \
-            -v "$parent_dir:$parent_dir" \
+            --mount "type=bind,src=$parent_dir,dst=$parent_dir" \
             -e LAVA_OSS_TOKEN \
             -e LAVA_OSS_USER \
             "$DOCKER_IMAGE" \
@@ -399,6 +487,8 @@ jobs:
           WORKSPACE: ${{ github.workspace }}
         run: |
           rm -f "$WORKSPACE/presigned_urls.json" || true
+          rm -f "$WORKSPACE/lava-submit-output.txt" || true
+          rm -f "$WORKSPACE/lava_results.txt" || true
           rm -rf "$(dirname "$WORKSPACE")/job_render" || true
 
   generate-summary:
@@ -430,7 +520,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "$LAVA_TOKEN" ]; then
+          if [ -z "${LAVA_TOKEN:-}" ]; then
             echo "::error::LAVA token is unavailable"
             exit 1
           fi
