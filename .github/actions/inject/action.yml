@@ -20,7 +20,7 @@ runs:
       run: |
         set -euo pipefail
 
-        mkdir -p "$WORKSPACE/images"
+        mkdir -p -- "$WORKSPACE/images"
 
     - name: Run IRIS injection in Docker
       shell: bash
@@ -31,14 +31,22 @@ runs:
       run: |
         set -euo pipefail
 
+        case "$MACHINE" in
+          qcs9100-ride-sx|qcs8300-ride-sx|rb3gen2-core-kit|qcs615-ride|sm8750-mtp|kaanapali-mtp)
+            ;;
+          *)
+            echo "::error::Unsupported machine: $MACHINE"
+            exit 1
+            ;;
+        esac
+
+        if [[ "$DOCKER_IMAGE" =~ [[:space:]\;\&\|\<\>\`\'\"] ]]; then
+          echo "::error::Invalid Docker image reference"
+          exit 1
+        fi
+
         workspace_root="$(dirname "$WORKSPACE")"
         repo_name="$(basename "$WORKSPACE")"
-
-        echo "PWD: $PWD"
-        echo "WORKSPACE: $WORKSPACE"
-        echo "WORKSPACE_ROOT: $workspace_root"
-        echo "REPO_NAME: $repo_name"
-        echo "MACHINE: $MACHINE"
 
         docker run --rm \
           -v "${workspace_root}:/workspace" \
@@ -50,59 +58,45 @@ runs:
           bash -lc '
             set -euo pipefail
 
-            IMAGE_BASE_DIR="build/tmp/deploy/images/${MACHINE}"
+            image_base_dir="build/tmp/deploy/images/${MACHINE}"
 
-            echo "=== Looking for build output under: ${IMAGE_BASE_DIR} ==="
-
-            if [ ! -d "$IMAGE_BASE_DIR" ]; then
-              echo "Machine output directory not found: $IMAGE_BASE_DIR"
-              echo "=== build/tmp/deploy/images tree ==="
-              find build/tmp/deploy/images \
-                -maxdepth 3 \
-                -mindepth 1 \
-                -print | sort || true
+            if [ ! -d "$image_base_dir" ]; then
+              echo "Machine output directory not found: $image_base_dir"
               exit 1
             fi
 
-            echo "=== Contents of machine directory ==="
-            ls -la "$IMAGE_BASE_DIR" || true
-
-            IMAGE_DIR="$(
-              find "$IMAGE_BASE_DIR" \
+            image_dir="$(
+              find "$image_base_dir" \
                 -maxdepth 1 \
                 -type d \
                 -name "*.qcomflash" \
                 -print -quit
             )"
 
-            if [ -z "$IMAGE_DIR" ]; then
-              echo "No .qcomflash directory found under $IMAGE_BASE_DIR"
-              echo "=== Full contents under machine directory ==="
-              find "$IMAGE_BASE_DIR" \
-                -maxdepth 2 \
-                -print | sort || true
+            if [ -z "$image_dir" ]; then
+              echo "No .qcomflash directory found"
               exit 1
             fi
 
-            echo "Using image directory: $IMAGE_DIR"
+            cd "$image_dir"
 
-            cd "$IMAGE_DIR"
-            ls -larth
-
-            ROOTFS_IMG="$(realpath rootfs.img)"
-
-            echo "ROOTFS_IMG=$ROOTFS_IMG"
-
-            test -f "$ROOTFS_IMG"
-
-            echo "Checking IRIS app payload..."
+            rootfs_img="$(realpath rootfs.img)"
+            test -f "$rootfs_img"
 
             test -d "$WORKSPACE/v4l-video-test-app/build"
-            ls -la "$WORKSPACE/v4l-video-test-app/build"
+            test -f "$WORKSPACE/downloads/video_clips_iris.tar.gz"
 
-            echo "Loop devices before:"
-            ls -l /dev/loop* || true
-            losetup -a || true
+            mkdir -p /tmp/rootfs
+            loopdev=""
+
+            cleanup() {
+              set +e
+              sync || true
+              mountpoint -q /tmp/rootfs && umount /tmp/rootfs || true
+              [ -n "$loopdev" ] && losetup -d "$loopdev" || true
+            }
+
+            trap cleanup EXIT
 
             modprobe loop max_loop=64 || true
 
@@ -111,86 +105,39 @@ runs:
                 mknod -m 660 "/dev/loop$i" b 7 "$i" || true
             done
 
-            echo "Loop devices after:"
-            ls -l /dev/loop* || true
-
-            mkdir -p /tmp/rootfs
-
-            LOOPDEV=""
-
-            cleanup() {
-              set +e
-
-              sync || true
-
-              if mountpoint -q /tmp/rootfs; then
-                umount /tmp/rootfs || true
-              fi
-
-              if [ -n "$LOOPDEV" ]; then
-                losetup -d "$LOOPDEV" || true
-              fi
-            }
-
-            trap cleanup EXIT
-
-            echo "Attaching loop device..."
-
             for attempt in 1 2 3; do
-              LOOPDEV="$(
-                losetup --find --show "$ROOTFS_IMG" 2>/dev/null || true
+              loopdev="$(
+                losetup --find --show "$rootfs_img" 2>/dev/null || true
               )"
 
-              if [ -n "$LOOPDEV" ]; then
-                break
-              fi
+              [ -n "$loopdev" ] && break
 
-              echo "Attempt $attempt failed to allocate loop device, retrying..."
+              echo "Loop allocation attempt $attempt failed"
               sleep 2
             done
 
-            if [ -z "$LOOPDEV" ]; then
-              echo "Failed to allocate loop device for $ROOTFS_IMG"
+            if [ -z "$loopdev" ]; then
+              echo "Failed to allocate loop device"
               exit 1
             fi
 
-            echo "Using loop device: $LOOPDEV"
-
-            echo "Mounting rootfs..."
-
-            mount "$LOOPDEV" /tmp/rootfs
-
-            echo "Creating IRIS app directories..."
+            mount "$loopdev" /tmp/rootfs
 
             mkdir -p \
               /tmp/rootfs/data/vendor/iris_test_app/input \
               /tmp/rootfs/data/vendor/iris_test_app/output
 
-            echo "Copying IRIS app payload from workspace..."
-
             cp -a \
               "$WORKSPACE/v4l-video-test-app/build/." \
               /tmp/rootfs/data/vendor/iris_test_app/
-
-            echo "Copying video tarball into rootfs without extraction..."
 
             cp -a \
               "$WORKSPACE/downloads/video_clips_iris.tar.gz" \
               /tmp/rootfs/data/vendor/iris_test_app/
 
-            echo "Verifying injected files..."
-
-            ls -larth /tmp/rootfs/data/vendor/iris_test_app
-            ls -larth /tmp/rootfs/data/vendor/iris_test_app/input
-
-            echo "Syncing changes..."
-
             sync
-
-            echo "Unmounting rootfs..."
-
             umount /tmp/rootfs
             trap - EXIT
 
-            echo "IRIS injection completed for $MACHINE."
+            echo "IRIS injection completed for $MACHINE"
           '

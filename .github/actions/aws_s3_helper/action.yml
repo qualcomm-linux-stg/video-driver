@@ -1,4 +1,4 @@
-\name: AWS S3 Helper
+name: AWS S3 Helper
 description: Upload and download files from AWS S3
 
 inputs:
@@ -56,6 +56,26 @@ runs:
       run: |
         set -euo pipefail
 
+        case "$MODE" in
+          single-upload|multi-upload|download)
+            ;;
+          *)
+            echo "::error::Invalid mode: $MODE"
+            exit 1
+            ;;
+        esac
+
+        if [[ "$S3_BUCKET" != [a-z0-9]* ]] ||
+           [[ "$S3_BUCKET" =~ [^a-zA-Z0-9._-] ]]; then
+          echo "::error::Invalid S3 bucket name"
+          exit 1
+        fi
+
+        if [[ "$UPLOAD_LOCATION" == -* ]]; then
+          echo "::error::Invalid upload location"
+          exit 1
+        fi
+
         echo "::group::S3 synchronization"
 
         case "$MODE" in
@@ -68,8 +88,8 @@ runs:
             manifest="$WORKSPACE/presigned_urls.json"
             manifest_parts="$WORKSPACE/.presigned_urls_parts"
 
-            rm -rf "$manifest_parts"
-            mkdir -p "$manifest_parts"
+            rm -rf -- "$manifest_parts"
+            mkdir -p -- "$manifest_parts"
 
             index=0
 
@@ -87,8 +107,6 @@ runs:
               object_key="$UPLOAD_LOCATION/$filename"
               part_file="$manifest_parts/$index.json"
 
-              echo "Uploading $filename"
-
               aws s3 cp \
                 "$resolved_file" \
                 "s3://$S3_BUCKET/$object_key"
@@ -104,8 +122,6 @@ runs:
                 --arg url "$presigned_url" \
                 '{($filename): $url}' > "$part_file"
 
-              echo "Pre-signed URL generated for $filename"
-
               index=$((index + 1))
             done < "$LOCAL_FILE"
 
@@ -115,9 +131,8 @@ runs:
             fi
 
             jq -s 'add // {}' "$manifest_parts"/*.json > "$manifest"
-            rm -rf "$manifest_parts"
+            rm -rf -- "$manifest_parts"
 
-            echo "Generated manifest:"
             jq . "$manifest"
             ;;
 
@@ -143,8 +158,6 @@ runs:
             )"
 
             printf 'presigned_url=%s\n' "$presigned_url" >> "$GITHUB_OUTPUT"
-
-            echo "Uploaded $filename"
             ;;
 
           download)
@@ -153,26 +166,18 @@ runs:
               exit 1
             fi
 
-            mkdir -p "$DOWNLOAD_LOCATION"
+            mkdir -p -- "$DOWNLOAD_LOCATION"
 
             aws s3 cp \
               "s3://$S3_BUCKET/$DOWNLOAD_FILE" \
               "$DOWNLOAD_LOCATION"
-
-            echo "Downloaded $DOWNLOAD_FILE"
-            ;;
-
-          *)
-            echo "::error::Invalid mode: $MODE"
-            echo "Supported modes: single-upload, multi-upload, download"
-            exit 1
             ;;
         esac
 
         echo "::endgroup::"
 
     - name: Upload pre-signed URL manifest
-      if: ${{ inputs.mode == 'multi-upload' }}
+      if: inputs.mode == 'multi-upload'
       uses: actions/upload-artifact@v4
       with:
         name: presigned_urls.json
