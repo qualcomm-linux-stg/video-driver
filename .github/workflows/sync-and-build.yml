@@ -31,10 +31,10 @@ jobs:
     timeout-minutes: 720
 
     runs-on:
-      group: GHA-video-Prd-SelfHosted-RG
+      group: GHA-video-Stg-SelfHosted-RG
       labels:
         - self-hosted
-        - video-prd-u2204-x64-large-od-ephem
+        - video-stg-u2204-x64-large-od-ephem
 
     strategy:
       fail-fast: false
@@ -182,15 +182,13 @@ jobs:
           docker images | grep -- "$DOCKER_IMAGE" || true
 
       - name: Build image
-        uses: qualcomm-linux/video-driver/.github/actions/build@video.qclinux.main
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@testingsecure
         with:
+          machine: ${{ matrix.build_matrix.machine }}
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: bitbake qcom-multimedia-proprietary-image
-        env:
-          MACHINE: ${{ matrix.build_matrix.machine }}
-
-          KAS_LOCAL_CONF_HEADER: |
+          kas_local_conf_header: |
             # === iris-video-dlkm CI override ===
             EXTERNALSRC:pn-iris-video-dlkm = "/workspace/video-driver"
             EXTERNALSRC_BUILD:pn-iris-video-dlkm = "/workspace/video-driver/build_iris"
@@ -216,7 +214,7 @@ jobs:
           mkdir -p "$WORKSPACE/v4l-video-test-app/build"
 
           aws s3 sync \
-            "s3://qli-prd-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/" \
+            "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/" \
             "$WORKSPACE/v4l-video-test-app/build/"
 
           echo "iris_test_app download complete"
@@ -244,7 +242,7 @@ jobs:
           ls -la "$WORKSPACE/downloads"
 
       - name: Inject Iris test app to rootfs
-        uses: qualcomm-linux/video-driver/.github/actions/inject@video.qclinux.main
+        uses: qualcomm-linux-stg/video-driver/.github/actions/inject@testingsecure
         with:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
@@ -305,7 +303,7 @@ jobs:
           cat "$WORKSPACE/artifacts/file_list.txt"
 
       - name: Upload artifacts to S3
-        uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@video.qclinux.main
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@testingsecure
         with:
           s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt

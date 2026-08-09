@@ -3,11 +3,11 @@ name: Qualcomm Preflight Checks
 on:
   pull_request:
     branches:
-      - video.qclinux.main
+      - testingsecure
 
   push:
     branches:
-      - video.qclinux.main
+      - testingsecure
 
   workflow_dispatch:
 

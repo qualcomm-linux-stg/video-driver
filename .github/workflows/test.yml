@@ -46,10 +46,11 @@ jobs:
     name: LAVA test - ${{ matrix.build_matrix.machine }}
 
     runs-on:
-      group: GHA-video-Prd-SelfHosted-RG
+      group: GHA-video-Stg-SelfHosted-RG
       labels:
         - self-hosted
-        - video-prd-u2204-x64-large-od-ephem
+        - video-stg-u2204-x64-large-od-ephem
+
 
     strategy:
       fail-fast: false
@@ -162,7 +163,7 @@ jobs:
 
       - name: Render LAVA job definition
         if: ${{ matrix.build_matrix.lavaname != '' }}
-        uses: qualcomm-linux/video-driver/.github/actions/lava_job_render@video.qclinux.main
+        uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@testingsecure
         with:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
