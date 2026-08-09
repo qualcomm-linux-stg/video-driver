@@ -8,25 +8,27 @@ inputs:
   docker_image:
     description: Docker image to use for rendering
     required: true
+
   machine:
-    description: Target machine name (e.g. qcs9100-ride-sx)
+    description: Target machine name
     required: true
+
   lavaname:
-    description: LAVA device-type name (e.g. qcs9100-ride)
+    description: LAVA device-type name
     required: true
+
   presigned_urls_file:
     description: Absolute path to presigned_urls.json from the build job
     required: true
 
 runs:
-  using: "composite"
+  using: composite
   steps:
-
     - name: Extract presigned URLs for this machine
       id: get_urls
       shell: bash
       env:
-        MACHINE:        ${{ inputs.machine }}
+        MACHINE: ${{ inputs.machine }}
         PRESIGNED_FILE: ${{ inputs.presigned_urls_file }}
       run: |
         set -euo pipefail
@@ -35,213 +37,267 @@ runs:
         rootfs_key="${MACHINE}_rootfs.img"
 
         if [ ! -f "$PRESIGNED_FILE" ]; then
-          echo "❌ presigned_urls.json not found at: $PRESIGNED_FILE"
+          echo "presigned_urls.json not found at: $PRESIGNED_FILE"
           exit 1
         fi
 
         echo "=== presigned_urls.json keys ==="
         jq -r 'keys[]' "$PRESIGNED_FILE"
 
-        flash_url="$(jq -r --arg key "$flash_key" '.[$key] // empty' "$PRESIGNED_FILE")"
-        rootfs_url="$(jq -r --arg key "$rootfs_key" '.[$key] // empty' "$PRESIGNED_FILE")"
+        flash_url="$(
+          jq -r --arg key "$flash_key" '.[$key] // empty' "$PRESIGNED_FILE"
+        )"
+
+        rootfs_url="$(
+          jq -r --arg key "$rootfs_key" '.[$key] // empty' "$PRESIGNED_FILE"
+        )"
 
         if [ -z "$flash_url" ]; then
-          echo "❌ No presigned URL found for key: $flash_key"
+          echo "No presigned URL found for key: $flash_key"
           exit 1
         fi
 
         if [ -z "$rootfs_url" ]; then
-          echo "❌ No presigned URL found for key: $rootfs_key"
+          echo "No presigned URL found for key: $rootfs_key"
           exit 1
         fi
 
-        echo "✅ Resolved flash_url for: $flash_key"
-        echo "✅ Resolved rootfs_url for: $rootfs_key"
-        echo "flash_url=$flash_url"   >> "$GITHUB_OUTPUT"
-        echo "rootfs_url=$rootfs_url" >> "$GITHUB_OUTPUT"
+        echo "Resolved flash URL for: $flash_key"
+        echo "Resolved rootfs URL for: $rootfs_key"
+
+        {
+          echo "flash_url=$flash_url"
+          echo "rootfs_url=$rootfs_url"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Write synthetic cloudData.json and metadata.json
       id: write_json
       shell: bash
       env:
-        MACHINE:    ${{ inputs.machine }}
-        LAVA_NAME:  ${{ inputs.lavaname }}
-        FLASH_URL:  ${{ steps.get_urls.outputs.flash_url }}
+        MACHINE: ${{ inputs.machine }}
+        LAVA_NAME: ${{ inputs.lavaname }}
+        FLASH_URL: ${{ steps.get_urls.outputs.flash_url }}
         ROOTFS_URL: ${{ steps.get_urls.outputs.rootfs_url }}
-        WORKSPACE:  ${{ github.workspace }}
+        WORKSPACE: ${{ github.workspace }}
       run: |
         set -euo pipefail
 
-        JOB_RENDER_DIR="$(dirname "$WORKSPACE")/job_render"
+        job_render_dir="$(dirname "$WORKSPACE")/job_render"
 
-        if [ ! -d "$JOB_RENDER_DIR" ]; then
-          echo "❌ job_render directory not found at: $JOB_RENDER_DIR"
+        if [ ! -d "$job_render_dir" ]; then
+          echo "job_render directory not found at: $job_render_dir"
           ls -la "$(dirname "$WORKSPACE")"
           exit 1
         fi
 
-        DATA_DIR="$JOB_RENDER_DIR/data"
-        mkdir -p "$DATA_DIR"
+        data_dir="$job_render_dir/data"
+
+        mkdir -p "$data_dir"
 
         case "$MACHINE" in
-          qcs9100-ride-sx)  DTB_NAME="qcs9100-ride-r3" ;;
-          qcs8300-ride-sx)  DTB_NAME="qcs8300-ride"    ;;
-          rb3gen2-core-kit) DTB_NAME="qcs6490-rb3gen2" ;;
-          qcs615-ride)      DTB_NAME="qcs615-ride"      ;;
-          sm8750-mtp)       DTB_NAME="sm8750-mtp"       ;;
-          kaanapali-mtp)    DTB_NAME="kaanapali-mtp"    ;;
-          *)                DTB_NAME="$MACHINE"         ;;
+          qcs9100-ride-sx)
+            DTB_NAME="qcs9100-ride-r3"
+            ;;
+          qcs8300-ride-sx)
+            DTB_NAME="qcs8300-ride"
+            ;;
+          rb3gen2-core-kit)
+            DTB_NAME="qcs6490-rb3gen2"
+            ;;
+          qcs615-ride)
+            DTB_NAME="qcs615-ride"
+            ;;
+          sm8750-mtp)
+            DTB_NAME="sm8750-mtp"
+            ;;
+          kaanapali-mtp)
+            DTB_NAME="kaanapali-mtp"
+            ;;
+          *)
+            DTB_NAME="$MACHINE"
+            ;;
         esac
 
-        echo "dtb_name=$DTB_NAME"             >> "$GITHUB_OUTPUT"
-        echo "job_render_dir=$JOB_RENDER_DIR" >> "$GITHUB_OUTPUT"
+        {
+          echo "dtb_name=$DTB_NAME"
+          echo "job_render_dir=$job_render_dir"
+        } >> "$GITHUB_OUTPUT"
 
-        echo "📝 Writing cloudData.json (machine=$MACHINE lavaname=$LAVA_NAME dtb=$DTB_NAME)"
+        echo "Writing cloudData.json"
+        echo "Machine: $MACHINE"
+        echo "LAVA name: $LAVA_NAME"
+        echo "DTB: $DTB_NAME"
 
         jq -n \
-          --arg machine    "$MACHINE" \
-          --arg lavaname   "$LAVA_NAME" \
-          --arg flash_url  "$FLASH_URL" \
+          --arg machine "$MACHINE" \
+          --arg lavaname "$LAVA_NAME" \
+          --arg flash_url "$FLASH_URL" \
           --arg rootfs_url "$ROOTFS_URL" \
           '{
-            "id":     ("ci-" + $machine),
-            "kind":   "kbuild",
-            "name":   ("ci-build-" + $machine),
-            "path":   ["checkout", ("ci-build-" + $machine)],
-            "group":  ("ci-build-" + $machine),
+            "id": ("ci-" + $machine),
+            "kind": "kbuild",
+            "name": ("ci-build-" + $machine),
+            "path": ["checkout", ("ci-build-" + $machine)],
+            "group": ("ci-build-" + $machine),
             "parent": "",
-            "state":  "done",
+            "state": "done",
             "result": "pass",
             "artifacts": {
-              "metadata":    "",
-              "kernel":      "",
-              "vmlinux":     "",
-              "modules":     "",
-              "ramdisk":     "",
-              "firmware":    "",
-              "dtb":         "",
+              "metadata": "",
+              "kernel": "",
+              "vmlinux": "",
+              "modules": "",
+              "ramdisk": "",
+              "firmware": "",
+              "dtb": "",
               "flash_image": $flash_url,
               "rootfs_image": $rootfs_url
             },
             "data": {
               "kernel_revision": {
-                "tree":    "qcom-next",
-                "url":     "",
-                "branch":  "main",
-                "commit":  "",
-                "describe":"",
+                "tree": "qcom-next",
+                "url": "",
+                "branch": "main",
+                "commit": "",
+                "describe": "",
                 "version": {
-                  "version":    0,
+                  "version": 0,
                   "patchlevel": 0,
-                  "sublevel":   null,
-                  "extra":      "",
-                  "name":       null
+                  "sublevel": null,
+                  "extra": "",
+                  "name": null
                 },
-                "patchset":       null,
-                "commit_tags":    [],
+                "patchset": null,
+                "commit_tags": [],
                 "commit_message": "",
-                "tip_of_branch":  true
+                "tip_of_branch": true
               },
-              "arch":        "arm64",
-              "defconfig":   "defconfig",
-              "compiler":    "gcc-12",
-              "error_code":  null,
-              "error_msg":   null,
-              "fragments":   [],
+              "arch": "arm64",
+              "defconfig": "defconfig",
+              "compiler": "gcc-12",
+              "error_code": null,
+              "error_msg": null,
+              "fragments": [],
               "config_full": "defconfig",
-              "platform":    $lavaname,
-              "runtime":     "lava",
-              "job_id":      ("ci-" + $machine),
+              "platform": $lavaname,
+              "runtime": "lava",
+              "job_id": ("ci-" + $machine),
               "job_context": "github-actions",
               "kernel_type": "image",
-              "regression":  null
+              "regression": null
             },
-            "debug":          {},
-            "jobfilter":      null,
-            "platform_filter":[],
-            "owner":          "production",
-            "submitter":      "service:pipeline"
-          }' > "$DATA_DIR/cloudData.json"
+            "debug": {},
+            "jobfilter": null,
+            "platform_filter": [],
+            "owner": "production",
+            "submitter": "service:pipeline"
+          }' > "$data_dir/cloudData.json"
 
-        echo "✅ cloudData.json written"
+        echo "cloudData.json written"
 
-        echo "📝 Writing metadata.json (DTB key: dtbs/qcom/${DTB_NAME}.dtb)"
+        echo "Writing metadata.json"
+
         jq -n \
           --arg dtb_key "dtbs/qcom/${DTB_NAME}.dtb" \
           '{
             "build": {
-              "arch":        "arm64",
-              "compiler":    "gcc-12",
-              "defconfig":   "defconfig",
-              "fragments":   [],
+              "arch": "arm64",
+              "compiler": "gcc-12",
+              "defconfig": "defconfig",
+              "fragments": [],
               "config_full": "defconfig",
-              "result":      "pass"
+              "result": "pass"
             },
             "artifacts": {
               ($dtb_key): ""
             }
-          }' > "$DATA_DIR/metadata.json"
+          }' > "$data_dir/metadata.json"
 
-        echo "✅ metadata.json written"
+        echo "metadata.json written"
 
     - name: Render LAVA job definition
       shell: bash
       env:
         DOCKER_IMAGE: ${{ inputs.docker_image }}
-        MACHINE:      ${{ inputs.machine }}
-        LAVA_NAME:    ${{ inputs.lavaname }}
-        TARGET_DTB:   ${{ steps.write_json.outputs.dtb_name }}
-        WORKSPACE:    ${{ github.workspace }}
+        MACHINE: ${{ inputs.machine }}
+        LAVA_NAME: ${{ inputs.lavaname }}
+        TARGET_DTB: ${{ steps.write_json.outputs.dtb_name }}
+        WORKSPACE: ${{ github.workspace }}
       run: |
         set -euo pipefail
 
-        JOB_RENDER_DIR="$(dirname "$WORKSPACE")/job_render"
-        RENDERS_DIR="$JOB_RENDER_DIR/renders"
-        mkdir -p "$RENDERS_DIR"
+        job_render_dir="$(dirname "$WORKSPACE")/job_render"
+        renders_dir="$job_render_dir/renders"
 
-        echo "🔧 Rendering LAVA job: machine=$MACHINE lavaname=$LAVA_NAME dtb=$TARGET_DTB"
+        mkdir -p "$renders_dir"
+
+        echo "Rendering LAVA job"
+        echo "Machine: $MACHINE"
+        echo "LAVA name: $LAVA_NAME"
+        echo "DTB: $TARGET_DTB"
 
         docker run -i --rm \
-          --workdir="$JOB_RENDER_DIR" \
-          -v "$(dirname "$JOB_RENDER_DIR"):$(dirname "$JOB_RENDER_DIR")" \
-          -e MACHINE="$MACHINE" \
-          -e TARGET="$MACHINE" \
-          -e LAVA_NAME="$LAVA_NAME" \
-          -e TARGET_DTB="$TARGET_DTB" \
-          -e BOOT_METHOD="flasher" \
+          --workdir="$job_render_dir" \
+          -v "$(dirname "$job_render_dir"):$(dirname "$job_render_dir")" \
+          -e "MACHINE=$MACHINE" \
+          -e "TARGET=$MACHINE" \
+          -e "LAVA_NAME=$LAVA_NAME" \
+          -e "TARGET_DTB=$TARGET_DTB" \
+          -e "BOOT_METHOD=flasher" \
           "$DOCKER_IMAGE" \
           bash -c '
             set -euo pipefail
+
             export BOOT_METHOD=flasher
+
             python3 lava_Job_definition_generator.py \
               --localjson ./data/cloudData.json \
               --meta-qcom \
               --video_pre-merge
           '
 
-        echo "✅ LAVA job definition rendered"
+        echo "LAVA job definition rendered"
 
     - name: Patch device_type in rendered YAML
       shell: bash
       env:
-        MACHINE:   ${{ inputs.machine }}
+        MACHINE: ${{ inputs.machine }}
         LAVA_NAME: ${{ inputs.lavaname }}
         WORKSPACE: ${{ github.workspace }}
       run: |
         set -euo pipefail
 
-        JOB_RENDER_DIR="$(dirname "$WORKSPACE")/job_render"
-        YAML="$JOB_RENDER_DIR/renders/lava_job_definition.yaml"
+        job_render_dir="$(dirname "$WORKSPACE")/job_render"
+        yaml_file="$job_render_dir/renders/lava_job_definition.yaml"
 
-        if [ ! -f "$YAML" ]; then
-          echo "❌ Rendered YAML not found: $YAML"
+        if [ ! -f "$yaml_file" ]; then
+          echo "Rendered YAML not found: $yaml_file"
           exit 1
         fi
 
-        echo "🔧 Patching device_type: $MACHINE → $LAVA_NAME"
-        sudo chown "$(id -u):$(id -g)" "$YAML" || true
-        sed -i "s|^device_type:.*|device_type: ${LAVA_NAME}|" "$YAML"
+        echo "Patching device_type: $MACHINE -> $LAVA_NAME"
 
-        echo "✅ device_type patched"
+        sudo chown "$(id -u):$(id -g)" "$yaml_file" || true
+
+        python3 - "$yaml_file" "$LAVA_NAME" <<'PY'
+        import pathlib
+        import sys
+
+        yaml_path = pathlib.Path(sys.argv[1])
+        lava_name = sys.argv[2]
+
+        lines = yaml_path.read_text().splitlines()
+
+        for index, line in enumerate(lines):
+            if line.startswith("device_type:"):
+                lines[index] = f"device_type: {lava_name}"
+                break
+        else:
+            raise SystemExit("device_type entry was not found")
+
+        yaml_path.write_text("\n".join(lines) + "\n")
+        PY
+
+        echo "device_type patched"
         echo "=== Rendered YAML ==="
-        cat "$YAML"
+        cat "$yaml_file"

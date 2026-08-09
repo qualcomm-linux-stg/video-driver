@@ -1,4 +1,4 @@
-name: AWS S3 Helper
+\name: AWS S3 Helper
 description: Upload and download files from AWS S3
 
 inputs:

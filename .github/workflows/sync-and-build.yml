@@ -220,6 +220,7 @@ jobs:
             "$WORKSPACE/v4l-video-test-app/build/"
 
           echo "iris_test_app download complete"
+
           ls -la "$WORKSPACE/v4l-video-test-app/build/"
 
       - name: Download video contents
@@ -281,6 +282,7 @@ jobs:
           ls -larth "$resolved_dir"
 
           mkdir -p "$WORKSPACE/artifacts"
+
           : > "$WORKSPACE/artifacts/file_list.txt"
 
           flash_tar="$WORKSPACE/${MACHINE}_flash_files.tar"
@@ -323,6 +325,8 @@ jobs:
         env:
           WORKSPACE: ${{ github.workspace }}
         run: |
+          set -euo pipefail
+
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
@@ -337,10 +341,11 @@ jobs:
           MACHINE: ${{ matrix.build_matrix.machine }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
           EVENT_NAME: ${{ github.event_name }}
+          JOB_STATUS: ${{ job.status }}
         run: |
           set -u
 
-          if [ "${{ job.status }}" = "success" ]; then
+          if [ "$JOB_STATUS" = "success" ]; then
             summary=":heavy_check_mark: Build Success"
           else
             summary=":x: Build Failed"
@@ -348,11 +353,11 @@ jobs:
 
           {
             echo "<details><summary><i>Build Summary</i></summary>"
-            echo ""
+            echo
             echo "$summary for $MACHINE"
-            echo ""
+            echo
             echo "**Event:** \`$EVENT_NAME\`"
             echo "**Commit:** \`$COMMIT_SHA\`"
-            echo ""
+            echo
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
