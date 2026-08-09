@@ -19,7 +19,7 @@ on:
 
 permissions:
   contents: read
-  actions: write
+  actions: read
 
 jobs:
   loading:
@@ -32,7 +32,7 @@ jobs:
     name: Build
     needs:
       - loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.main
+    uses: qualcomm-linux/video-drive/.github/workflows/sync-and-build.yml@video.qclinux.main
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
@@ -51,7 +51,7 @@ jobs:
     name: OWL parallel kernel and video-driver build
     needs:
       - loading
-    uses: ./.github/workflows/owl_build.yml
+    uses: qualcomm-linux/video-drive/.github/workflows/owl_build.yml@video.qclinux.main
 
   create-metadata:
     name: Create build metadata
@@ -66,6 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           mkdir -p "$GITHUB_WORKSPACE/metadata"
 
       - name: Generate build metadata
@@ -74,13 +75,17 @@ jobs:
           BUILD_MATRIX: ${{ needs.loading.outputs.build_matrix }}
           DOCKER_IMAGE: kmake-image:ver.1.0
           EVENT_NAME: ${{ github.event_name }}
+
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+
           GITHUB_SHA_VALUE: ${{ github.sha }}
           GITHUB_REPOSITORY_VALUE: ${{ github.repository }}
+
           BUILD_RUN_ID: ${{ github.run_id }}
           BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
-          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+
         run: |
           set -euo pipefail
 
@@ -118,6 +123,11 @@ jobs:
           fi
 
           echo "$BUILD_MATRIX" | jq empty
+
+          if [ "$(echo "$BUILD_MATRIX" | jq -r 'type')" != "array" ]; then
+            echo "::error::Build matrix must be a JSON array"
+            exit 1
+          fi
 
           jq -n \
             --arg docker_image "$DOCKER_IMAGE" \

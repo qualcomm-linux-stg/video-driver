@@ -9,7 +9,7 @@ on:
         required: true
 
       build_matrix:
-        description: Build matrix for multi target builds
+        description: Build matrix for multi-target builds
         type: string
         required: true
 
@@ -22,6 +22,9 @@ on:
         description: Repository containing the commit to build
         type: string
         required: true
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -41,19 +44,22 @@ jobs:
     steps:
       - name: Pre-clean workspace
         shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
           set -euo pipefail
 
           echo "=== Disk before clean ==="
           df -h
 
-          rm -rf "${{ github.workspace }}/build/tmp" || true
-          rm -f "$(dirname "${{ github.workspace }}")/kas_local_conf_header.txt" || true
+          rm -rf "$WORKSPACE/build/tmp" || true
+          rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
           echo "=== Disk after clean ==="
           df -h
+
           free -h
-      
+
       - name: Validate build inputs
         shell: bash
         env:
@@ -89,51 +95,55 @@ jobs:
         env:
           EXPECTED_SHA: ${{ inputs.commit_sha }}
           EXPECTED_REPOSITORY: ${{ inputs.source_repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
-          ACTUAL_SHA="$(git rev-parse HEAD)"
+          actual_sha="$(git rev-parse HEAD)"
 
           echo "========================================"
-          echo "Event      : ${{ github.event_name }}"
+          echo "Event      : $EVENT_NAME"
           echo "Repository : $EXPECTED_REPOSITORY"
           echo "Input SHA  : $EXPECTED_SHA"
-          echo "HEAD SHA   : $ACTUAL_SHA"
-          echo "Branch     : ${{ github.ref_name }}"
+          echo "HEAD SHA   : $actual_sha"
+          echo "Branch     : $REF_NAME"
           echo "Commit msg : $(git log -1 --pretty=format:'%s')"
           echo "Author     : $(git log -1 --pretty=format:'%an <%ae>')"
           echo "Date       : $(git log -1 --pretty=format:'%ci')"
           echo "========================================"
 
-          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+          if [ "$actual_sha" != "$EXPECTED_SHA" ]; then
             echo "::error::SHA mismatch"
             echo "Expected: $EXPECTED_SHA"
-            echo "Actual  : $ACTUAL_SHA"
+            echo "Actual  : $actual_sha"
             exit 1
           fi
 
-          echo "✅ Correct repository and commit checked out"
+          echo "Correct repository and commit checked out"
 
-      - name: Clone meta-qcom as sibling repo
+      - name: Clone meta-qcom as sibling repository
         shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
           set -euo pipefail
 
-          PARENT_DIR="$(dirname "${{ github.workspace }}")"
-          META_QCOM_DIR="${PARENT_DIR}/meta-qcom"
+          parent_dir="$(dirname "$WORKSPACE")"
+          meta_qcom_dir="$parent_dir/meta-qcom"
 
-          rm -rf "$META_QCOM_DIR"
+          rm -rf "$meta_qcom_dir"
 
           git clone \
             --depth 1 \
             https://github.com/qualcomm-linux/meta-qcom \
-            "$META_QCOM_DIR"
+            "$meta_qcom_dir"
 
           echo "=== Parent workspace ==="
-          ls -la "$PARENT_DIR"
+          ls -la "$parent_dir"
 
           echo "=== meta-qcom/ci ==="
-          ls -la "$META_QCOM_DIR/ci" || true
+          ls -la "$meta_qcom_dir/ci" || true
 
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
@@ -160,23 +170,25 @@ jobs:
 
       - name: Retag Docker image
         shell: bash
+        env:
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
         run: |
           set -euo pipefail
 
           docker tag \
-            "artifacts.codelinaro.org/clo-420-qli-registry/${{ inputs.docker_image }}" \
-            "${{ inputs.docker_image }}" || true
+            "artifacts.codelinaro.org/clo-420-qli-registry/$DOCKER_IMAGE" \
+            "$DOCKER_IMAGE" || true
 
-          docker images | grep "${{ inputs.docker_image }}" || true
+          docker images | grep -- "$DOCKER_IMAGE" || true
 
-      - name: Build ${{ matrix.build_matrix.machine }}
+      - name: Build image
         uses: qualcomm-linux/video-driver/.github/actions/build@video.qclinux.main
         with:
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: bitbake qcom-multimedia-proprietary-image
         env:
-          machine: ${{ matrix.build_matrix.machine }}
+          MACHINE: ${{ matrix.build_matrix.machine }}
 
           KAS_LOCAL_CONF_HEADER: |
             # === iris-video-dlkm CI override ===
@@ -196,17 +208,19 @@ jobs:
 
       - name: Download iris_test_app from S3
         shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
           set -euo pipefail
 
-          mkdir -p "${{ github.workspace }}/v4l-video-test-app/build"
+          mkdir -p "$WORKSPACE/v4l-video-test-app/build"
 
           aws s3 sync \
-            "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/" \
-            "${{ github.workspace }}/v4l-video-test-app/build/"
+            "s3://qli-prd-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/" \
+            "$WORKSPACE/v4l-video-test-app/build/"
 
-          echo "✅ iris_test_app download complete"
-          ls -la "${{ github.workspace }}/v4l-video-test-app/build/"
+          echo "iris_test_app download complete"
+          ls -la "$WORKSPACE/v4l-video-test-app/build/"
 
       - name: Download video contents
         shell: bash
@@ -291,14 +305,12 @@ jobs:
       - name: Upload artifacts to S3
         uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@video.qclinux.main
         with:
-          s3_bucket: qli-prd-video-gh-artifacts
+          s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.build_matrix.machine }}
-        env:
-          machine: ${{ matrix.build_matrix.machine }}
 
-      - name: Upload machine-specific presigned URLs
+      - name: Upload machine-specific pre-signed URLs
         uses: actions/upload-artifact@v4
         with:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
@@ -308,13 +320,15 @@ jobs:
       - name: Clean up
         if: always()
         shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
-          rm -rf "${{ github.workspace }}/artifacts" || true
-          rm -rf "${{ github.workspace }}/build" || true
-          rm -rf "${{ github.workspace }}/downloads" || true
-          rm -f "${{ github.workspace }}/"*_flash_files.tar || true
-          rm -f "${{ github.workspace }}/"*_rootfs.img || true
-          rm -f "$(dirname "${{ github.workspace }}")/kas_local_conf_header.txt" || true
+          rm -rf "$WORKSPACE/artifacts" || true
+          rm -rf "$WORKSPACE/build" || true
+          rm -rf "$WORKSPACE/downloads" || true
+          rm -f "$WORKSPACE/"*_flash_files.tar || true
+          rm -f "$WORKSPACE/"*_rootfs.img || true
+          rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
       - name: Update summary
         if: always()
@@ -322,6 +336,7 @@ jobs:
         env:
           MACHINE: ${{ matrix.build_matrix.machine }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -u
 
@@ -336,7 +351,7 @@ jobs:
             echo ""
             echo "$summary for $MACHINE"
             echo ""
-            echo "**Event:** \`${{ github.event_name }}\`"
+            echo "**Event:** \`$EVENT_NAME\`"
             echo "**Commit:** \`$COMMIT_SHA\`"
             echo ""
             echo "</details>"
