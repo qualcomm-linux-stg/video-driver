@@ -187,7 +187,7 @@ jobs:
           machine: ${{ matrix.build_matrix.machine }}
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
-          build_command: bitbake qcom-multimedia-proprietary-image
+          build_command: ${{ matrix.build_matrix.build_command }}
 
           kas_local_conf_header: |
             # === Enable ADB daemon ===
@@ -256,13 +256,19 @@ jobs:
         env:
           WORKSPACE: ${{ github.workspace }}
           MACHINE: ${{ matrix.build_matrix.machine }}
+          IMAGE_NAME: ${{ matrix.build_matrix.image_name }}
         run: |
           set -euo pipefail
 
-          symlink_path="$WORKSPACE/build/tmp/deploy/images/$MACHINE/qcom-multimedia-proprietary-image-${MACHINE}.rootfs.qcomflash"
+          echo "Machine:    $MACHINE"
+          echo "Image name: $IMAGE_NAME"
+
+          symlink_path="$WORKSPACE/build/tmp/deploy/images/$MACHINE/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
 
           if [ ! -L "$symlink_path" ]; then
             echo "::error::qcomflash symlink not found: $symlink_path"
+            echo "=== Available deploy image files ==="
+            ls -larth "$WORKSPACE/build/tmp/deploy/images/$MACHINE" || true
             exit 1
           fi
 
@@ -320,13 +326,6 @@ jobs:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}/presigned_urls.json
           retention-days: 7
-      
-      - name: Upload machine-specific pre-signed URLs
-        uses: actions/upload-artifact@v4
-        with:
-          name: presigned-urls-${{ matrix.build_matrix.machine }}
-          path: ${{ github.workspace }}/presigned_urls.json
-          retention-days: 7
 
       - name: Upload flash files
         uses: actions/upload-artifact@v4
@@ -344,7 +343,6 @@ jobs:
           retention-days: 7
           compression-level: 0
 
-
       - name: Clean up
         if: always()
         shell: bash
@@ -359,7 +357,6 @@ jobs:
           rm -f "$WORKSPACE/"*_flash_files.tar || true
           rm -f "$WORKSPACE/"*_rootfs.img || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
-      
 
       - name: Update summary
         if: always()
