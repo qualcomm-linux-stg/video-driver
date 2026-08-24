@@ -47,11 +47,11 @@ jobs:
             && github.event.pull_request.head.repo.full_name
             || github.repository }}
 
-  owl_build:
-    name: OWL parallel kernel and video-driver build
-    needs:
-      - loading
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/owl_build.yml@kodiak_testing
+  #owl_build:
+   #name: OWL parallel kernel and video-driver build
+    #needs:
+    #  - loading
+    #uses: qualcomm-linux-stg/video-driver/.github/workflows/owl_build.yml@kodiak_testing
 
   create-metadata:
     name: Create build metadata
