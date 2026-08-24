@@ -226,7 +226,11 @@ jobs:
           echo "Qcomflash dir     : $qcomflash_dir"
 
           rm -rf "$deploy_dir"
+          rm -f "$archive_path"
           mkdir -p "$extract_dir"
+
+          echo "=== Disk before download ==="
+          df -h "$WORKSPACE" || true
 
           aws s3 cp \
             "$S3_PREFIX/$PREBUILT_ARTIFACT" \
@@ -240,6 +244,13 @@ jobs:
           echo "=== Downloaded artifact ==="
           ls -lh "$archive_path"
 
+          echo "=== Validating gzip artifact ==="
+          gzip -t "$archive_path"
+
+          echo "=== Validating tar contents ==="
+          tar -tzf "$archive_path" >/dev/null
+
+          echo "=== Extracting artifact ==="
           tar -xzf "$archive_path" -C "$extract_dir"
 
           echo "=== Extracted artifact structure ==="
@@ -249,6 +260,8 @@ jobs:
 
           if [ -z "$rootfs_img" ]; then
             echo "::error::rootfs.img not found in extracted artifact: $PREBUILT_ARTIFACT"
+            echo "=== Extracted files ==="
+            find "$extract_dir" -maxdepth 5 -print | sort || true
             exit 1
           fi
 
@@ -256,10 +269,27 @@ jobs:
 
           echo "Resolved qcomflash source dir: $resolved_dir"
 
+          if [ ! -d "$resolved_dir" ]; then
+            echo "::error::Resolved qcomflash source directory not found: $resolved_dir"
+            exit 1
+          fi
+
           rm -rf "$qcomflash_dir"
           mkdir -p "$qcomflash_dir"
 
-          shoptflash directory not found: $qcomflash_dir [ ! -f "$qcomflash_dir/rootfs.img" ]; then
+          shopt -s dotglob nullglob
+          mv "$resolved_dir"/* "$qcomflash_dir"/
+          shopt -u dotglob nullglob
+
+          rm -rf "$extract_dir"
+          rm -f "$archive_path"
+
+          if [ ! -d "$qcomflash_dir" ]; then
+            echo "::error::Final qcomflash directory not found: $qcomflash_dir"
+            exit 1
+          fi
+
+          if [ ! -f "$qcomflash_dir/rootfs.img" ]; then
             echo "::error::rootfs.img missing after qcomflash setup: $qcomflash_dir/rootfs.img"
             exit 1
           fi
