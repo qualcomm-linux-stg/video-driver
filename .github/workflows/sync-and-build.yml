@@ -54,6 +54,11 @@ jobs:
 
           rm -rf "$WORKSPACE/build/tmp" || true
           rm -rf "$WORKSPACE/build" || true
+          rm -rf "$WORKSPACE/downloads" || true
+          rm -rf "$WORKSPACE/artifacts" || true
+          rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
+          rm -f "$WORKSPACE/"*_flash_files.tar || true
+          rm -f "$WORKSPACE/"*_rootfs.img || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
           echo "=== Disk after clean ==="
@@ -82,6 +87,59 @@ jobs:
 
           echo "Source repository: $SOURCE_REPOSITORY"
           echo "Commit SHA:       $COMMIT_SHA"
+
+      - name: Validate matrix entry
+        shell: bash
+        env:
+          MACHINE: ${{ matrix.build_matrix.machine }}
+          IMAGE_NAME: ${{ matrix.build_matrix.image_name }}
+          PREBUILT_ARTIFACT: ${{ matrix.build_matrix.prebuilt_artifact }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$MACHINE" ]; then
+            echo "::error::matrix.build_matrix.machine is empty"
+            exit 1
+          fi
+
+          if [ -z "$IMAGE_NAME" ]; then
+            echo "::error::matrix.build_matrix.image_name is empty"
+            exit 1
+          fi
+
+          if [ -z "$PREBUILT_ARTIFACT" ]; then
+            echo "::error::matrix.build_matrix.prebuilt_artifact is empty for machine: $MACHINE"
+            exit 1
+          fi
+
+          if [[ "$MACHINE" =~ [[:space:]\;\&\|\<\>\`\'\"] ]]; then
+            echo "::error::Invalid machine value: $MACHINE"
+            exit 1
+          fi
+
+          if [[ "$IMAGE_NAME" =~ [[:space:]\;\&\|\<\>\`\'\"] ]]; then
+            echo "::error::Invalid image_name value: $IMAGE_NAME"
+            exit 1
+          fi
+
+          if [[ "$PREBUILT_ARTIFACT" =~ [[:space:]\;\&\|\<\>\`\'\"] ]]; then
+            echo "::error::Invalid prebuilt_artifact value: $PREBUILT_ARTIFACT"
+            exit 1
+          fi
+
+          case "$PREBUILT_ARTIFACT" in
+            *.rootfs.qcomflash.tar.gz)
+              ;;
+            *)
+              echo "::error::prebuilt_artifact must end with .rootfs.qcomflash.tar.gz"
+              echo "::error::Current value: $PREBUILT_ARTIFACT"
+              exit 1
+              ;;
+          esac
+
+          echo "Machine           : $MACHINE"
+          echo "Image name        : $IMAGE_NAME"
+          echo "Prebuilt artifact : $PREBUILT_ARTIFACT"
 
       - name: Checkout exact HEAD commit
         uses: actions/checkout@v4
@@ -130,23 +188,6 @@ jobs:
           image: ${{ inputs.docker_image }}
           registry: artifacts.codelinaro.org/clo-420-qli-registry
 
-      - name: Add swap space
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if sudo swapon --show | grep -q '/swapfile'; then
-            echo "Swap already enabled"
-          else
-            sudo fallocate -l 16G /swapfile
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile
-          fi
-
-          echo "=== Memory ==="
-          free -h
-
       - name: Retag Docker image
         shell: bash
         env:
@@ -160,7 +201,7 @@ jobs:
 
           docker images | grep -- "$DOCKER_IMAGE" || true
 
-      - name: Download prebuilt qcomflash artifact
+      - name: Download prebuilt qcomflash artifact from S3
         shell: bash
         env:
           WORKSPACE: ${{ github.workspace }}
@@ -172,62 +213,62 @@ jobs:
 
           S3_PREFIX="s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/nightlybuild"
 
-          echo "Machine          : $MACHINE"
-          echo "Image name       : $IMAGE_NAME"
-          echo "Prebuilt artifact: ${PREBUILT_ARTIFACT:-<not configured>}"
-
-          if [ -z "${PREBUILT_ARTIFACT:-}" ]; then
-            echo "::error::No prebuilt artifact configured for machine: $MACHINE"
-            echo "::error::Expected artifact location: $S3_PREFIX"
-            exit 1
-          fi
-
           deploy_dir="$WORKSPACE/build/tmp/deploy/images/$MACHINE"
-          qcomflash_dir="$deploy_dir/prebuilt-qcomflash"
+          extract_dir="$deploy_dir/prebuilt-qcomflash"
+          qcomflash_dir="$deploy_dir/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
           archive_path="$WORKSPACE/$PREBUILT_ARTIFACT"
-          symlink_path="$deploy_dir/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
+
+          echo "Machine           : $MACHINE"
+          echo "Image name        : $IMAGE_NAME"
+          echo "Prebuilt artifact : $PREBUILT_ARTIFACT"
+          echo "S3 source         : $S3_PREFIX/$PREBUILT_ARTIFACT"
+          echo "Deploy dir        : $deploy_dir"
+          echo "Qcomflash dir     : $qcomflash_dir"
 
           rm -rf "$deploy_dir"
-          mkdir -p "$qcomflash_dir"
-
-          echo "Downloading:"
-          echo "$S3_PREFIX/$PREBUILT_ARTIFACT"
+          mkdir -p "$extract_dir"
 
           aws s3 cp \
             "$S3_PREFIX/$PREBUILT_ARTIFACT" \
             "$archive_path"
 
           if [ ! -s "$archive_path" ]; then
-            echo "::error::Prebuilt qcomflash artifact was not downloaded"
+            echo "::error::Artifact download failed or file is empty: $archive_path"
             exit 1
           fi
 
           echo "=== Downloaded artifact ==="
           ls -lh "$archive_path"
 
-          echo "=== Extracting artifact ==="
-          tar -xzf "$archive_path" -C "$qcomflash_dir"
+          tar -xzf "$archive_path" -C "$extract_dir"
 
-          rootfs_img="$(find "$qcomflash_dir" -type f -name rootfs.img -print -quit || true)"
+          echo "=== Extracted artifact structure ==="
+          find "$extract_dir" -maxdepth 4 -print | sort || true
+
+          rootfs_img="$(find "$extract_dir" -type f -name rootfs.img -print -quit)"
 
           if [ -z "$rootfs_img" ]; then
-            echo "::error::rootfs.img was not found in $PREBUILT_ARTIFACT"
-            echo "=== Extracted files ==="
-            find "$qcomflash_dir" -maxdepth 5 -type f -print || true
+            echo "::error::rootfs.img not found in extracted artifact: $PREBUILT_ARTIFACT"
             exit 1
           fi
 
           resolved_dir="$(dirname "$rootfs_img")"
 
-          ln -s "$resolved_dir" "$symlink_path"
+          echo "Resolved qcomflash source dir: $resolved_dir"
 
-          echo "=== qcomflash contents ==="
-          ls -larth "$resolved_dir"
+          rm -rf "$qcomflash_dir"
+          mkdir -p "$qcomflash_dir"
 
-          echo "=== qcomflash symlink ==="
-          ls -l "$symlink_path"
+          shoptflash directory not found: $qcomflash_dir [ ! -f "$qcomflash_dir/rootfs.img" ]; then
+            echo "::error::rootfs.img missing after qcomflash setup: $qcomflash_dir/rootfs.img"
+            exit 1
+          fi
 
-          rm -f "$archive_path"
+          echo "=== Final deploy image directory ==="
+          find "$deploy_dir" -maxdepth 2 -print | sort || true
+
+          echo "=== Final qcomflash contents ==="
+          ls -larth "$qcomflash_dir"
 
       - name: Download iris_test_app from S3
         shell: bash
@@ -259,12 +300,12 @@ jobs:
             "https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz" \
             -O "$WORKSPACE/downloads/video_clips_iris.tar.gz"
 
-          if [ ! -s "$WORKSPACE/downloads/video_clips_iris.tar.gz" ]; then
+          if [ ! -f "$WORKSPACE/downloads/video_clips_iris.tar.gz" ]; then
             echo "::error::Video contents download failed"
             exit 1
           fi
 
-          ls -lh "$WORKSPACE/downloads/video_clips_iris.tar.gz"
+          ls -la "$WORKSPACE/downloads"
 
       - name: Inject Iris test app to rootfs
         uses: qualcomm-linux-stg/video-driver/.github/actions/inject@kodiak_testing
@@ -284,18 +325,17 @@ jobs:
           echo "Machine:    $MACHINE"
           echo "Image name: $IMAGE_NAME"
 
-          symlink_path="$WORKSPACE/build/tmp/deploy/images/$MACHINE/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
+          deploy_dir="$WORKSPACE/build/tmp/deploy/images/$MACHINE"
+          qcomflash_path="$deploy_dir/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
 
-          if [ ! -L "$symlink_path" ]; then
-            echo "::error::qcomflash symlink not found: $symlink_path"
+          if [ ! -e "$qcomflash_path" ]; then
+            echo "::error::qcomflash path not found: $qcomflash_path"
             echo "=== Available deploy image files ==="
-            find "$WORKSPACE/build/tmp/deploy/images/$MACHINE" \
-              -maxdepth 3 \
-              -ls || true
+            find "$deploy_dir" -maxdepth 3 -print | sort || true
             exit 1
           fi
 
-          resolved_dir="$(readlink -f "$symlink_path")"
+          resolved_dir="$(readlink -f "$qcomflash_path")"
 
           if [ ! -d "$resolved_dir" ]; then
             echo "::error::Resolved qcomflash directory not found: $resolved_dir"
@@ -335,6 +375,9 @@ jobs:
           echo "=== Artifact file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
 
+          echo "=== Generated artifacts ==="
+          ls -lh "$flash_tar" "$rootfs_dest"
+
       - name: Upload artifacts to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@kodiak_testing
         with:
@@ -349,6 +392,7 @@ jobs:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}/presigned_urls.json
           retention-days: 7
+          if-no-files-found: warn
 
       - name: Upload flash files
         uses: actions/upload-artifact@v4
@@ -357,6 +401,7 @@ jobs:
           path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_flash_files.tar
           retention-days: 7
           compression-level: 0
+          if-no-files-found: error
 
       - name: Upload rootfs
         uses: actions/upload-artifact@v4
@@ -365,6 +410,7 @@ jobs:
           path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_rootfs.img
           retention-days: 7
           compression-level: 0
+          if-no-files-found: error
 
       - name: Clean up
         if: always()
@@ -377,6 +423,7 @@ jobs:
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
+          rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
           rm -f "$WORKSPACE/"*_flash_files.tar || true
           rm -f "$WORKSPACE/"*_rootfs.img || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
@@ -386,17 +433,17 @@ jobs:
         shell: bash
         env:
           MACHINE: ${{ matrix.build_matrix.machine }}
-          LAVA_NAME: ${{ matrix.build_matrix.lavaname }}
           COMMIT_SHA: ${{ inputs.commit_sha }}
           EVENT_NAME: ${{ github.event_name }}
           JOB_STATUS: ${{ job.status }}
+          PREBUILT_ARTIFACT: ${{ matrix.build_matrix.prebuilt_artifact }}
         run: |
           set -u
 
           if [ "$JOB_STATUS" = "success" ]; then
-            summary=":heavy_check_mark: Prebuilt artifact processing successful"
+            summary=":heavy_check_mark: Prebuilt RootFS Injection Success"
           else
-            summary=":x: Prebuilt artifact processing failed"
+            summary=":x: Prebuilt RootFS Injection Failed"
           fi
 
           {
@@ -404,9 +451,10 @@ jobs:
             echo
             echo "$summary for $MACHINE"
             echo
-            echo "**LAVA name:** \`$LAVA_NAME\`"
             echo "**Event:** \`$EVENT_NAME\`"
             echo "**Commit:** \`$COMMIT_SHA\`"
+            echo "**Machine:** \`$MACHINE\`"
+            echo "**Prebuilt artifact:** \`$PREBUILT_ARTIFACT\`"
             echo
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
