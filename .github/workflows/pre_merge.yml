@@ -58,7 +58,6 @@ jobs:
     needs:
       - loading
       - build
-      - owl_build
     runs-on: ubuntu-latest
 
     steps:
