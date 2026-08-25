@@ -13,6 +13,6 @@
     "lavaname": "qcs6490-rb3gen2",
     "build_command": "bitbake qcom-multimedia-proprietary-image",
     "image_name": "qcom-multimedia-proprietary-image",
-    "prebuilt_artifact": "qcom-multimedia-proprietary-image-qcm6490-idp.rootfs.qcomflash.tar.gz"
+    "prebuilt_artifact": "qcom-multimedia-proprietary-image-rb3gen2-core-kit.rootfs.qcomflash.tar.gz"
   }
 }
