@@ -20,9 +20,8 @@ inputs:
 
 runs:
   using: composite
-
   steps:
-    - name: Extract presigned URL for complete qcomflash
+    - name: Extract presigned flash URL
       id: extract_urls
       shell: bash
       env:
@@ -41,7 +40,24 @@ runs:
         jq empty "$PRESIGNED_FILE"
 
         echo "=== Presigned URL keys ==="
-        jq -r 'keys[]' "$P
+        jq -r 'keys[]' "$PRESIGNED_FILE"
+
+        flash_url="$(
+          jq -r --arg key "$flash_key" '.[$key] // empty' "$PRESIGNED_FILE"
+        )"
+
+        if [ -z "$flash_url" ]; then
+          echo "::error::Complete flash artifact URL is missing"
+          echo "::error::Expected key: $flash_key"
+          exit 1
+        fi
+
+        echo "Complete flash artifact found: $flash_key"
+        printf 'flash_url=%s\n' "$flash_url" >> "$GITHUB_OUTPUT"
+
+    - name: Write synthetic cloudData.json and metadata.json
+      id: write_json
+      shell: bash
       env:
         MACHINE: ${{ inputs.machine }}
         LAVA_NAME: ${{ inputs.lavaname }}
@@ -51,13 +67,13 @@ runs:
         set -euo pipefail
 
         job_render_dir="$(dirname "$WORKSPACE")/job_render"
+        data_dir="$job_render_dir/data"
 
         if [ ! -d "$job_render_dir" ]; then
           echo "::error::job_render directory was not found: $job_render_dir"
           exit 1
         fi
 
-        data_dir="$job_render_dir/data"
         mkdir -p "$data_dir"
 
         case "$MACHINE" in
@@ -199,7 +215,6 @@ runs:
           "$DOCKER_IMAGE" \
           bash -c '
             set -euo pipefail
-
             export BOOT_METHOD=flasher
 
             python3 lava_Job_definition_generator.py \
@@ -208,10 +223,6 @@ runs:
               --video_pre-merge
           '
 
-        echo "=== Render output ==="
-        find "$job_render_dir" -maxdepth 4 -type f -print | sort
-
-    # This step must remain immediately after Render LAVA job definition.
     - name: Patch device_type in rendered YAML
       shell: bash
       env:
@@ -224,17 +235,9 @@ runs:
         job_render_dir="$(dirname "$WORKSPACE")/job_render"
         yaml_file="$job_render_dir/renders/lava_job_definition.yaml"
 
-        echo "Expected rendered YAML: $yaml_file"
-
         if [ ! -f "$yaml_file" ]; then
           echo "::error::Rendered YAML not found: $yaml_file"
-          echo "=== Render directory contents ==="
           find "$job_render_dir" -maxdepth 5 -type f -print | sort || true
-          exit 1
-        fi
-
-        if [ ! -s "$yaml_file" ]; then
-          echo "::error::Rendered YAML is empty: $yaml_file"
           exit 1
         fi
 
@@ -248,6 +251,3 @@ runs:
 
         echo "Patched device_type for $MACHINE"
         grep -n '^device_type:' "$yaml_file"
-
-        echo "=== Final rendered YAML ==="
-        sed -n '1,80p' "$yaml_file"
