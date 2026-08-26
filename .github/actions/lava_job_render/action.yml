@@ -20,8 +20,9 @@ inputs:
 
 runs:
   using: composite
+
   steps:
-    - name: Extract presigned URLs for this machine
+    - name: Extract presigned URL for complete qcomflash
       id: extract_urls
       shell: bash
       env:
@@ -40,30 +41,11 @@ runs:
         jq empty "$PRESIGNED_FILE"
 
         echo "=== Presigned URL keys ==="
-        jq -r 'keys[]' "$PRESIGNED_FILE"
-
-        flash_url="$(
-          jq -r --arg key "$flash_key" '.[$key] // empty' "$PRESIGNED_FILE"
-        )"
-
-        if [ -z "$flash_url" ]; then
-          echo "::error::Complete flash artifact URL is missing"
-          echo "::error::Expected key: $flash_key"
-          exit 1
-        fi
-
-        echo "Complete flash artifact found: $flash_key"
-
-        printf 'flash_url=%s\n' "$flash_url" >> "$GITHUB_OUTPUT"
-
-    - name: Write synthetic cloudData.json and metadata.json
-      id: write_json
-      shell: bash
+        jq -r 'keys[]' "$P
       env:
         MACHINE: ${{ inputs.machine }}
         LAVA_NAME: ${{ inputs.lavaname }}
-        FLASH_URL: ${{ steps.get_urls.outputs.flash_url }}
-        ROOTFS_URL: ${{ steps.get_urls.outputs.rootfs_url }}
+        FLASH_URL: ${{ steps.extract_urls.outputs.flash_url }}
         WORKSPACE: ${{ github.workspace }}
       run: |
         set -euo pipefail
@@ -71,12 +53,12 @@ runs:
         job_render_dir="$(dirname "$WORKSPACE")/job_render"
 
         if [ ! -d "$job_render_dir" ]; then
-          echo "::error::job_render directory was not found"
+          echo "::error::job_render directory was not found: $job_render_dir"
           exit 1
         fi
 
         data_dir="$job_render_dir/data"
-        mkdir -p -- "$data_dir"
+        mkdir -p "$data_dir"
 
         case "$MACHINE" in
           qcs9100-ride-sx)
@@ -109,7 +91,6 @@ runs:
           --arg machine "$MACHINE" \
           --arg lavaname "$LAVA_NAME" \
           --arg flash_url "$FLASH_URL" \
-          --arg rootfs_url "$ROOTFS_URL" \
           '{
             id: ("ci-" + $machine),
             kind: "kbuild",
@@ -127,8 +108,7 @@ runs:
               ramdisk: "",
               firmware: "",
               dtb: "",
-              flash_image: $flash_url,
-              rootfs_image: $rootfs_url
+              flash_image: $flash_url
             },
             data: {
               kernel_revision: {
@@ -186,6 +166,12 @@ runs:
             }
           }' > "$data_dir/metadata.json"
 
+        echo "=== cloudData.json ==="
+        jq . "$data_dir/cloudData.json"
+
+        echo "=== metadata.json ==="
+        jq . "$data_dir/metadata.json"
+
     - name: Render LAVA job definition
       shell: bash
       env:
@@ -200,7 +186,7 @@ runs:
         job_render_dir="$(dirname "$WORKSPACE")/job_render"
         renders_dir="$job_render_dir/renders"
 
-        mkdir -p -- "$renders_dir"
+        mkdir -p "$renders_dir"
 
         docker run -i --rm \
           --workdir="$job_render_dir" \
@@ -213,6 +199,7 @@ runs:
           "$DOCKER_IMAGE" \
           bash -c '
             set -euo pipefail
+
             export BOOT_METHOD=flasher
 
             python3 lava_Job_definition_generator.py \
@@ -221,6 +208,10 @@ runs:
               --video_pre-merge
           '
 
+        echo "=== Render output ==="
+        find "$job_render_dir" -maxdepth 4 -type f -print | sort
+
+    # This step must remain immediately after Render LAVA job definition.
     - name: Patch device_type in rendered YAML
       shell: bash
       env:
@@ -233,13 +224,30 @@ runs:
         job_render_dir="$(dirname "$WORKSPACE")/job_render"
         yaml_file="$job_render_dir/renders/lava_job_definition.yaml"
 
+        echo "Expected rendered YAML: $yaml_file"
+
         if [ ! -f "$yaml_file" ]; then
-          echo "::error::Rendered YAML not found"
+          echo "::error::Rendered YAML not found: $yaml_file"
+          echo "=== Render directory contents ==="
+          find "$job_render_dir" -maxdepth 5 -type f -print | sort || true
           exit 1
         fi
 
-        sed -i \
-          "s|^device_type:.*|device_type: ${LAVA_NAME}|" \
-          "$yaml_file"
+        if [ ! -s "$yaml_file" ]; then
+          echo "::error::Rendered YAML is empty: $yaml_file"
+          exit 1
+        fi
+
+        if grep -q '^device_type:' "$yaml_file"; then
+          sed -i \
+            "s|^device_type:.*|device_type: ${LAVA_NAME}|" \
+            "$yaml_file"
+        else
+          printf '\ndevice_type: %s\n' "$LAVA_NAME" >> "$yaml_file"
+        fi
 
         echo "Patched device_type for $MACHINE"
+        grep -n '^device_type:' "$yaml_file"
+
+        echo "=== Final rendered YAML ==="
+        sed -n '1,80p' "$yaml_file"

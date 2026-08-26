@@ -195,6 +195,28 @@ jobs:
             "$(dirname "$GITHUB_WORKSPACE")/job_render" \
             2>/dev/null || true
 
+      - name: Verify job_render path before rendering
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          parent_dir="$(dirname "$WORKSPACE")"
+          job_render_dir="$parent_dir/job_render"
+
+          echo "WORKSPACE=$WORKSPACE"
+          echo "parent_dir=$parent_dir"
+          echo "job_render_dir=$job_render_dir"
+
+          test -d "$job_render_dir"
+
+          find "$job_render_dir" \
+            -maxdepth 3 \
+            -type f \
+            -print | sort
+            
       - name: Render LAVA job definition
         if: ${{ matrix.build_matrix.lavaname != '' }}
         uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@kodiak_testing
