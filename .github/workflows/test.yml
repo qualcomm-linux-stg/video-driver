@@ -123,12 +123,14 @@ jobs:
       - name: Verify presigned_urls.json
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
-        env github.workspace }}
-          MACHINE:euo pipefail
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          MACHINE: ${{ matrix.build_matrix.machine }}
+        run: |
+          set -euo pipefail
 
           presigned_file="$WORKSPACE/presigned_urls.json"
           flash_key="${MACHINE}_flash_files.tar"
-          rootfs_key="${MACHINE}_rootfs.img"
 
           if [ ! -f "$presigned_file" ]; then
             echo "::error::presigned_urls.json not found"
@@ -138,27 +140,24 @@ jobs:
 
           jq empty "$presigned_file"
 
-          echo "=== presigned_urls.json ==="
-          jq . "$presigned_file"
-
           echo "=== presigned_urls.json keys ==="
           jq -r 'keys[]' "$presigned_file"
 
-          flash_url="$(jq -r --arg key "$flash_key" '.[$key] // empty' "$presigned_file")"
+          flash_url="$(
+            jq -r --arg key "$flash_key" '.[$key] // empty' "$presigned_file"
+          )"
 
           if [ -z "$flash_url" ]; then
-            echo "::error::flash artifact URL missing from presigned_urls.json"
+            echo "::error::Complete flash artifact URL is missing"
             echo "::error::Expected key: $flash_key"
             exit 1
           fi
 
-          echo "flash artifact found: $flash_key"
+          echo "Complete flash artifact found: $flash_key"
 
-          rootfs_url="$(jq -r --arg key "$rootfs_key" '.[$key] // empty' "$presigned_file")"
-
-          if [ -n "$rootfs_url" ]; then
-            echo "::warning::rootfs artifact is present but should not be used for complete-qcomflash flow"
-            echo "::warning::key=$rootfs_key"
+          if jq -e --arg key "${MACHINE}_rootfs.img" \
+            'has($key)' "$presigned_file" >/dev/null; then
+            echo "::warning::A separate rootfs URL is present, but it will not be used"
           fi
 
       - name: Clone LAVA job render scripts
@@ -179,6 +178,22 @@ jobs:
 
           grep -A2 "timeout:" \
             job_render/templates/boot/flasher.jinja2 || true
+      
+      - name: Verify render action branch
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "This reusable workflow is expected from branch: kodiak_testing"
+          echo "The render action must not require a separate rootfs artifact"
+
+          grep -RIn \
+            --exclude-dir=.git \
+            "lava_job_render@" \
+            "$GITHUB_WORKSPACE" \
+            "$(dirname "$GITHUB_WORKSPACE")/job_render" \
+            2>/dev/null || true
 
       - name: Render LAVA job definition
         if: ${{ matrix.build_matrix.lavaname != '' }}

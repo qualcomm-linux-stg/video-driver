@@ -3,10 +3,6 @@ name: pre_merge_lava
 run-name: LAVA Test - ${{ github.event.workflow_run.display_title }}
 
 on:
-  # This workflow intentionally consumes artifacts from the completed
-  # pre_merge workflow. The triggering workflow is restricted below to
-  # successful runs from the expected repository and supported events.
-  # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows:
       - pre_merge
@@ -63,96 +59,59 @@ jobs:
             exit 1
           fi
 
-          echo "=== Build metadata ==="
-
           jq empty "$METADATA_FILE"
           jq . "$METADATA_FILE"
 
-          METADATA_RUN_ID="$(
-            jq -r '.build_run_id // empty' "$METADATA_FILE"
-          )"
+          metadata_run_id="$(jq -r '.build_run_id // empty' "$METADATA_FILE")"
+          metadata_repository="$(jq -r '.repository // empty' "$METADATA_FILE")"
+          docker_image="$(jq -r '.docker_image // empty' "$METADATA_FILE")"
+          commit_sha="$(jq -r '.commit_sha // empty' "$METADATA_FILE")"
+          source_repository="$(jq -r '.source_repository // empty' "$METADATA_FILE")"
+          build_matrix="$(jq -c '.build_matrix' "$METADATA_FILE")"
 
-          METADATA_REPOSITORY="$(
-            jq -r '.repository // empty' "$METADATA_FILE"
-          )"
-
-          DOCKER_IMAGE="$(
-            jq -r '.docker_image // empty' "$METADATA_FILE"
-          )"
-
-          COMMIT_SHA="$(
-            jq -r '.commit_sha // empty' "$METADATA_FILE"
-          )"
-
-          SOURCE_REPOSITORY="$(
-            jq -r '.source_repository // empty' "$METADATA_FILE"
-          )"
-
-          BUILD_MATRIX="$(
-            jq -c '.build_matrix' "$METADATA_FILE"
-          )"
-
-          if [ "$METADATA_RUN_ID" != "$EXPECTED_RUN_ID" ]; then
+          if [ "$metadata_run_id" != "$EXPECTED_RUN_ID" ]; then
             echo "::error::Metadata run ID does not match workflow_run ID"
-            echo "Metadata run ID: $METADATA_RUN_ID"
-            echo "Expected run ID: $EXPECTED_RUN_ID"
             exit 1
           fi
 
-          if [ "$METADATA_REPOSITORY" != "$EXPECTED_REPOSITORY" ]; then
+          if [ "$metadata_repository" != "$EXPECTED_REPOSITORY" ]; then
             echo "::error::Metadata repository does not match workflow repository"
-            echo "Metadata repository: $METADATA_REPOSITORY"
-            echo "Expected repository: $EXPECTED_REPOSITORY"
             exit 1
           fi
 
-          if [ -z "$DOCKER_IMAGE" ] || [ "$DOCKER_IMAGE" = "null" ]; then
+          if [ -z "$docker_image" ] || [ "$docker_image" = "null" ]; then
             echo "::error::docker_image is missing from metadata"
             exit 1
           fi
 
-          if [ -z "$COMMIT_SHA" ] || [ "$COMMIT_SHA" = "null" ]; then
-            echo "::error::commit_sha is missing from metadata"
+          if ! [[ "$commit_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid commit SHA in metadata: $commit_sha"
             exit 1
           fi
 
-          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "::error::Invalid commit SHA in metadata: $COMMIT_SHA"
-            exit 1
-          fi
-
-          if [ -z "$SOURCE_REPOSITORY" ] ||
-            [ "$SOURCE_REPOSITORY" = "null" ]; then
+          if [ -z "$source_repository" ] ||
+             [ "$source_repository" = "null" ]; then
             echo "::error::source_repository is missing from metadata"
             exit 1
           fi
 
-          if ! [[ "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-            echo "::error::Invalid source repository in metadata: $SOURCE_REPOSITORY"
+          if ! [[ "$source_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Invalid source repository in metadata: $source_repository"
             exit 1
           fi
 
-          if [ "$(echo "$BUILD_MATRIX" | jq -r 'type')" != "array" ]; then
+          if [ "$(jq -r 'type' <<< "$build_matrix")" != "array" ]; then
             echo "::error::build_matrix must be a JSON array"
             exit 1
           fi
 
-          echo "Docker image:      $DOCKER_IMAGE"
-          echo "Commit SHA:        $COMMIT_SHA"
-          echo "Source repository: $SOURCE_REPOSITORY"
-          echo "Build repository:  $METADATA_REPOSITORY"
-          echo "Build run ID:      $METADATA_RUN_ID"
-
           {
-            echo "docker_image=$DOCKER_IMAGE"
-            echo "commit_sha=$COMMIT_SHA"
-            echo "build_run_id=$METADATA_RUN_ID"
-            echo "build_repository=$METADATA_REPOSITORY"
-          } >> "$GITHUB_OUTPUT"
-
-          {
+            echo "docker_image=$docker_image"
+            echo "commit_sha=$commit_sha"
+            echo "build_run_id=$metadata_run_id"
+            echo "build_repository=$metadata_repository"
             echo "build_matrix<<BUILD_MATRIX_EOF"
-            echo "$BUILD_MATRIX"
+            echo "$build_matrix"
             echo "BUILD_MATRIX_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -160,9 +119,9 @@ jobs:
     name: Run LAVA tests
     needs:
       - verify-build
-
     if: ${{ needs.verify-build.result == 'success' }}
 
+    # This branch contains the flash-only complete-qcomflash test workflow.
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@kodiak_testing
 
     with:

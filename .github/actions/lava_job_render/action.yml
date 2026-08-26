@@ -22,7 +22,7 @@ runs:
   using: composite
   steps:
     - name: Extract presigned URLs for this machine
-      id: get_urls
+      id: extract_urls
       shell: bash
       env:
         MACHINE: ${{ inputs.machine }}
@@ -31,30 +31,30 @@ runs:
         set -euo pipefail
 
         flash_key="${MACHINE}_flash_files.tar"
-        rootfs_key="${MACHINE}_rootfs.img"
 
         if [ ! -f "$PRESIGNED_FILE" ]; then
-          echo "::error::Presigned URL file not found"
+          echo "::error::Presigned URL file not found: $PRESIGNED_FILE"
           exit 1
         fi
+
+        jq empty "$PRESIGNED_FILE"
+
+        echo "=== Presigned URL keys ==="
+        jq -r 'keys[]' "$PRESIGNED_FILE"
 
         flash_url="$(
           jq -r --arg key "$flash_key" '.[$key] // empty' "$PRESIGNED_FILE"
         )"
 
-        rootfs_url="$(
-          jq -r --arg key "$rootfs_key" '.[$key] // empty' "$PRESIGNED_FILE"
-        )"
-
-        if [ -z "$flash_url" ] || [ -z "$rootfs_url" ]; then
-          echo "::error::Required presigned URLs are missing"
+        if [ -z "$flash_url" ]; then
+          echo "::error::Complete flash artifact URL is missing"
+          echo "::error::Expected key: $flash_key"
           exit 1
         fi
 
-        {
-          printf 'flash_url=%s\n' "$flash_url"
-          printf 'rootfs_url=%s\n' "$rootfs_url"
-        } >> "$GITHUB_OUTPUT"
+        echo "Complete flash artifact found: $flash_key"
+
+        printf 'flash_url=%s\n' "$flash_url" >> "$GITHUB_OUTPUT"
 
     - name: Write synthetic cloudData.json and metadata.json
       id: write_json
