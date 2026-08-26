@@ -188,7 +188,7 @@ runs:
         echo "=== metadata.json ==="
         jq . "$data_dir/metadata.json"
 
-    - name: Render LAVA job definition
+        - name: Render LAVA job definition
       shell: bash
       env:
         DOCKER_IMAGE: ${{ inputs.docker_image }}
@@ -202,11 +202,22 @@ runs:
         job_render_dir="$(dirname "$WORKSPACE")/job_render"
         renders_dir="$job_render_dir/renders"
 
+        if [ ! -d "$job_render_dir" ]; then
+          echo "::error::job_render directory not found: $job_render_dir"
+          exit 1
+        fi
+
+        rm -rf "$renders_dir"
         mkdir -p "$renders_dir"
 
-        docker run -i --rm \
-          --workdir="$job_render_dir" \
-          -v "$(dirname "$job_render_dir"):$(dirname "$job_render_dir")" \
+        echo "=== Render input files ==="
+        find "$job_render_dir/data" -maxdepth 2 -type f -print -exec sed -n '1,20p' {} \;
+
+        echo "=== Starting renderer ==="
+
+        docker run --rm \
+          --workdir /job_render \
+          --mount "type=bind,src=$job_render_dir,dst=/job_render" \
           -e "MACHINE=$MACHINE" \
           -e "TARGET=$MACHINE" \
           -e "LAVA_NAME=$LAVA_NAME" \
@@ -215,38 +226,54 @@ runs:
           "$DOCKER_IMAGE" \
           bash -c '
             set -euo pipefail
+
+            test -f /job_render/lava_Job_definition_generator.py
+            test -f /job_render/data/cloudData.json
+            test -f /job_render/data/metadata.json
+
             export BOOT_METHOD=flasher
 
-            python3 lava_Job_definition_generator.py \
-              --localjson ./data/cloudData.json \
+            python3 /job_render/lava_Job_definition_generator.py \
+              --localjson /job_render/data/cloudData.json \
               --meta-qcom \
               --video_pre-merge
+
+            echo "=== Renderer output inside container ==="
+            find /job_render -maxdepth 5 -type f \
+              \( -name "*.yaml" -o -name "*.yml" -o -name "*.log" \) \
+              -print | sort
           '
 
-    - name: Patch device_type in rendered YAML
-      shell: bash
-      env:
-        MACHINE: ${{ inputs.machine }}
-        LAVA_NAME: ${{ inputs.lavaname }}
-        WORKSPACE: ${{ github.workspace }}
-      run: |
-        set -euo pipefail
+        echo "=== Renderer output on host ==="
+        find "$job_render_dir" -maxdepth 5 -type f \
+          \( -name "*.yaml" -o -name "*.yml" -o -name "*.log" \) \
+          -print | sort
 
-        job_render_dir="$(dirname "$WORKSPACE")/job_render"
+        yaml_file="$renders_dir/lava_job_definition.yaml"
+
+        if [ ! -f "$yaml_file" ]; then
+          echo "::error::Renderer did not create expected YAML: $yaml_file"
+          echo "=== Renderer log ==="
+          find "$job_render_dir/logs" -,ame_render_dir="$(dirname "$WORKSPACE")/job_render"
         yaml_file="$job_render_dir/renders/lava_job_definition.yaml"
 
         if [ ! -f "$yaml_file" ]; then
           echo "::error::Rendered YAML not found: $yaml_file"
-          find "$job_render_dir" -maxdepth 5 -type f -print | sort || true
+          find "$job_render_dir" -maxdepth 6 -type f -print | sort || true
           exit 1
         fi
 
-        if grep -q '^device_type:' "$yaml_file"; then
+        if [ -z "$LAVA_NAME" ]; then
+          echo "::error::LAVA_NAME is empty for machine $MACHINE"
+          exit 1
+        fi
+
+        if grep -qE '^device_type:' "$yaml_file"; then
           sed -i \
             "s|^device_type:.*|device_type: ${LAVA_NAME}|" \
             "$yaml_file"
         else
-          printf '\ndevice_type: %s\n' "$LAVA_NAME" >> "$yaml_file"
+          sed -i "1i device_type: ${LAVA_NAME}" "$yaml_file"
         fi
 
         echo "Patched device_type for $MACHINE"
