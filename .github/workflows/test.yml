@@ -51,7 +51,6 @@ jobs:
         - self-hosted
         - video-stg-u2204-x64-large-od-ephem
 
-
     strategy:
       fail-fast: false
       matrix:
@@ -124,12 +123,12 @@ jobs:
       - name: Verify presigned_urls.json
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
-        env:
-          WORKSPACE: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
+        env github.workspace }}
+          MACHINE:euo pipefail
 
           presigned_file="$WORKSPACE/presigned_urls.json"
+          flash_key="${MACHINE}_flash_files.tar"
+          rootfs_key="${MACHINE}_rootfs.img"
 
           if [ ! -f "$presigned_file" ]; then
             echo "::error::presigned_urls.json not found"
@@ -145,20 +144,21 @@ jobs:
           echo "=== presigned_urls.json keys ==="
           jq -r 'keys[]' "$presigned_file"
 
-          flash_url="$(jq -r '.flash_image // empty' "$presigned_file")"
+          flash_url="$(jq -r --arg key "$flash_key" '.[$key] // empty' "$presigned_file")"
 
           if [ -z "$flash_url" ]; then
-            echo "::error::flash_image missing from presigned_urls.json"
+            echo "::error::flash artifact URL missing from presigned_urls.json"
+            echo "::error::Expected key: $flash_key"
             exit 1
           fi
 
-          echo "flash_image found"
+          echo "flash artifact found: $flash_key"
 
-          rootfs_url="$(jq -r '.rootfs_image // empty' "$presigned_file")"
+          rootfs_url="$(jq -r --arg key "$rootfs_key" '.[$key] // empty' "$presigned_file")"
 
           if [ -n "$rootfs_url" ]; then
-            echo "::warning::rootfs_image is present but should not be used for Kodiak complete-qcomflash flow"
-            echo "::warning::rootfs_image=$rootfs_url"
+            echo "::warning::rootfs artifact is present but should not be used for complete-qcomflash flow"
+            echo "::warning::key=$rootfs_key"
           fi
 
       - name: Clone LAVA job render scripts
@@ -214,7 +214,7 @@ jobs:
           echo "=== Rendered LAVA job ==="
           sed -n '1,260p' "$job_file"
 
-      - name: Verify Kodiak rendered job uses complete qcomflash only
+      - name: Verify rendered job uses complete qcomflash only
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         env:
@@ -239,13 +239,19 @@ jobs:
             exit 1
           fi
 
+          echo "=== Checking ROOTFS_IMAGE is not used ==="
+          if grep -n "ROOTFS_IMAGE" "$job_file"; then
+            echo "::error::ROOTFS_IMAGE is still present. Complete qcomflash flow should keep rootfs inside flash tar."
+            exit 1
+          fi
+
           echo "=== Checking no YAML block steps are present ==="
           if grep -nE '^[[:space:]]*-[[:space:]]*(\||>|$)' "$job_file"; then
             echo "::error::Rendered postprocess has block YAML step; LAVA expects every step to be a string."
             exit 1
           fi
 
-          echo "Rendered job looks valid"    
+          echo "Rendered job looks valid"
 
       - name: Verify LAVA Docker environment
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -321,7 +327,6 @@ jobs:
             -e LAVA_OSS_USER \
             "$DOCKER_IMAGE" \
             bash -s 2>&1 <<'CONTAINER_SCRIPT' | tee "$submission_log"
-
           set -euo pipefail
 
           echo "Configuring lavacli identity"
@@ -336,7 +341,6 @@ jobs:
 
           lavacli -i production jobs submit \
             ./renders/lava_job_definition.yaml
-
           CONTAINER_SCRIPT
 
           docker_status="${PIPESTATUS[0]}"
@@ -508,15 +512,15 @@ jobs:
                 production >/dev/null 2>&1 || true
 
               lavacli -i production results "$1"
-            ' bash "$job_id" > lava_results.txt
+            ' bash "$job_id" > "$WORKSPACE/lava_results.txt"
 
           echo "=== Raw LAVA results ==="
-          cat lava_results.txt
+          cat "$WORKSPACE/lava_results.txt"
 
           results="$(
             grep -E \
               '^\* 0_video_pre-merge-tests\.Video_V4L2_Runner \[(pass|fail)\]' \
-              lava_results.txt || true
+              "$WORKSPACE/lava_results.txt" || true
           )"
 
           if [ -z "$results" ]; then

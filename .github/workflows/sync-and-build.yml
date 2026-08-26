@@ -314,7 +314,6 @@ jobs:
             "$WORKSPACE/v4l-video-test-app/build/"
 
           echo "iris_test_app download complete"
-
           ls -la "$WORKSPACE/v4l-video-test-app/build/"
 
       - name: Download video contents
@@ -392,7 +391,6 @@ jobs:
           grep -Rni "rootfs.img\|label=\"rootfs\"\|label='rootfs'" "$resolved_dir" || true
 
           mkdir -p "$WORKSPACE/artifacts"
-
           : > "$WORKSPACE/artifacts/file_list.txt"
 
           flash_tar="$WORKSPACE/${MACHINE}_flash_files.tar"
@@ -403,7 +401,7 @@ jobs:
             .
 
           printf '%s\n' "$flash_tar" \
-            >> "$WORKSPACE/artifacts/file_list.txt"
+            > "$WORKSPACE/artifacts/file_list.txt"
 
           echo "=== Artifact file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
@@ -431,7 +429,7 @@ jobs:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}/presigned_urls.json
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload flash files
         uses: actions/upload-artifact@v4
@@ -455,6 +453,7 @@ jobs:
           rm -rf "$WORKSPACE/downloads" || true
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
           rm -f "$WORKSPACE/"*_flash_files.tar || true
+          rm -f "$WORKSPACE/"*_rootfs.img || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
       - name: Update summary
@@ -470,9 +469,9 @@ jobs:
           set -u
 
           if [ "$JOB_STATUS" = "success" ]; then
-            summary=":heavy_check_mark: Prebuilt RootFS Injection Success"
+            summary=":heavy_check_mark: Complete qcomflash package success"
           else
-            summary=":x: Prebuilt RootFS Injection Failed"
+            summary=":x: Complete qcomflash package failed"
           fi
 
           {
