@@ -376,37 +376,46 @@ jobs:
 
           if [ ! -f "$rootfs_img" ]; then
             echo "::error::rootfs.img not found: $rootfs_img"
+            echo "=== qcomflash contents ==="
+            find "$resolved_dir" -maxdepth 2 -print | sort || true
             exit 1
           fi
 
-          echo "=== qcomflash contents ==="
+          echo "=== qcomflash contents before packaging ==="
           ls -larth "$resolved_dir"
+
+          echo "=== rootfs.img details ==="
+          ls -lh "$rootfs_img"
+          file "$rootfs_img" || true
+
+          echo "=== qcomflash rawprogram rootfs references ==="
+          grep -Rni "rootfs.img\|label=\"rootfs\"\|label='rootfs'" "$resolved_dir" || true
 
           mkdir -p "$WORKSPACE/artifacts"
 
           : > "$WORKSPACE/artifacts/file_list.txt"
 
           flash_tar="$WORKSPACE/${MACHINE}_flash_files.tar"
-          rootfs_dest="$WORKSPACE/${MACHINE}_rootfs.img"
 
+          echo "=== Packaging COMPLETE qcomflash directory including rootfs.img ==="
           tar -cf "$flash_tar" \
             -C "$resolved_dir" \
-            --exclude='./rootfs.img' \
             .
 
-          cp "$rootfs_img" "$rootfs_dest"
-
           printf '%s\n' "$flash_tar" \
-            >> "$WORKSPACE/artifacts/file_list.txt"
-
-          printf '%s\n' "$rootfs_dest" \
             >> "$WORKSPACE/artifacts/file_list.txt"
 
           echo "=== Artifact file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
 
           echo "=== Generated artifacts ==="
-          ls -lh "$flash_tar" "$rootfs_dest"
+          ls -lh "$flash_tar"
+
+          echo "=== Verify rootfs.img is inside flash tar ==="
+          tar -tf "$flash_tar" | grep -E '(^|/)rootfs.img$'
+
+          echo "=== Verify rawprogram files are inside flash tar ==="
+          tar -tf "$flash_tar" | grep -E '(^|/)rawprogram.*\.xml$' || true
 
       - name: Upload artifacts to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@kodiak_testing
@@ -433,15 +442,6 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
-      - name: Upload rootfs
-        uses: actions/upload-artifact@v4
-        with:
-          name: rootfs-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_rootfs.img
-          retention-days: 7
-          compression-level: 0
-          if-no-files-found: error
-
       - name: Clean up
         if: always()
         shell: bash
@@ -455,7 +455,6 @@ jobs:
           rm -rf "$WORKSPACE/downloads" || true
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
           rm -f "$WORKSPACE/"*_flash_files.tar || true
-          rm -f "$WORKSPACE/"*_rootfs.img || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
       - name: Update summary

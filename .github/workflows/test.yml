@@ -139,8 +139,27 @@ jobs:
 
           jq empty "$presigned_file"
 
+          echo "=== presigned_urls.json ==="
+          jq . "$presigned_file"
+
           echo "=== presigned_urls.json keys ==="
           jq -r 'keys[]' "$presigned_file"
+
+          flash_url="$(jq -r '.flash_image // empty' "$presigned_file")"
+
+          if [ -z "$flash_url" ]; then
+            echo "::error::flash_image missing from presigned_urls.json"
+            exit 1
+          fi
+
+          echo "flash_image found"
+
+          rootfs_url="$(jq -r '.rootfs_image // empty' "$presigned_file")"
+
+          if [ -n "$rootfs_url" ]; then
+            echo "::warning::rootfs_image is present but should not be used for Kodiak complete-qcomflash flow"
+            echo "::warning::rootfs_image=$rootfs_url"
+          fi
 
       - name: Clone LAVA job render scripts
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -194,6 +213,39 @@ jobs:
 
           echo "=== Rendered LAVA job ==="
           sed -n '1,260p' "$job_file"
+
+      - name: Verify Kodiak rendered job uses complete qcomflash only
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+
+          job_render_dir="$(dirname "$WORKSPACE")/job_render"
+          job_file="$job_render_dir/renders/lava_job_definition.yaml"
+
+          if [ ! -f "$job_file" ]; then
+            echo "::error::Rendered LAVA job not found: $job_file"
+            exit 1
+          fi
+
+          echo "=== Rendered deploy/postprocess section ==="
+          grep -n -A120 -B10 "postprocess:" "$job_file" || true
+
+          echo "=== Checking rootfs_img is not used ==="
+          if grep -n "rootfs_img:" "$job_file"; then
+            echo "::error::rootfs_img is still present in rendered job. Remove separate rootfs deploy usage."
+            exit 1
+          fi
+
+          echo "=== Checking no YAML block steps are present ==="
+          if grep -nE '^[[:space:]]*-[[:space:]]*(\||>|$)' "$job_file"; then
+            echo "::error::Rendered postprocess has block YAML step; LAVA expects every step to be a string."
+            exit 1
+          fi
+
+          echo "Rendered job looks valid"    
 
       - name: Verify LAVA Docker environment
         if: ${{ matrix.build_matrix.lavaname != '' }}
