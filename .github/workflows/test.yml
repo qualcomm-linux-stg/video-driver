@@ -74,11 +74,9 @@ jobs:
 
           source_image="artifacts.codelinaro.org/clo-420-qli-registry/$DOCKER_IMAGE"
 
-          docker tag \
-            "$source_image" \
-            "$DOCKER_IMAGE" || true
+          docker tag "$source_image" "$DOCKER_IMAGE" || true
 
-          docker images | grep -- "$DOCKER_IMAGE" || true
+          docker image inspect "$DOCKER_IMAGE" >/dev/null
 
       - name: Record tested commit
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -89,75 +87,15 @@ jobs:
           BUILD_REPOSITORY: ${{ inputs.build_repository }}
           MACHINE: ${{ matrix.build_matrix.machine }}
         run: |
-          set -euo pipefail
-
-          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "::error::Invalid commit SHA: $COMMIT_SHA"
-            exit 1
-          fi
-
-          echo "Build repository: $BUILD_REPOSITORY"
-          echo "Build run ID:     $BUILD_RUN_ID"
-          echo "Commit SHA:       $COMMIT_SHA"
-          echo "Machine:          $MACHINE"
-
-          {
-            echo "## LAVA Test Provenance"
-            echo ""
-            echo "- Repository: \`$BUILD_REPOSITORY\`"
-            echo "- Commit: \`$COMMIT_SHA\`"
-            echo "- Build run: \`$BUILD_RUN_ID\`"
-            echo "- Machine: \`$MACHINE\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Download machine-scoped presigned URLs
-        if: ${{ matrix.build_matrix.lavaname != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          repository: ${{ inputs.build_repository }}
-          run-id: ${{ inputs.build_run_id }}
-          name: presigned-urls-${{ matrix.build_matrix.machine }}
-          path: ${{ github.workspace }}
-
-      - name: Verify presigned_urls.json
-        if: ${{ matrix.build_matrix.lavaname != '' }}
-        shell: bash
-        env:
-          WORKSPACE: ${{ github.workspace }}
-          MACHINE: ${{ matrix.build_matrix.machine }}
-        run: |
-          set -euo pipefail
-
-          presigned_file="$WORKSPACE/presigned_urls.json"
-          flash_key="${MACHINE}_flash_files.tar"
-
-          if [ ! -f "$presigned_file" ]; then
-            echo "::error::presigned_urls.json not found"
-            ls -la "$WORKSPACE"
-            exit 1
-          fi
-
-          jq empty "$presigned_file"
-
-          echo "=== presigned_urls.json keys ==="
-          jq -r 'keys[]' "$presigned_file"
-
-          flash_url="$(
-            jq -r --arg key "$flash_key" '.[$key] // empty' "$presigned_file"
-          )"
-
-          if [ -z "$flash_url" ]; then
-            echo "::error::Complete flash artifact URL is missing"
-            echo "::error::Expected key: $flash_key"
-            exit 1
-          fi
+          github fi
 
           echo "Complete flash artifact found: $flash_key"
 
-          if jq -e --arg key "${MACHINE}_rootfs.img" \
-            'has($key)' "$presigned_file" >/dev/null; then
-            echo "::warning::A separate rootfs URL is present, but it will not be used"
+          rootfs_key="${MACHINE}_rootfs.img"
+
+          if jq -e --arg key "$rootfs_key" 'has($key)' "$presigned_file" >/dev/null; then
+            echo "::warning::Separate rootfs artifact exists but will not be used"
+            echo "::warning::Key: $rootfs_key"
           fi
 
       - name: Clone LAVA job render scripts
@@ -166,57 +104,72 @@ jobs:
         run: |
           set -euo pipefail
 
-          cd ..
-          rm -rf job_render
+          parent_dir="$(dirname "$GITHUB_WORKSPACE")"
+          job_render_dir="$parent_dir/job_render"
+
+          rm -rf "$job_render_dir"
 
           git clone \
             --depth 1 \
+            --branch kodiak_testing \
             https://github.com/Manigurr/job_render \
-            job_render
+            "$job_render_dir"
 
           echo "job_render cloned"
+          echo "=== job_render commit ==="
+          git -C "$job_render_dir" rev-parse HEAD
+          git -C "$job_render_dir" branch --show-current
 
-          grep -A2 "timeout:" \
-            job_render/templates/boot/flasher.jinja2 || true
-      
-      - name: Verify render action branch
+      - name: Verify job_render template
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "This reusable workflow is expected from branch: kodiak_testing"
-          echo "The render action must not require a separate rootfs artifact"
+          parent_dir="$(dirname "$GITHUB_WORKSPACE")"
+          job_render_dir="$parent_dir/job_render"
+          template="$job_render_dir/templates/boot/flasher.jinja2"
 
-          grep -RIn \
-            --exclude-dir=.git \
-            "lava_job_render@" \
-            "$GITHUB_WORKSPACE" \
-            "$(dirname "$GITHUB_WORKSPACE")/job_render" \
-            2>/dev/null || true
+          if [ ! -f "$template" ]; then
+            echo "::error::Missing flasher template: $template"
+            exit 1
+          fi
 
-      - name: Verify job_render path before rendering
+          echo "=== Active flasher template ==="
+          sed -n '1,240p' "$template"
+
+          echo "=== Checking stale unsafe command ==="
+
+          if grep -Fq "grep -Rni" "$template"; then
+            echo "::error::Unsafe diagnostic grep command remains in flasher.jinja2"
+            grep -n "grep -Rni" "$template"
+            exit 1
+          fi
+
+          if grep -Fq "label=" "$template"; then
+            echo "::error::Manual rawprogram label patch must not be present"
+            grep -n "label=" "$template"
+            exit 1
+          fi
+
+          echo "flasher.jinja2 validation passed"
+
+      - name: Verify job_render path
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
-        env:
-          WORKSPACE: ${{ github.workspace }}
         run: |
           set -euo pipefail
 
-          parent_dir="$(dirname "$WORKSPACE")"
+          parent_dir="$(dirname "$GITHUB_WORKSPACE")"
           job_render_dir="$parent_dir/job_render"
 
-          echo "WORKSPACE=$WORKSPACE"
-          echo "parent_dir=$parent_dir"
-          echo "job_render_dir=$job_render_dir"
-
           test -d "$job_render_dir"
+          test -f "$job_render_dir/lava_Job_definition_generator.py"
+          test -d "$job_render_dir/templates"
+          test -f "$job_render_dir/templates/boot/flasher.jinja2"
 
-          find "$job_render_dir" \
-            -maxdepth 3 \
-            -type f \
-            -print | sort
-            
+          echo "job_render path verified: $job_render_dir"
+
       - name: Render LAVA job definition
         if: ${{ matrix.build_matrix.lavaname != '' }}
         uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@kodiak_testing
@@ -234,12 +187,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          job_render_dir="$(dirname "$WORKSPACE")/job_render"
+          parent_dir="$(dirname "$WORKSPACE")"
+          job_render_dir="$parent_dir/job_render"
           job_file="$job_render_dir/renders/lava_job_definition.yaml"
 
           if [ ! -f "$job_file" ]; then
             echo "::error::Rendered LAVA job not found: $job_file"
-            find "$job_render_dir" -maxdepth 4 -type f -print || true
+            find "$job_render_dir" -maxdepth 8 -type f -print | sort || true
             exit 1
           fi
 
@@ -249,9 +203,9 @@ jobs:
           fi
 
           echo "=== Rendered LAVA job ==="
-          sed -n '1,260p' "$job_file"
+          sed -n '1,300p' "$job_file"
 
-      - name: Verify rendered job uses complete qcomflash only
+      - name: Verify complete-qcomflash configuration
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         env:
@@ -259,36 +213,34 @@ jobs:
         run: |
           set -euo pipefail
 
-          job_render_dir="$(dirname "$WORKSPACE")/job_render"
-          job_file="$job_render_dir/renders/lava_job_definition.yaml"
+          parent_dir="$(dirname "$WORKSPACE")"
+          job_file="$parent_dir/job_render/renders/lava_job_definition.yaml"
 
-          if [ ! -f "$job_file" ]; then
-            echo "::error::Rendered LAVA job not found: $job_file"
+          grep -q '^device_type:' "$job_file"
+          grep -q 'flash_files:' "$job_file"
+          grep -q 'combined_flash.tar' "$job_file"
+
+          if grep -q 'rootfs_img:' "$job_file"; then
+            echo "::error::Separate rootfs_img is present"
             exit 1
           fi
 
-          echo "=== Rendered deploy/postprocess section ==="
-          grep -n -A120 -B10 "postprocess:" "$job_file" || true
-
-          echo "=== Checking rootfs_img is not used ==="
-          if grep -n "rootfs_img:" "$job_file"; then
-            echo "::error::rootfs_img is still present in rendered job. Remove separate rootfs deploy usage."
+          if grep -q 'ROOTFS_IMAGE' "$job_file"; then
+            echo "::error::ROOTFS_IMAGE must not be used"
             exit 1
           fi
 
-          echo "=== Checking ROOTFS_IMAGE is not used ==="
-          if grep -n "ROOTFS_IMAGE" "$job_file"; then
-            echo "::error::ROOTFS_IMAGE is still present. Complete qcomflash flow should keep rootfs inside flash tar."
+          if grep -q 'ROOTFS_PARTITION' "$job_file"; then
+            echo "::error::ROOTFS_PARTITION must not be used"
             exit 1
           fi
 
-          echo "=== Checking no YAML block steps are present ==="
-          if grep -nE '^[[:space:]]*-[[:space:]]*(\||>|$)' "$job_file"; then
-            echo "::error::Rendered postprocess has block YAML step; LAVA expects every step to be a string."
+          if grep -q 'rawprogram.*xml' "$job_file"; then
+            echo "::error::Manual rawprogram XML patching must not be used"
             exit 1
           fi
 
-          echo "Rendered job looks valid"
+          echo "Complete-qcomflash configuration verified"
 
       - name: Verify LAVA Docker environment
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -298,23 +250,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "=== Docker image ==="
           docker image inspect "$DOCKER_IMAGE" >/dev/null
 
-          echo "=== lavacli path and version ==="
           docker run --rm \
             "$DOCKER_IMAGE" \
             bash -c '
               set -euo pipefail
               command -v lavacli
               lavacli --version
-            '
-
-          echo "=== LAVA DNS resolution ==="
-          docker run --rm \
-            "$DOCKER_IMAGE" \
-            bash -c '
-              set -euo pipefail
               getent hosts lava-oss.qualcomm.com
             '
 
@@ -340,8 +283,8 @@ jobs:
             exit 1
           fi
 
-          job_render_dir="$(dirname "$WORKSPACE")/job_render"
-          parent_dir="$(dirname "$job_render_dir")"
+          parent_dir="$(dirname "$WORKSPACE")"
+          job_render_dir="$parent_dir/job_render"
           job_file="$job_render_dir/renders/lava_job_definition.yaml"
           submission_log="$WORKSPACE/lava-submit-output.txt"
 
@@ -349,11 +292,6 @@ jobs:
             echo "::error::LAVA job file not found: $job_file"
             exit 1
           fi
-
-          echo "=== LAVA job file before submission ==="
-          sed -n '1,260p' "$job_file"
-
-          echo "=== Starting LAVA submission ==="
 
           set +e
 
@@ -366,15 +304,11 @@ jobs:
             bash -s 2>&1 <<'CONTAINER_SCRIPT' | tee "$submission_log"
           set -euo pipefail
 
-          echo "Configuring lavacli identity"
-
           lavacli identities add \
             --token "$LAVA_OSS_TOKEN" \
             --uri https://lava-oss.qualcomm.com/RPC2 \
             --username "$LAVA_OSS_USER" \
             production
-
-          echo "Submitting LAVA job"
 
           lavacli -i production jobs submit \
             ./renders/lava_job_definition.yaml
@@ -384,7 +318,6 @@ jobs:
 
           set -e
 
-          echo "=== Complete LAVA submission output ==="
           cat "$submission_log"
 
           if [ "$docker_status" -ne 0 ]; then
@@ -393,9 +326,7 @@ jobs:
           fi
 
           job_id="$(
-            grep -Eo \
-              '(^|[^0-9])[0-9]{1,}([^0-9]|$)' \
-              "$submission_log" |
+            grep -Eo '(^|[^0-9])[0-9]{1,}([^0-9]|$)' "$submission_log" |
               grep -Eo '[0-9]+' |
               tail -n 1 |
               tr -d '[:space:]'
@@ -403,7 +334,6 @@ jobs:
 
           if ! [[ "$job_id" =~ ^[0-9]+$ ]]; then
             echo "::error::Unable to extract a numeric LAVA job ID"
-            echo "::error::Review lava-submit-output.txt for the complete response"
             exit 1
           fi
 
@@ -411,7 +341,7 @@ jobs:
           echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
           echo "job_url=https://lava-oss.qualcomm.com/scheduler/job/$job_id" >> "$GITHUB_OUTPUT"
 
-          echo "LAVA job submitted: https://lava-oss.qualcomm.com/scheduler/job/$job_id"
+          echo "LAVA job submitted: $job_id"
 
       - name: Upload LAVA submission log
         if: ${{ always() && matrix.build_matrix.lavaname != '' }}
@@ -422,7 +352,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Save job ID for reporting
+      - name: Save job ID
         if: ${{ always() && matrix.build_matrix.lavaname != '' }}
         shell: bash
         env:
@@ -446,7 +376,6 @@ jobs:
 
       - name: Poll LAVA job
         if: ${{ matrix.build_matrix.lavaname != '' }}
-        id: check_job
         shell: bash
         env:
           DOCKER_IMAGE: ${{ inputs.docker_image }}
@@ -463,8 +392,8 @@ jobs:
             exit 1
           fi
 
-          job_render_dir="$(dirname "$WORKSPACE")/job_render"
-          parent_dir="$(dirname "$job_render_dir")"
+          parent_dir="$(dirname "$WORKSPACE")"
+          job_render_dir="$parent_dir/job_render"
 
           state=""
           health=""
@@ -527,10 +456,6 @@ jobs:
           if [ "$health" = "Canceled" ]; then
             echo "::error::LAVA job was canceled"
             exit 1
-          fi
-
-          if [ "$health" = "Incomplete" ]; then
-            echo "LAVA health is Incomplete; validating the test result directly"
           fi
 
           docker run -i --rm \
@@ -643,8 +568,8 @@ jobs:
                   "$LAVA_URL/api/v0.2/jobs/$job_id/"
               )"
 
-              state="$(echo "$details" | jq -r '.state // "unknown"')"
-              health="$(echo "$details" | jq -r '.health // "unknown"')"
+              state="$(printf '%s' "$details" | jq -r '.state // "unknown"')"
+              health="$(printf '%s' "$details" | jq -r '.health // "unknown"')"
               url="$LAVA_URL/results/$job_id"
 
               printf '| %s | %s | %s | %s | [View](%s) |\n' \
