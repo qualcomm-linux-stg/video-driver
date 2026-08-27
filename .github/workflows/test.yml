@@ -87,11 +87,72 @@ jobs:
           BUILD_REPOSITORY: ${{ inputs.build_repository }}
           MACHINE: ${{ matrix.build_matrix.machine }}
         run: |
-          github fi
+          set -euo pipefail
+
+          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid commit SHA: $COMMIT_SHA"
+            exit 1
+          fi
+
+          echo "Build repository: $BUILD_REPOSITORY"
+          echo "Build run ID:     $BUILD_RUN_ID"
+          echo "Commit SHA:       $COMMIT_SHA"
+          echo "Machine:          $MACHINE"
+
+          {
+            echo "## LAVA Test Provenance"
+            echo ""
+            echo "- Repository: \`$BUILD_REPOSITORY\`"
+            echo "- Commit: \`$COMMIT_SHA\`"
+            echo "- Build run: \`$BUILD_RUN_ID\`"
+            echo "- Machine: \`$MACHINE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download machine-scoped presigned URLs
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ inputs.build_repository }}
+          run-id: ${{ inputs.build_run_id }}
+          name: presigned-urls-${{ matrix.build_matrix.machine }}
+          path: ${{ github.workspace }}
+
+      - name: Verify presigned_urls.json
+        if: ${{ matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          MACHINE: ${{ matrix.build_matrix.machine }}
+        run: |
+          set -euo pipefail
+
+          presigned_file="$WORKSPACE/presigned_urls.json"
+          flash_key="${MACHINE}_flash_files.tar"
+          rootfs_key="${MACHINE}_rootfs.img"
+
+          if [ ! -f "$presigned_file" ]; then
+            echo "::error::presigned_urls.json not found"
+            ls -la "$WORKSPACE"
+            exit 1
+          fi
+
+          jq empty "$presigned_file"
+
+          echo "=== presigned_urls.json keys ==="
+          jq -r 'keys[]' "$presigned_file"
+
+          flash_url="$(
+            jq -r --arg key "$flash_key" '.[$key] // empty' "$presigned_file"
+          )"
+
+          if [ -z "$flash_url" ]; then
+            echo "::error::Complete flash artifact URL is missing"
+            echo "::error::Expected key: $flash_key"
+            exit 1
+          fi
 
           echo "Complete flash artifact found: $flash_key"
-
-          rootfs_key="${MACHINE}_rootfs.img"
 
           if jq -e --arg key "$rootfs_key" 'has($key)' "$presigned_file" >/dev/null; then
             echo "::warning::Separate rootfs artifact exists but will not be used"
@@ -116,6 +177,7 @@ jobs:
             "$job_render_dir"
 
           echo "job_render cloned"
+
           echo "=== job_render commit ==="
           git -C "$job_render_dir" rev-parse HEAD
           git -C "$job_render_dir" branch --show-current
@@ -138,7 +200,7 @@ jobs:
           echo "=== Active flasher template ==="
           sed -n '1,240p' "$template"
 
-          echo "=== Checking stale unsafe command ==="
+          echo "=== Checking for stale unsafe command ==="
 
           if grep -Fq "grep -Rni" "$template"; then
             echo "::error::Unsafe diagnostic grep command remains in flasher.jinja2"
@@ -339,7 +401,8 @@ jobs:
 
           echo "JOB_ID=$job_id" >> "$GITHUB_ENV"
           echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
-          echo "job_url=https://lava-oss.qualcomm.com/scheduler/job/$job_id" >> "$GITHUB_OUTPUT"
+          echo "job_url=https://lava-oss.qualcomm.com/scheduler/job/$job_id" \
+            >> "$GITHUB_OUTPUT"
 
           echo "LAVA job submitted: $job_id"
 
