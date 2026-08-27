@@ -172,7 +172,6 @@ jobs:
 
           git clone \
             --depth 1 \
-            --branch kodiak_testing \
             https://github.com/Manigurr/job_render \
             "$job_render_dir"
 
@@ -181,6 +180,9 @@ jobs:
           echo "=== job_render commit ==="
           git -C "$job_render_dir" rev-parse HEAD
           git -C "$job_render_dir" branch --show-current
+
+          echo "=== flasher template ==="
+          sed -n '1,60p' "$job_render_dir/templates/boot/flasher.jinja2" || true
 
       - name: Verify job_render template
         if: ${{ matrix.build_matrix.lavaname != '' }}
