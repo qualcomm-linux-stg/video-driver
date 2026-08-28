@@ -334,6 +334,7 @@ jobs:
           LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
           LAVA_OSS_USER: ${{ secrets.LAVA_OSS_USER }}
           WORKSPACE: ${{ github.workspace }}
+          MACHINE: ${{ matrix.build_matrix.machine }}
         run: |
           set -euo pipefail
 
@@ -382,10 +383,9 @@ jobs:
 
           set -e
 
-          cat "$submission_log"
-
           if [ "$docker_status" -ne 0 ]; then
             echo "::error::LAVA submission failed with exit code $docker_status"
+            cat "$submission_log"
             exit "$docker_status"
           fi
 
@@ -398,15 +398,30 @@ jobs:
 
           if ! [[ "$job_id" =~ ^[0-9]+$ ]]; then
             echo "::error::Unable to extract a numeric LAVA job ID"
+            cat "$submission_log"
             exit 1
           fi
 
+          job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
+
           echo "JOB_ID=$job_id" >> "$GITHUB_ENV"
+          echo "JOB_URL=$job_url" >> "$GITHUB_ENV"
           echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
-          echo "job_url=https://lava-oss.qualcomm.com/scheduler/job/$job_id" \
-            >> "$GITHUB_OUTPUT"
+          echo "job_url=$job_url" >> "$GITHUB_OUTPUT"
 
           echo "LAVA job submitted: $job_id"
+          echo "LAVA job URL: $job_url"
+
+          echo "::notice title=LAVA job submitted::$job_id"
+          echo "::notice title=LAVA job URL::$job_url"
+
+          {
+            echo "### LAVA Job Submitted"
+            echo ""
+            echo "- Machine: \`$MACHINE\`"
+            echo "- Job ID: [$job_id]($job_url)"
+            echo "- Job URL: $job_url"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload LAVA submission log
         if: ${{ always() && matrix.build_matrix.lavaname != '' }}
@@ -423,13 +438,32 @@ jobs:
         env:
           MACHINE: ${{ matrix.build_matrix.machine }}
           JOB_ID: ${{ env.JOB_ID }}
+          JOB_URL: ${{ env.JOB_URL }}
         run: |
           set -euo pipefail
 
-          printf '{"id":"%s","machine":"%s"}\n' \
-            "${JOB_ID:-unknown}" \
-            "$MACHINE" \
-            > "lava-job-${MACHINE}.json"
+          job_id="${JOB_ID:-unknown}"
+
+          if [ -n "${JOB_URL:-}" ]; then
+            job_url="$JOB_URL"
+          elif [ "$job_id" != "unknown" ]; then
+            job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
+          else
+            job_url="unknown"
+          fi
+
+          jq -n \
+            --arg id "$job_id" \
+            --arg machine "$MACHINE" \
+            --arg url "$job_url" \
+            '{
+              id: $id,
+              machine: $machine,
+              url: $url
+            }' > "lava-job-${MACHINE}.json"
+
+          echo "Saved LAVA job data:"
+          cat "lava-job-${MACHINE}.json"
 
       - name: Upload job ID artifact
         if: ${{ always() && matrix.build_matrix.lavaname != '' }}
@@ -457,6 +491,11 @@ jobs:
             exit 1
           fi
 
+          job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
+
+          echo "Waiting for LAVA job $job_id"
+          echo "LAVA job URL: $job_url"
+
           parent_dir="$(dirname "$WORKSPACE")"
           job_render_dir="$parent_dir/job_render"
 
@@ -475,8 +514,6 @@ jobs:
               head -n 1 |
               xargs
           }
-
-          echo "Waiting for LAVA job $job_id"
 
           while [ "$state" != "Finished" ]; do
             job_info="$(
@@ -502,7 +539,7 @@ jobs:
             state="$(get_lava_field "$job_info" state)"
             health="$(get_lava_field "$job_info" Health)"
 
-            echo "State: ${state:-UNKNOWN}; Health: ${health:-UNKNOWN}"
+            echo "State: ${state:-UNKNOWN}; Health: ${health:-UNKNOWN}; URL: $job_url"
 
             if [ "$state" = "Finished" ]; then
               break
@@ -512,14 +549,24 @@ jobs:
 
             if [ "$elapsed" -ge "$timeout_seconds" ]; then
               echo "::error::LAVA timeout reached after four hours"
+              echo "::error::LAVA job URL: $job_url"
               exit 1
             fi
 
             sleep 30
           done
 
+          {
+            echo "### LAVA Job Completed"
+            echo ""
+            echo "- Job ID: [$job_id]($job_url)"
+            echo "- State: \`${state:-UNKNOWN}\`"
+            echo "- Health: \`${health:-UNKNOWN}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           if [ "$health" = "Canceled" ]; then
             echo "::error::LAVA job was canceled"
+            echo "::error::LAVA job URL: $job_url"
             exit 1
           fi
 
@@ -552,6 +599,7 @@ jobs:
 
           if [ -z "$results" ]; then
             echo "::error::Video_V4L2_Runner result was not found"
+            echo "::error::LAVA job URL: $job_url"
             exit 1
           fi
 
@@ -559,32 +607,9 @@ jobs:
 
           if echo "$results" | grep -q '\[fail\]'; then
             echo "::error::Video_V4L2_Runner failed"
+            echo "::error::LAVA job URL: $job_url"
             exit 1
-          fi
-
-          echo "Video_V4L2_Runner passed"
-
-      - name: Clean up test workspace
-        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
-        shell: bash
-        env:
-          WORKSPACE: ${{ github.workspace }}
-        run: |
-          rm -f "$WORKSPACE/presigned_urls.json" || true
-          rm -f "$WORKSPACE/lava-submit-output.txt" || true
-          rm -f "$WORKSPACE/lava_results.txt" || true
-          rm -rf "$(dirname "$WORKSPACE")/job_render" || true
-
-  generate-summary:
-    name: Generate LAVA summary
-    needs:
-      - test
-    if: always()
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download all job ID artifacts
-        uses: actions/download-artifact@v4
+         2 actions/download-artifact@v4
         with:
           pattern: lava-job-data-*
           merge-multiple: true
@@ -619,23 +644,34 @@ jobs:
 
             find artifacts -name 'lava-job-*.json' -print0 |
             while IFS= read -r -d '' file; do
-              job_id="$(jq -r '.id' "$file")"
-              machine="$(jq -r '.machine' "$file")"
+              job_id="$(jq -r '.id // "unknown"' "$file")"
+              machine="$(jq -r '.machine // "unknown"' "$file")"
+              saved_url="$(jq -r '.url // empty' "$file")"
 
               if [ -z "$job_id" ] || [ "$job_id" = "unknown" ]; then
                 printf '| - | %s | Not submitted | - | - |\n' "$machine"
                 continue
               fi
 
+              url="$saved_url"
+
+              if [ -z "$url" ] || [ "$url" = "unknown" ]; then
+                url="$LAVA_URL/scheduler/job/$job_id"
+              fi
+
               details="$(
                 curl -sf \
                   -H "Authorization: Token $LAVA_TOKEN" \
-                  "$LAVA_URL/api/v0.2/jobs/$job_id/"
+                  "$LAVA_URL/api/v0.2/jobs/$job_id/" || true
               )"
 
-              state="$(printf '%s' "$details" | jq -r '.state // "unknown"')"
-              health="$(printf '%s' "$details" | jq -r '.health // "unknown"')"
-              url="$LAVA_URL/results/$job_id"
+              if [ -n "$details" ]; then
+                state="$(printf '%s' "$details" | jq -r '.state // "unknown"')"
+                health="$(printf '%s' "$details" | jq -r '.health // "unknown"')"
+              else
+                state="unknown"
+                health="unknown"
+              fi
 
               printf '| %s | %s | %s | %s | [View](%s) |\n' \
                 "$job_id" \
