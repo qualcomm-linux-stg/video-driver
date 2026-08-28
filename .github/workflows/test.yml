@@ -609,7 +609,20 @@ jobs:
             echo "::error::Video_V4L2_Runner failed"
             echo "::error::LAVA job URL: $job_url"
             exit 1
-         2 actions/download-artifact@v4
+          fi
+
+          echo "Video_V4L2_Runner passed"
+
+  generate-summary:
+    name: Generate LAVA summary
+    needs:
+      - test
+    if: ${{ always() && needs.test.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download LAVA job data artifacts
+        uses: actions/download-artifact@v4
         with:
           pattern: lava-job-data-*
           merge-multiple: true
@@ -642,8 +655,11 @@ jobs:
             echo "| Job ID | Machine | State | Health | Link |"
             echo "| :--- | :--- | :--- | :--- | :--- |"
 
-            find artifacts -name 'lava-job-*.json' -print0 |
+            found_files=false
+
             while IFS= read -r -d '' file; do
+              found_files=true
+
               job_id="$(jq -r '.id // "unknown"' "$file")"
               machine="$(jq -r '.machine // "unknown"' "$file")"
               saved_url="$(jq -r '.url // empty' "$file")"
@@ -679,7 +695,16 @@ jobs:
                 "$state" \
                 "$health" \
                 "$url"
-            done
+            done < <(
+              find artifacts \
+                -type f \
+                -name 'lava-job-*.json' \
+                -print0
+            )
+
+            if [ "$found_files" = false ]; then
+              echo "| - | - | No LAVA job artifacts found | - | - |"
+            fi
           } | tee "$summary_file" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload summary artifact
