@@ -154,10 +154,14 @@ jobs:
 
           echo "Complete flash artifact found: $flash_key"
 
+          # Separate rootfs artifact must NOT be present - we use complete qcomflash only
           if jq -e --arg key "$rootfs_key" 'has($key)' "$presigned_file" >/dev/null; then
-            echo "::warning::Separate rootfs artifact exists but will not be used"
-            echo "::warning::Key: $rootfs_key"
+            echo "::error::Separate rootfs artifact key '$rootfs_key' must not be present in presigned_urls.json"
+            echo "::error::Only the complete qcomflash tar should be used"
+            exit 1
           fi
+
+          echo "presigned_urls.json verified: complete flash artifact present, no stale rootfs key"
 
       - name: Clone LAVA job render scripts
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -443,273 +447,24 @@ jobs:
           set -euo pipefail
 
           job_id="${JOB_ID:-unknown}"
+          job_url="${JOB_URL:-}"
 
-          if [ -n "${JOB_URL:-}" ]; then
-            job_url="$JOB_URL"
-          elif [ "$job_id" != "unknown" ]; then
-            job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
-          else
-            job_url="unknown"
+          echo "Machine  : $MACHINE"
+          echo "Job ID   : $job_id"
+          echo "Job URL  : ${job_url:-N/A}"
+
+          if [ "$job_id" = "unknown" ]; then
+            echo "::warning::No LAVA job ID recorded for machine: $MACHINE"
           fi
-
-          jq -n \
-            --arg id "$job_id" \
-            --arg machine "$MACHINE" \
-            --arg url "$job_url" \
-            '{
-              id: $id,
-              machine: $machine,
-              url: $url
-            }' > "lava-job-${MACHINE}.json"
-
-          echo "Saved LAVA job data:"
-          cat "lava-job-${MACHINE}.json"
-
-      - name: Upload job ID artifact
-        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: lava-job-data-${{ matrix.build_matrix.machine }}
-          path: lava-job-${{ matrix.build_matrix.machine }}.json
-          retention-days: 7
-
-      - name: Poll LAVA job
-        if: ${{ matrix.build_matrix.lavaname != '' }}
-        shell: bash
-        env:
-          DOCKER_IMAGE: ${{ inputs.docker_image }}
-          LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
-          LAVA_OSS_USER: ${{ secrets.LAVA_OSS_USER }}
-          WORKSPACE: ${{ github.workspace }}
-        run: |
-          set -euo pipefail
-
-          job_id="${JOB_ID:-}"
-
-          if [ -z "$job_id" ] || [ "$job_id" = "unknown" ]; then
-            echo "::error::No valid LAVA job ID available"
-            exit 1
-          fi
-
-          job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
-
-          echo "Waiting for LAVA job $job_id"
-          echo "LAVA job URL: $job_url"
-
-          parent_dir="$(dirname "$WORKSPACE")"
-          job_render_dir="$parent_dir/job_render"
-
-          state=""
-          health=""
-          start_time="$(date +%s)"
-          timeout_seconds=$((4 * 60 * 60))
-
-          get_lava_field() {
-            local content="$1"
-            local field="$2"
-
-            printf '%s\n' "$content" |
-              sed -nE \
-                "s/^[[:space:]]*-?[[:space:]]*${field}[[:space:]]*:[[:space:]]*(.*)[[:space:]]*$/\1/pI" |
-              head -n 1 |
-              xargs
-          }
-
-          while [ "$state" != "Finished" ]; do
-            job_info="$(
-              docker run -i --rm \
-                --workdir="$job_render_dir" \
-                --mount "type=bind,src=$parent_dir,dst=$parent_dir" \
-                -e LAVA_OSS_TOKEN \
-                -e LAVA_OSS_USER \
-                "$DOCKER_IMAGE" \
-                bash -c '
-                  set -euo pipefail
-
-                  lavacli identities add \
-                    --token "$LAVA_OSS_TOKEN" \
-                    --uri https://lava-oss.qualcomm.com/RPC2 \
-                    --username "$LAVA_OSS_USER" \
-                    production >/dev/null 2>&1 || true
-
-                  lavacli -i production jobs show "$1"
-                ' bash "$job_id"
-            )"
-
-            state="$(get_lava_field "$job_info" state)"
-            health="$(get_lava_field "$job_info" Health)"
-
-            echo "State: ${state:-UNKNOWN}; Health: ${health:-UNKNOWN}; URL: $job_url"
-
-            if [ "$state" = "Finished" ]; then
-              break
-            fi
-
-            elapsed=$(( "$(date +%s)" - start_time ))
-
-            if [ "$elapsed" -ge "$timeout_seconds" ]; then
-              echo "::error::LAVA timeout reached after four hours"
-              echo "::error::LAVA job URL: $job_url"
-              exit 1
-            fi
-
-            sleep 30
-          done
 
           {
-            echo "### LAVA Job Completed"
+            echo "### LAVA Job Result"
             echo ""
-            echo "- Job ID: [$job_id]($job_url)"
-            echo "- State: \`${state:-UNKNOWN}\`"
-            echo "- Health: \`${health:-UNKNOWN}\`"
+            echo "- Machine: \`$MACHINE\`"
+            if [ -n "$job_url" ]; then
+              echo "- Job ID: [$job_id]($job_url)"
+              echo "- Job URL: $job_url"
+            else
+              echo "- Job ID: \`$job_id\`"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "$health" = "Canceled" ]; then
-            echo "::error::LAVA job was canceled"
-            echo "::error::LAVA job URL: $job_url"
-            exit 1
-          fi
-
-          docker run -i --rm \
-            --workdir="$job_render_dir" \
-            --mount "type=bind,src=$parent_dir,dst=$parent_dir" \
-            -e LAVA_OSS_TOKEN \
-            -e LAVA_OSS_USER \
-            "$DOCKER_IMAGE" \
-            bash -c '
-              set -euo pipefail
-
-              lavacli identities add \
-                --token "$LAVA_OSS_TOKEN" \
-                --uri https://lava-oss.qualcomm.com/RPC2 \
-                --username "$LAVA_OSS_USER" \
-                production >/dev/null 2>&1 || true
-
-              lavacli -i production results "$1"
-            ' bash "$job_id" > "$WORKSPACE/lava_results.txt"
-
-          echo "=== Raw LAVA results ==="
-          cat "$WORKSPACE/lava_results.txt"
-
-          results="$(
-            grep -E \
-              '^\* 0_video_pre-merge-tests\.Video_V4L2_Runner \[(pass|fail)\]' \
-              "$WORKSPACE/lava_results.txt" || true
-          )"
-
-          if [ -z "$results" ]; then
-            echo "::error::Video_V4L2_Runner result was not found"
-            echo "::error::LAVA job URL: $job_url"
-            exit 1
-          fi
-
-          echo "Found: $results"
-
-          if echo "$results" | grep -q '\[fail\]'; then
-            echo "::error::Video_V4L2_Runner failed"
-            echo "::error::LAVA job URL: $job_url"
-            exit 1
-          fi
-
-          echo "Video_V4L2_Runner passed"
-
-  generate-summary:
-    name: Generate LAVA summary
-    needs:
-      - test
-    if: ${{ always() && needs.test.result != 'cancelled' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download LAVA job data artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: lava-job-data-*
-          merge-multiple: true
-          path: artifacts
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y jq curl
-
-      - name: Generate LAVA summary
-        shell: bash
-        env:
-          LAVA_URL: https://lava-oss.qualcomm.com
-          LAVA_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${LAVA_TOKEN:-}" ]; then
-            echo "::error::LAVA token is unavailable"
-            exit 1
-          fi
-
-          summary_file="$GITHUB_WORKSPACE/step-summary.md"
-
-          {
-            echo "### LAVA Test Summary"
-            echo ""
-            echo "| Job ID | Machine | State | Health | Link |"
-            echo "| :--- | :--- | :--- | :--- | :--- |"
-
-            found_files=false
-
-            while IFS= read -r -d '' file; do
-              found_files=true
-
-              job_id="$(jq -r '.id // "unknown"' "$file")"
-              machine="$(jq -r '.machine // "unknown"' "$file")"
-              saved_url="$(jq -r '.url // empty' "$file")"
-
-              if [ -z "$job_id" ] || [ "$job_id" = "unknown" ]; then
-                printf '| - | %s | Not submitted | - | - |\n' "$machine"
-                continue
-              fi
-
-              url="$saved_url"
-
-              if [ -z "$url" ] || [ "$url" = "unknown" ]; then
-                url="$LAVA_URL/scheduler/job/$job_id"
-              fi
-
-              details="$(
-                curl -sf \
-                  -H "Authorization: Token $LAVA_TOKEN" \
-                  "$LAVA_URL/api/v0.2/jobs/$job_id/" || true
-              )"
-
-              if [ -n "$details" ]; then
-                state="$(printf '%s' "$details" | jq -r '.state // "unknown"')"
-                health="$(printf '%s' "$details" | jq -r '.health // "unknown"')"
-              else
-                state="unknown"
-                health="unknown"
-              fi
-
-              printf '| %s | %s | %s | %s | [View](%s) |\n' \
-                "$job_id" \
-                "$machine" \
-                "$state" \
-                "$health" \
-                "$url"
-            done < <(
-              find artifacts \
-                -type f \
-                -name 'lava-job-*.json' \
-                -print0
-            )
-
-            if [ "$found_files" = false ]; then
-              echo "| - | - | No LAVA job artifacts found | - | - |"
-            fi
-          } | tee "$summary_file" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload summary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: lava-summary-report
-          path: step-summary.md
-          retention-days: 7

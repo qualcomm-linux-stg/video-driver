@@ -385,7 +385,7 @@ jobs:
 
           echo "=== rootfs.img details ==="
           ls -lh "$rootfs_img"
-          file "$rootfs_img" || true
+          # NOTE: 'file' utility not used - unavailable on the flasher environment
 
           echo "=== qcomflash rawprogram rootfs references ==="
           grep -Rni "rootfs.img\|label=\"rootfs\"\|label='rootfs'" "$resolved_dir" || true
