@@ -125,7 +125,8 @@ runs:
               ramdisk: "",
               firmware: "",
               dtb: "",
-              flash_image: $flash_url
+              flash_image: $flash_url,
+              rootfs_image: ""
             },
             data: {
               kernel_revision: {
@@ -288,7 +289,7 @@ runs:
             -exec tail -n 120 {} \; || true
 
           echo "=== Complete job_render directory ==="
-          find "$job_render_dir" -maxdepth 8 -print | sort || true
+          find "$job_render_dir" -maxdepth 4 -print | sort || true
           exit 1
         fi
 
