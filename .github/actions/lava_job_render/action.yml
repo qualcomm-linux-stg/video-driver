@@ -407,11 +407,11 @@ runs:
           exit 1
         fi
 
-        # combined_flash.tar is valid as an intermediate postprocess artifact
-        # created inside Docker and consumed via downloads:// in the second
-        # deploy block. Reject it only if it appears as a direct S3/HTTP URL.
-        if grep -qE 'url:.*combined_flash\.tar' "$yaml_file"; then
-          echo "::error::combined_flash.tar must not appear as a direct download URL"
+        # combined_flash.tar is valid as a downloads:// reference in the second
+        # deploy block (intermediate artifact created by postprocess Docker step).
+        # Reject it only if it appears as a direct S3/HTTP input URL.
+        if grep -E 'url:.*combined_flash\.tar' "$yaml_file" | grep -qE 'https?://|s3://'; then
+          echo "::error::combined_flash.tar must not appear as a direct S3/HTTP download URL"
           echo "::error::It is only valid as a downloads:// reference after postprocess"
           exit 1
         fi
