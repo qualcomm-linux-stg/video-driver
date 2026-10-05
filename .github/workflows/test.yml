@@ -118,7 +118,6 @@ jobs:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}
 
-      # ── CHANGED: now requires BOTH flash_files and rootfs_img keys ──
       - name: Verify presigned_urls.json
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
@@ -163,7 +162,7 @@ jobs:
             exit 1
           fi
 
-          echo "presigned_urls.json verified: both artifacts present"
+          echo "presigned_urls.json verified: flash_files and rootfs artifacts both present"
           echo "Flash key : $flash_key"
           echo "Rootfs key: $rootfs_key"
 
@@ -277,7 +276,6 @@ jobs:
           echo "=== Rendered LAVA job ==="
           sed -n '1,300p' "$job_file"
 
-      # ── CHANGED: validates split flash_files + rootfs_img strategy ──
       - name: Verify rendered LAVA job configuration
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
@@ -309,17 +307,20 @@ jobs:
             exit 1
           fi
 
-          # combined_flash.tar must not be present — split strategy is used
-          if grep -q 'combined_flash.tar' "$job_file"; then
-            echo "::error::combined_flash.tar must not be present; use separate flash_files and rootfs_img"
+          # combined_flash.tar is valid as a downloads:// intermediate reference
+          # created during the postprocess Docker step. Reject it only if it
+          # appears as a direct S3/HTTP input URL.
+          if grep -E 'url:.*combined_flash\.tar' "$job_file" | grep -qE 'https?://|s3://'; then
+            echo "::error::combined_flash.tar must not appear as a direct S3/HTTP download URL"
+            echo "::error::It is only valid as a downloads:// reference after postprocess"
             exit 1
           fi
 
           echo "Rendered LAVA job configuration verified:"
-          echo "  - flash_files        : present"
-          echo "  - rootfs_img         : present"
-          echo "  - ROOTFS_IMAGE       : present"
-          echo "  - combined_flash.tar : absent (correct)"
+          echo "  - flash_files         : present"
+          echo "  - rootfs_img          : present"
+          echo "  - ROOTFS_IMAGE        : present"
+          echo "  - combined_flash.tar  : intermediate only (correct)"
 
       - name: Verify LAVA Docker environment
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -419,9 +420,9 @@ jobs:
 
           job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
 
-          echo "JOB_ID=$job_id" >> "$GITHUB_ENV"
+          echo "JOB_ID=$job_id"   >> "$GITHUB_ENV"
           echo "JOB_URL=$job_url" >> "$GITHUB_ENV"
-          echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
+          echo "job_id=$job_id"   >> "$GITHUB_OUTPUT"
           echo "job_url=$job_url" >> "$GITHUB_OUTPUT"
 
           echo "LAVA job submitted: $job_id"
