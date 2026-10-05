@@ -121,8 +121,8 @@ runs:
             ;;
         esac
 
-        printf 'dtb_name=%s\n'       "$dtb_name"       >> "$GITHUB_OUTPUT"
-        printf 'job_render_dir=%s\n' "$job_render_dir"  >> "$GITHUB_OUTPUT"
+        printf 'dtb_name=%s\n'       "$dtb_name"      >> "$GITHUB_OUTPUT"
+        printf 'job_render_dir=%s\n' "$job_render_dir" >> "$GITHUB_OUTPUT"
 
         jq -n \
           --arg machine    "$MACHINE" \
@@ -389,13 +389,13 @@ runs:
           exit 1
         fi
 
-        # flash_files section must be present
+        # flash_files section must be present as an input artifact
         if ! grep -q 'flash_files:' "$yaml_file"; then
           echo "::error::flash_files section is missing from rendered YAML"
           exit 1
         fi
 
-        # rootfs_img must be present as a separate deploy artifact
+        # rootfs_img must be present as a separate input artifact
         if ! grep -qE '[[:space:]]rootfs_img:' "$yaml_file"; then
           echo "::error::rootfs_img is missing from rendered YAML"
           exit 1
@@ -407,9 +407,12 @@ runs:
           exit 1
         fi
 
-        # combined_flash.tar must not be present
-        if grep -q 'combined_flash.tar' "$yaml_file"; then
-          echo "::error::combined_flash.tar must not be present; flash_files and rootfs_img are separate"
+        # combined_flash.tar is valid as an intermediate postprocess artifact
+        # created inside Docker and consumed via downloads:// in the second
+        # deploy block. Reject it only if it appears as a direct S3/HTTP URL.
+        if grep -qE 'url:.*combined_flash\.tar' "$yaml_file"; then
+          echo "::error::combined_flash.tar must not appear as a direct download URL"
+          echo "::error::It is only valid as a downloads:// reference after postprocess"
           exit 1
         fi
 
@@ -417,8 +420,8 @@ runs:
         sed -n '1,320p' "$yaml_file"
 
         echo "Rendered LAVA job validation passed for $MACHINE"
-        echo "  - device_type    : present"
-        echo "  - flash_files    : present"
-        echo "  - rootfs_img     : present"
-        echo "  - ROOTFS_IMAGE   : present"
-        echo "  - combined_flash : absent (correct)"
+        echo "  - device_type         : present"
+        echo "  - flash_files         : present"
+        echo "  - rootfs_img          : present"
+        echo "  - ROOTFS_IMAGE        : present"
+        echo "  - combined_flash.tar  : intermediate only (correct)"
