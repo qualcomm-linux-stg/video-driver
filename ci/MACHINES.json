@@ -22,5 +22,29 @@
     "build_command": "bitbake qcom-multimedia-image",
     "image_name": "qcom-multimedia-image",
     "prebuilt_artifact": "qcom-multimedia-image-sm8750-mtp.rootfs.qcomflash.tar.gz"
-  }
+  },
+  "qcs615-ride": {
+    "machine": "qcs615-ride",
+    "kas_file": "../meta-qcom/ci/qcs615-ride.yml:../meta-qcom/ci/qcom-distro.yml",
+    "lavaname": "qcs615-ride",
+    "build_command": "bitbake qcom-multimedia-image",
+    "image_name": "qcom-multimedia-image",
+    "prebuilt_artifact": "qcom-multimedia-image-qcs615-ride.rootfs.qcomflash.tar.gz"
+  },
+  "shikra-evk": {
+    "machine": "shikra-evk",
+    "kas_file": "../meta-qcom/ci/shikra-evk.yml:../meta-qcom/ci/qcom-distro.yml",
+    "lavaname": "shikra-iqs-evk",
+    "build_command": "bitbake qcom-multimedia-image",
+    "image_name": "qcom-multimedia-image",
+    "prebuilt_artifact": "qcom-multimedia-image-shikra-evk.rootfs.qcomflash.tar.gz"
+  },
+  "glymur-crd": {
+    "machine": "glymur-crd",
+    "kas_file": "../meta-qcom/ci/glymur-crd.yml:../meta-qcom/ci/qcom-distro.yml",
+    "lavaname": "glymur-crd",
+    "build_command": "bitbake qcom-multimedia-proprietary-image",
+    "image_name": "qcom-multimedia-proprietary-image",
+    "prebuilt_artifact": "qcom-multimedia-proprietary-image-glymur-crd.rootfs.qcomflash.tar.gz"
+  } 
 }
