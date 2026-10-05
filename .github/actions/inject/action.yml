@@ -38,6 +38,8 @@ runs:
           qcs615-ride|\
           sm8750-mtp|\
           kaanapali-mtp|\
+          glymur-crd|\
+          shikra-evk|\
           qcom-armv8a)
             ;;
           *)
