@@ -121,7 +121,6 @@ jobs:
       - verify-build
     if: ${{ needs.verify-build.result == 'success' }}
 
-    # This branch contains the flash-only complete-qcomflash test workflow.
     uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@kodiak_testing
 
     with:

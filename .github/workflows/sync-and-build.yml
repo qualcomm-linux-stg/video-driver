@@ -342,6 +342,12 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
 
+      # -----------------------------------------------------------------------
+      # KEY CHANGE: flash files and rootfs.img are packaged SEPARATELY
+      # - ${MACHINE}_flash_files.tar  → qcomflash dir contents excluding rootfs.img
+      # - ${MACHINE}_rootfs.img       → rootfs.img copied out standalone
+      # This matches what the LAVA flasher template expects as two distinct URLs
+      # -----------------------------------------------------------------------
       - name: Prepare qcomflash files
         shell: bash
         env:
@@ -383,34 +389,36 @@ jobs:
           echo "=== qcomflash contents before packaging ==="
           ls -larth "$resolved_dir"
 
-          echo "=== rootfs.img details ==="
-          ls -lh "$rootfs_img"
-          # NOTE: 'file' utility not used - unavailable on the flasher environment
-
-          echo "=== qcomflash rawprogram rootfs references ==="
-          grep -Rni "rootfs.img\|label=\"rootfs\"\|label='rootfs'" "$resolved_dir" || true
-
           mkdir -p "$WORKSPACE/artifacts"
           : > "$WORKSPACE/artifacts/file_list.txt"
 
           flash_tar="$WORKSPACE/${MACHINE}_flash_files.tar"
+          rootfs_dest="$WORKSPACE/${MACHINE}_rootfs.img"
 
-          echo "=== Packaging COMPLETE qcomflash directory including rootfs.img ==="
+          echo "=== Packaging flash files (excluding rootfs.img) ==="
           tar -cf "$flash_tar" \
             -C "$resolved_dir" \
+            --exclude='./rootfs.img' \
             .
 
-          printf '%s\n' "$flash_tar" \
-            > "$WORKSPACE/artifacts/file_list.txt"
+          echo "=== Copying rootfs.img separately ==="
+          cp "$rootfs_img" "$rootfs_dest"
+
+          printf '%s\n' "$flash_tar"   >> "$WORKSPACE/artifacts/file_list.txt"
+          printf '%s\n' "$rootfs_dest" >> "$WORKSPACE/artifacts/file_list.txt"
 
           echo "=== Artifact file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
 
           echo "=== Generated artifacts ==="
-          ls -lh "$flash_tar"
+          ls -lh "$flash_tar" "$rootfs_dest"
 
-          echo "=== Verify rootfs.img is inside flash tar ==="
-          tar -tf "$flash_tar" | grep -E '(^|/)rootfs.img$'
+          echo "=== Verify rootfs.img is NOT inside flash tar ==="
+          if tar -tf "$flash_tar" | grep -qE '(^|/)rootfs\.img$'; then
+            echo "::error::rootfs.img found inside flash tar — should be excluded"
+            exit 1
+          fi
+          echo "rootfs.img correctly excluded from flash tar"
 
           echo "=== Verify rawprogram files are inside flash tar ==="
           tar -tf "$flash_tar" | grep -E '(^|/)rawprogram.*\.xml$' || true
@@ -436,6 +444,15 @@ jobs:
         with:
           name: flash-files-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_flash_files.tar
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload rootfs image
+        uses: actions/upload-artifact@v4
+        with:
+          name: rootfs-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_rootfs.img
           retention-days: 7
           compression-level: 0
           if-no-files-found: error
@@ -469,9 +486,9 @@ jobs:
           set -u
 
           if [ "$JOB_STATUS" = "success" ]; then
-            summary=":heavy_check_mark: Complete qcomflash package success"
+            summary=":heavy_check_mark: Build Success"
           else
-            summary=":x: Complete qcomflash package failed"
+            summary=":x: Build Failed"
           fi
 
           {

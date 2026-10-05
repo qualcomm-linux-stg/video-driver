@@ -118,6 +118,7 @@ jobs:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}
 
+      # ── CHANGED: now requires BOTH flash_files and rootfs_img keys ──
       - name: Verify presigned_urls.json
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
@@ -147,21 +148,24 @@ jobs:
           )"
 
           if [ -z "$flash_url" ]; then
-            echo "::error::Complete flash artifact URL is missing"
+            echo "::error::Flash files artifact URL is missing"
             echo "::error::Expected key: $flash_key"
             exit 1
           fi
 
-          echo "Complete flash artifact found: $flash_key"
+          rootfs_url="$(
+            jq -r --arg key "$rootfs_key" '.[$key] // empty' "$presigned_file"
+          )"
 
-          # Separate rootfs artifact must NOT be present - we use complete qcomflash only
-          if jq -e --arg key "$rootfs_key" 'has($key)' "$presigned_file" >/dev/null; then
-            echo "::error::Separate rootfs artifact key '$rootfs_key' must not be present in presigned_urls.json"
-            echo "::error::Only the complete qcomflash tar should be used"
+          if [ -z "$rootfs_url" ]; then
+            echo "::error::Rootfs artifact URL is missing"
+            echo "::error::Expected key: $rootfs_key"
             exit 1
           fi
 
-          echo "presigned_urls.json verified: complete flash artifact present, no stale rootfs key"
+          echo "presigned_urls.json verified: both artifacts present"
+          echo "Flash key : $flash_key"
+          echo "Rootfs key: $rootfs_key"
 
       - name: Clone LAVA job render scripts
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -273,7 +277,8 @@ jobs:
           echo "=== Rendered LAVA job ==="
           sed -n '1,300p' "$job_file"
 
-      - name: Verify complete-qcomflash configuration
+      # ── CHANGED: validates split flash_files + rootfs_img strategy ──
+      - name: Verify rendered LAVA job configuration
         if: ${{ matrix.build_matrix.lavaname != '' }}
         shell: bash
         env:
@@ -284,31 +289,37 @@ jobs:
           parent_dir="$(dirname "$WORKSPACE")"
           job_file="$parent_dir/job_render/renders/lava_job_definition.yaml"
 
+          # Basic structure check
           grep -q '^device_type:' "$job_file"
-          grep -q 'flash_files:' "$job_file"
-          grep -q 'combined_flash.tar' "$job_file"
 
-          if grep -q 'rootfs_img:' "$job_file"; then
-            echo "::error::Separate rootfs_img is present"
+          # flash_files and rootfs_img must both be present as separate artifacts
+          if ! grep -q 'flash_files:' "$job_file"; then
+            echo "::error::flash_files section is missing from rendered LAVA job"
             exit 1
           fi
 
-          if grep -q 'ROOTFS_IMAGE' "$job_file"; then
-            echo "::error::ROOTFS_IMAGE must not be used"
+          if ! grep -q 'rootfs_img:' "$job_file"; then
+            echo "::error::rootfs_img section is missing from rendered LAVA job"
             exit 1
           fi
 
-          if grep -q 'ROOTFS_PARTITION' "$job_file"; then
-            echo "::error::ROOTFS_PARTITION must not be used"
+          # postprocess must reference ROOTFS_IMAGE setting
+          if ! grep -q 'ROOTFS_IMAGE' "$job_file"; then
+            echo "::error::ROOTFS_IMAGE setting is missing from rendered LAVA job"
             exit 1
           fi
 
-          if grep -q 'rawprogram.*xml' "$job_file"; then
-            echo "::error::Manual rawprogram XML patching must not be used"
+          # combined_flash.tar must not be present — split strategy is used
+          if grep -q 'combined_flash.tar' "$job_file"; then
+            echo "::error::combined_flash.tar must not be present; use separate flash_files and rootfs_img"
             exit 1
           fi
 
-          echo "Complete-qcomflash configuration verified"
+          echo "Rendered LAVA job configuration verified:"
+          echo "  - flash_files        : present"
+          echo "  - rootfs_img         : present"
+          echo "  - ROOTFS_IMAGE       : present"
+          echo "  - combined_flash.tar : absent (correct)"
 
       - name: Verify LAVA Docker environment
         if: ${{ matrix.build_matrix.lavaname != '' }}

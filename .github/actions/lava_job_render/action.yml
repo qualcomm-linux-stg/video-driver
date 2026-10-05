@@ -21,7 +21,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Extract presigned flash URL
+    - name: Extract presigned flash and rootfs URLs
       id: extract_urls
       shell: bash
       env:
@@ -31,6 +31,7 @@ runs:
         set -euo pipefail
 
         flash_key="${MACHINE}_flash_files.tar"
+        rootfs_key="${MACHINE}_rootfs.img"
 
         if [ ! -f "$PRESIGNED_FILE" ]; then
           echo "::error::Presigned URL file not found: $PRESIGNED_FILE"
@@ -47,14 +48,26 @@ runs:
         )"
 
         if [ -z "$flash_url" ]; then
-          echo "::error::Complete flash artifact URL is missing"
+          echo "::error::Flash files artifact URL is missing"
           echo "::error::Expected key: $flash_key"
           exit 1
         fi
 
-        echo "Complete flash artifact found: $flash_key"
+        rootfs_url="$(
+          jq -r --arg key "$rootfs_key" '.[$key] // empty' "$PRESIGNED_FILE"
+        )"
 
-        printf 'flash_url=%s\n' "$flash_url" >> "$GITHUB_OUTPUT"
+        if [ -z "$rootfs_url" ]; then
+          echo "::error::Rootfs artifact URL is missing"
+          echo "::error::Expected key: $rootfs_key"
+          exit 1
+        fi
+
+        echo "Flash artifact found  : $flash_key"
+        echo "Rootfs artifact found : $rootfs_key"
+
+        printf 'flash_url=%s\n'  "$flash_url"  >> "$GITHUB_OUTPUT"
+        printf 'rootfs_url=%s\n' "$rootfs_url" >> "$GITHUB_OUTPUT"
 
     - name: Write synthetic cloudData.json and metadata.json
       id: write_json
@@ -63,6 +76,7 @@ runs:
         MACHINE: ${{ inputs.machine }}
         LAVA_NAME: ${{ inputs.lavaname }}
         FLASH_URL: ${{ steps.extract_urls.outputs.flash_url }}
+        ROOTFS_URL: ${{ steps.extract_urls.outputs.rootfs_url }}
         WORKSPACE: ${{ github.workspace }}
       run: |
         set -euo pipefail
@@ -96,18 +110,25 @@ runs:
           kaanapali-mtp)
             dtb_name="kaanapali-mtp"
             ;;
+          shikra)
+            dtb_name="shikra"
+            ;;
+          glymur)
+            dtb_name="glymur"
+            ;;
           *)
             dtb_name="$MACHINE"
             ;;
         esac
 
-        printf 'dtb_name=%s\n' "$dtb_name" >> "$GITHUB_OUTPUT"
-        printf 'job_render_dir=%s\n' "$job_render_dir" >> "$GITHUB_OUTPUT"
+        printf 'dtb_name=%s\n'       "$dtb_name"       >> "$GITHUB_OUTPUT"
+        printf 'job_render_dir=%s\n' "$job_render_dir"  >> "$GITHUB_OUTPUT"
 
         jq -n \
-          --arg machine "$MACHINE" \
-          --arg lavaname "$LAVA_NAME" \
-          --arg flash_url "$FLASH_URL" \
+          --arg machine    "$MACHINE" \
+          --arg lavaname   "$LAVA_NAME" \
+          --arg flash_url  "$FLASH_URL" \
+          --arg rootfs_url "$ROOTFS_URL" \
           '{
             id: ("ci-" + $machine),
             kind: "kbuild",
@@ -126,7 +147,7 @@ runs:
               firmware: "",
               dtb: "",
               flash_image: $flash_url,
-              rootfs_image: ""
+              rootfs_image: $rootfs_url
             },
             data: {
               kernel_revision: {
@@ -338,7 +359,7 @@ runs:
 
         mv "$tmp_file" "$yaml_file"
 
-        echo "Patched device_type for $MACHINE"
+        echo "Patched device_type for $MACHINE → $LAVA_NAME"
         grep -n '^device_type:' "$yaml_file"
 
     - name: Validate rendered LAVA job
@@ -362,18 +383,33 @@ runs:
           exit 1
         fi
 
+        # device_type must be present and non-empty
         if ! grep -qE '^device_type:[[:space:]]*[^[:space:]]+' "$yaml_file"; then
-          echo "::error::device_type is missing from rendered YAML"
+          echo "::error::device_type is missing or empty in rendered YAML"
           exit 1
         fi
 
-        if grep -qE '^[[:space:]]*rootfs_img:' "$yaml_file"; then
-          echo "::error::rootfs_img must not be present in complete-qcomflash flow"
+        # flash_files section must be present
+        if ! grep -q 'flash_files:' "$yaml_file"; then
+          echo "::error::flash_files section is missing from rendered YAML"
           exit 1
         fi
 
-        if grep -qE '^[[:space:]]*ROOTFS_IMAGE=' "$yaml_file"; then
-          echo "::error::ROOTFS_IMAGE must not be present in complete-qcomflash flow"
+        # rootfs_img must be present as a separate deploy artifact
+        if ! grep -qE '[[:space:]]rootfs_img:' "$yaml_file"; then
+          echo "::error::rootfs_img is missing from rendered YAML"
+          exit 1
+        fi
+
+        # ROOTFS_IMAGE setting must be present in postprocess steps
+        if ! grep -q 'ROOTFS_IMAGE' "$yaml_file"; then
+          echo "::error::ROOTFS_IMAGE setting is missing from rendered YAML"
+          exit 1
+        fi
+
+        # combined_flash.tar must not be present
+        if grep -q 'combined_flash.tar' "$yaml_file"; then
+          echo "::error::combined_flash.tar must not be present; flash_files and rootfs_img are separate"
           exit 1
         fi
 
@@ -381,3 +417,8 @@ runs:
         sed -n '1,320p' "$yaml_file"
 
         echo "Rendered LAVA job validation passed for $MACHINE"
+        echo "  - device_type    : present"
+        echo "  - flash_files    : present"
+        echo "  - rootfs_img     : present"
+        echo "  - ROOTFS_IMAGE   : present"
+        echo "  - combined_flash : absent (correct)"
