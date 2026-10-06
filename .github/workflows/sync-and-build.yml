@@ -329,12 +329,26 @@ jobs:
             "https://github.com/qualcomm-linux/qcom-linux-testkit/releases/download/IRIS-Video-Files-v1.0/video_clips_iris.tar.gz" \
             -O "$WORKSPACE/downloads/video_clips_iris.tar.gz"
 
-          if [ ! -f "$WORKSPACE/downloads/video_clips_iris.tar.gz" ]; then
-            echo "::error::Video contents download failed"
-            exit 1
-          fi
+          wget -q \
+            "https://github.com/Manigurr/qcom-linux-testkit/releases/download/iris_video_files/input_folder.tar.gz" \
+            -O "$WORKSPACE/downloads/input_folder.tar.gz"
 
-          ls -la "$WORKSPACE/downloads"
+          for file in \
+            "$WORKSPACE/downloads/video_clips_iris.tar.gz" \
+            "$WORKSPACE/downloads/input_folder.tar.gz"
+          do
+            if [ ! -s "$file" ]; then
+              echo "::error::Download failed or file is empty: $file"
+              exit 1
+            fi
+
+            echo "Validating downloaded archive: $file"
+            gzip -t "$file"
+            tar -tzf "$file" >/dev/null
+          done
+
+          echo "Video contents download complete"
+          ls -lh "$WORKSPACE/downloads"
 
       - name: Inject Iris test app to rootfs
         uses: qualcomm-linux-stg/video-driver/.github/actions/inject@kodiak_testing
@@ -418,6 +432,7 @@ jobs:
             echo "::error::rootfs.img found inside flash tar — should be excluded"
             exit 1
           fi
+
           echo "rootfs.img correctly excluded from flash tar"
 
           echo "=== Verify rawprogram files are inside flash tar ==="
