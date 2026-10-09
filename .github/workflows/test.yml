@@ -128,8 +128,7 @@ jobs:
           set -euo pipefail
 
           presigned_file="$WORKSPACE/presigned_urls.json"
-          flash_key="${MACHINE}_flash_files.tar"
-          rootfs_key="${MACHINE}_rootfs.img"
+          build_key="${MACHINE}_build.tar.gz"
 
           if [ ! -f "$presigned_file" ]; then
             echo "::error::presigned_urls.json not found"
@@ -142,29 +141,19 @@ jobs:
           echo "=== presigned_urls.json keys ==="
           jq -r 'keys[]' "$presigned_file"
 
-          flash_url="$(
-            jq -r --arg key "$flash_key" '.[$key] // empty' "$presigned_file"
+          build_url="$(
+            jq -r --arg key "$build_key" '.[$key] // empty' "$presigned_file"
           )"
 
-          if [ -z "$flash_url" ]; then
-            echo "::error::Flash files artifact URL is missing"
-            echo "::error::Expected key: $flash_key"
+          if [ -z "$build_url" ]; then
+            echo "::error::Combined build archive URL is missing"
+            echo "::error::Expected key: $build_key"
             exit 1
           fi
 
-          rootfs_url="$(
-            jq -r --arg key "$rootfs_key" '.[$key] // empty' "$presigned_file"
-          )"
-
-          if [ -z "$rootfs_url" ]; then
-            echo "::error::Rootfs artifact URL is missing"
-            echo "::error::Expected key: $rootfs_key"
-            exit 1
-          fi
-
-          echo "presigned_urls.json verified: flash_files and rootfs artifacts both present"
-          echo "Flash key : $flash_key"
-          echo "Rootfs key: $rootfs_key"
+          echo "presigned_urls.json verified: combined build archive present"
+          echo "Build key : $build_key"
+          echo "Build URL : $build_url"
 
       - name: Clone LAVA job render scripts
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -179,7 +168,7 @@ jobs:
 
           git clone \
             --depth 1 \
-            https://github.com/Manigurr/job_render \
+            https://github.com/qualcomm-linux/job_render \
             "$job_render_dir"
 
           echo "job_render cloned"
@@ -290,26 +279,27 @@ jobs:
           # Basic structure check
           grep -q '^device_type:' "$job_file"
 
-          # flash_files and rootfs_img must both be present as separate artifacts
-          if ! grep -q 'flash_files:' "$job_file"; then
-            echo "::error::flash_files section is missing from rendered LAVA job"
+          # Combined build archive must be present as a single download URL
+          if ! grep -qE 'url:.*_build\.tar\.gz' "$job_file"; then
+            echo "::error::Combined build archive (_build.tar.gz) URL is missing from rendered LAVA job"
             exit 1
           fi
 
-          if ! grep -q 'rootfs_img:' "$job_file"; then
-            echo "::error::rootfs_img section is missing from rendered LAVA job"
+          # rootfs.img must not appear as a separate top-level download URL —
+          # it is extracted from the combined archive during the flash step
+          if grep -qE 'url:.*rootfs\.img' "$job_file"; then
+            echo "::error::rootfs.img must not appear as a separate download URL"
+            echo "::error::It should be extracted from the combined build archive"
             exit 1
           fi
 
-          # postprocess must reference ROOTFS_IMAGE setting
+          # ROOTFS_IMAGE env var must still be referenced in the postprocess step
           if ! grep -q 'ROOTFS_IMAGE' "$job_file"; then
             echo "::error::ROOTFS_IMAGE setting is missing from rendered LAVA job"
             exit 1
           fi
 
-          # combined_flash.tar is valid as a downloads:// intermediate reference
-          # created during the postprocess Docker step. Reject it only if it
-          # appears as a direct S3/HTTP input URL.
+          # Reject combined_flash.tar if it appears as a direct S3/HTTP input URL
           if grep -E 'url:.*combined_flash\.tar' "$job_file" | grep -qE 'https?://|s3://'; then
             echo "::error::combined_flash.tar must not appear as a direct S3/HTTP download URL"
             echo "::error::It is only valid as a downloads:// reference after postprocess"
@@ -317,10 +307,10 @@ jobs:
           fi
 
           echo "Rendered LAVA job configuration verified:"
-          echo "  - flash_files         : present"
-          echo "  - rootfs_img          : present"
-          echo "  - ROOTFS_IMAGE        : present"
-          echo "  - combined_flash.tar  : intermediate only (correct)"
+          echo "  - combined build archive (_build.tar.gz) : present as download URL"
+          echo "  - rootfs.img                             : extracted from archive (correct)"
+          echo "  - ROOTFS_IMAGE                           : present"
+          echo "  - combined_flash.tar                     : intermediate only (correct)"
 
       - name: Verify LAVA Docker environment
         if: ${{ matrix.build_matrix.lavaname != '' }}

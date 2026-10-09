@@ -21,7 +21,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Extract presigned flash and rootfs URLs
+    # -----------------------------------------------------------------------
+    # CHANGED: single combined archive key instead of two separate keys
+    # -----------------------------------------------------------------------
+    - name: Extract presigned build archive URL
       id: extract_urls
       shell: bash
       env:
@@ -30,8 +33,7 @@ runs:
       run: |
         set -euo pipefail
 
-        flash_key="${MACHINE}_flash_files.tar"
-        rootfs_key="${MACHINE}_rootfs.img"
+        build_key="${MACHINE}_build.tar.gz"
 
         if [ ! -f "$PRESIGNED_FILE" ]; then
           echo "::error::Presigned URL file not found: $PRESIGNED_FILE"
@@ -43,40 +45,33 @@ runs:
         echo "=== Presigned URL keys ==="
         jq -r 'keys[]' "$PRESIGNED_FILE"
 
-        flash_url="$(
-          jq -r --arg key "$flash_key" '.[$key] // empty' "$PRESIGNED_FILE"
+        build_url="$(
+          jq -r --arg key "$build_key" '.[$key] // empty' "$PRESIGNED_FILE"
         )"
 
-        if [ -z "$flash_url" ]; then
-          echo "::error::Flash files artifact URL is missing"
-          echo "::error::Expected key: $flash_key"
+        if [ -z "$build_url" ]; then
+          echo "::error::Combined build archive URL is missing"
+          echo "::error::Expected key: $build_key"
           exit 1
         fi
 
-        rootfs_url="$(
-          jq -r --arg key "$rootfs_key" '.[$key] // empty' "$PRESIGNED_FILE"
-        )"
+        echo "Build archive found : $build_key"
 
-        if [ -z "$rootfs_url" ]; then
-          echo "::error::Rootfs artifact URL is missing"
-          echo "::error::Expected key: $rootfs_key"
-          exit 1
-        fi
+        printf 'build_url=%s\n' "$build_url" >> "$GITHUB_OUTPUT"
 
-        echo "Flash artifact found  : $flash_key"
-        echo "Rootfs artifact found : $rootfs_key"
-
-        printf 'flash_url=%s\n'  "$flash_url"  >> "$GITHUB_OUTPUT"
-        printf 'rootfs_url=%s\n' "$rootfs_url" >> "$GITHUB_OUTPUT"
-
+    # -----------------------------------------------------------------------
+    # CHANGED: cloudData.json now carries a single build_archive artifact URL
+    #          instead of separate flash_image + rootfs_image fields.
+    #          The flasher template extracts rootfs.img from the archive at
+    #          flash time — rootfs_image is no longer a top-level input.
+    # -----------------------------------------------------------------------
     - name: Write synthetic cloudData.json and metadata.json
       id: write_json
       shell: bash
       env:
         MACHINE: ${{ inputs.machine }}
         LAVA_NAME: ${{ inputs.lavaname }}
-        FLASH_URL: ${{ steps.extract_urls.outputs.flash_url }}
-        ROOTFS_URL: ${{ steps.extract_urls.outputs.rootfs_url }}
+        BUILD_URL: ${{ steps.extract_urls.outputs.build_url }}
         WORKSPACE: ${{ github.workspace }}
       run: |
         set -euo pipefail
@@ -127,8 +122,7 @@ runs:
         jq -n \
           --arg machine    "$MACHINE" \
           --arg lavaname   "$LAVA_NAME" \
-          --arg flash_url  "$FLASH_URL" \
-          --arg rootfs_url "$ROOTFS_URL" \
+          --arg build_url  "$BUILD_URL" \
           '{
             id: ("ci-" + $machine),
             kind: "kbuild",
@@ -146,8 +140,7 @@ runs:
               ramdisk: "",
               firmware: "",
               dtb: "",
-              flash_image: $flash_url,
-              rootfs_image: $rootfs_url
+              build_archive: $build_url
             },
             data: {
               kernel_revision: {
@@ -362,6 +355,11 @@ runs:
         echo "Patched device_type for $MACHINE → $LAVA_NAME"
         grep -n '^device_type:' "$yaml_file"
 
+    # -----------------------------------------------------------------------
+    # CHANGED: validation now checks for a single build_archive download URL
+    #          instead of separate flash_files + rootfs_img sections.
+    #          rootfs.img is extracted from the archive during the flash step.
+    # -----------------------------------------------------------------------
     - name: Validate rendered LAVA job
       shell: bash
       env:
@@ -389,27 +387,27 @@ runs:
           exit 1
         fi
 
-        # flash_files section must be present as an input artifact
-        if ! grep -q 'flash_files:' "$yaml_file"; then
-          echo "::error::flash_files section is missing from rendered YAML"
+        # Combined build archive must be present as a download URL
+        if ! grep -qE 'url:.*_build\.tar\.gz' "$yaml_file"; then
+          echo "::error::Combined build archive (_build.tar.gz) URL is missing from rendered YAML"
           exit 1
         fi
 
-        # rootfs_img must be present as a separate input artifact
-        if ! grep -qE '[[:space:]]rootfs_img:' "$yaml_file"; then
-          echo "::error::rootfs_img is missing from rendered YAML"
+        # rootfs.img must NOT appear as a separate top-level download URL —
+        # it is extracted from the combined archive during the flash step
+        if grep -qE 'url:.*rootfs\.img' "$yaml_file"; then
+          echo "::error::rootfs.img must not appear as a separate download URL"
+          echo "::error::It should be extracted from the combined build archive"
           exit 1
         fi
 
-        # ROOTFS_IMAGE setting must be present in postprocess steps
+        # ROOTFS_IMAGE env var must still be referenced in postprocess steps
         if ! grep -q 'ROOTFS_IMAGE' "$yaml_file"; then
           echo "::error::ROOTFS_IMAGE setting is missing from rendered YAML"
           exit 1
         fi
 
-        # combined_flash.tar is valid as a downloads:// reference in the second
-        # deploy block (intermediate artifact created by postprocess Docker step).
-        # Reject it only if it appears as a direct S3/HTTP input URL.
+        # Reject combined_flash.tar only if it appears as a direct S3/HTTP URL
         if grep -E 'url:.*combined_flash\.tar' "$yaml_file" | grep -qE 'https?://|s3://'; then
           echo "::error::combined_flash.tar must not appear as a direct S3/HTTP download URL"
           echo "::error::It is only valid as a downloads:// reference after postprocess"
@@ -420,8 +418,8 @@ runs:
         sed -n '1,320p' "$yaml_file"
 
         echo "Rendered LAVA job validation passed for $MACHINE"
-        echo "  - device_type         : present"
-        echo "  - flash_files         : present"
-        echo "  - rootfs_img          : present"
-        echo "  - ROOTFS_IMAGE        : present"
-        echo "  - combined_flash.tar  : intermediate only (correct)"
+        echo "  - device_type                            : present"
+        echo "  - combined build archive (_build.tar.gz) : present as download URL"
+        echo "  - rootfs.img                             : extracted from archive (correct)"
+        echo "  - ROOTFS_IMAGE                           : present"
+        echo "  - combined_flash.tar                     : intermediate only (correct)"
