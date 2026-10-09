@@ -128,7 +128,7 @@ jobs:
           set -euo pipefail
 
           presigned_file="$WORKSPACE/presigned_urls.json"
-          build_key="${MACHINE}_build.tar.gz"
+          build_key="${MACHINE}_build.tar"          # uncompressed tar
 
           if [ ! -f "$presigned_file" ]; then
             echo "::error::presigned_urls.json not found"
@@ -168,7 +168,7 @@ jobs:
 
           git clone \
             --depth 1 \
-            https://github.com/qualcomm-linux/job_render \
+            https://github.com/Manigurr/job_render \
             "$job_render_dir"
 
           echo "job_render cloned"
@@ -280,13 +280,12 @@ jobs:
           grep -q '^device_type:' "$job_file"
 
           # Combined build archive must be present as a single download URL
-          if ! grep -qE 'url:.*_build\.tar\.gz' "$job_file"; then
-            echo "::error::Combined build archive (_build.tar.gz) URL is missing from rendered LAVA job"
+          if ! grep -qE 'url:.*_build\.tar' "$job_file"; then
+            echo "::error::Combined build archive (_build.tar) URL is missing from rendered LAVA job"
             exit 1
           fi
 
-          # rootfs.img must not appear as a separate top-level download URL —
-          # it is extracted from the combined archive during the flash step
+          # rootfs.img must not appear as a separate top-level download URL
           if grep -qE 'url:.*rootfs\.img' "$job_file"; then
             echo "::error::rootfs.img must not appear as a separate download URL"
             echo "::error::It should be extracted from the combined build archive"
@@ -302,15 +301,14 @@ jobs:
           # Reject combined_flash.tar if it appears as a direct S3/HTTP input URL
           if grep -E 'url:.*combined_flash\.tar' "$job_file" | grep -qE 'https?://|s3://'; then
             echo "::error::combined_flash.tar must not appear as a direct S3/HTTP download URL"
-            echo "::error::It is only valid as a downloads:// reference after postprocess"
             exit 1
           fi
 
           echo "Rendered LAVA job configuration verified:"
-          echo "  - combined build archive (_build.tar.gz) : present as download URL"
-          echo "  - rootfs.img                             : extracted from archive (correct)"
-          echo "  - ROOTFS_IMAGE                           : present"
-          echo "  - combined_flash.tar                     : intermediate only (correct)"
+          echo "  - combined build archive (_build.tar) : present as download URL"
+          echo "  - rootfs.img                          : extracted from archive (correct)"
+          echo "  - ROOTFS_IMAGE                        : present"
+          echo "  - combined_flash.tar                  : intermediate only (correct)"
 
       - name: Verify LAVA Docker environment
         if: ${{ matrix.build_matrix.lavaname != '' }}
