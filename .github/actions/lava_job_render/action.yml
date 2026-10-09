@@ -110,10 +110,11 @@ runs:
         printf 'dtb_name=%s\n'       "$dtb_name"      >> "$GITHUB_OUTPUT"
         printf 'job_render_dir=%s\n' "$job_render_dir" >> "$GITHUB_OUTPUT"
 
-        # flash_image key is REQUIRED by the renderer — it maps directly to
-        # platform_config.flash_image. We pass the combined _build.tar URL here.
-        # rootfs_image is kept empty — rootfs.img is extracted from the tar
-        # during the LAVA flash step via the flasher.jinja2 postprocess block.
+        # flash_image  → combined _build.tar S3 URL (required by renderer)
+        # rootfs_image → intentionally OMITTED — setting it to "" causes
+        #                lava_job_template.jinja2 to emit a deploy entry
+        #                with url: "" which LAVA rejects with:
+        #                "Unsupported url protocol scheme:"
         jq -n \
           --arg machine    "$MACHINE" \
           --arg lavaname   "$LAVA_NAME" \
@@ -135,8 +136,7 @@ runs:
               ramdisk: "",
               firmware: "",
               dtb: "",
-              flash_image: $build_url,
-              rootfs_image: ""
+              flash_image: $build_url
             },
             data: {
               kernel_revision: {
@@ -384,15 +384,20 @@ runs:
           exit 1
         fi
 
-        # rootfs.img must NOT appear as a separate top-level download URL
-        # It is extracted from the combined archive during the flash step
+        # rootfs.img must NOT appear as a separate download URL
         if grep -qE 'url:.*rootfs\.img' "$yaml_file"; then
           echo "::error::rootfs.img must not appear as a separate download URL"
-          echo "::error::It should be extracted from the combined build archive"
           exit 1
         fi
 
-        # Reject combined_flash.tar if it appears as a direct S3/HTTP input URL
+        # Empty URLs must not be present — catches rootfs_image: "" leaking through
+        if grep -qE "url:[[:space:]]*['\"]?[[:space:]]*['\"]?$" "$yaml_file"; then
+          echo "::error::Empty URL found in rendered LAVA job — check cloudData.json artifacts"
+          grep -n "url:[[:space:]]*['\"]" "$yaml_file" || true
+          exit 1
+        fi
+
+        # Reject combined_flash.tar as a direct S3/HTTP input URL
         if grep -E 'url:.*combined_flash\.tar' "$yaml_file" | grep -qE 'https?://|s3://'; then
           echo "::error::combined_flash.tar must not appear as a direct S3/HTTP download URL"
           exit 1
@@ -405,4 +410,5 @@ runs:
         echo "  - device_type              : present"
         echo "  - flash_image (_build.tar) : present as download URL"
         echo "  - rootfs.img               : extracted from archive (correct)"
+        echo "  - empty URLs               : none (correct)"
         echo "  - combined_flash.tar       : intermediate only (correct)"
