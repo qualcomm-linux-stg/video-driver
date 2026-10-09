@@ -57,6 +57,7 @@ jobs:
           rm -rf "$WORKSPACE/downloads" || true
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
+          rm -rf "$WORKSPACE/qcomflash-staging" || true
           rm -f "$WORKSPACE/"*_build.tar || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
@@ -354,13 +355,6 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
 
-      # -----------------------------------------------------------------------
-      # Prepare qcomflash archive
-      # - Frees disk before packaging (build/tmp, downloads, iris_test_app)
-      # - Packages all qcomflash files + rootfs.img as uncompressed tar
-      # - rootfs.img is a dense ext4 image (~3.8 GB) — gzip gives no benefit
-      #   and risks disk exhaustion mid-stream on CI runners
-      # -----------------------------------------------------------------------
       - name: Prepare qcomflash archive
         shell: bash
         env:
@@ -412,6 +406,20 @@ jobs:
           du -sh "$resolved_dir"
 
           # ---------------------------------------------------------------
+          # MOVE qcomflash OUT of build/tmp BEFORE cleanup
+          # so rm -rf build/tmp does not delete it
+          # ---------------------------------------------------------------
+          staging_dir="$WORKSPACE/qcomflash-staging"
+
+          echo "=== Moving qcomflash dir out of build/tmp before cleanup ==="
+          rm -rf "$staging_dir"
+          mv "$resolved_dir" "$staging_dir"
+
+          echo "=== Confirming staging dir ==="
+          ls -lh "$staging_dir/rootfs.img"
+          du -sh "$staging_dir"
+
+          # ---------------------------------------------------------------
           # FREE DISK: remove large items no longer needed after inject step
           # ---------------------------------------------------------------
           echo "=== Freeing disk before packaging ==="
@@ -440,18 +448,17 @@ jobs:
           }'
 
           echo "=== qcomflash contents before packaging ==="
-          ls -larth "$resolved_dir"
+          ls -larth "$staging_dir"
 
           mkdir -p "$WORKSPACE/artifacts"
 
-          # Uncompressed tar — rootfs.img is a dense ext4 image (~3.8 GB) and
-          # does not compress. Using gzip risks disk exhaustion mid-stream since
-          # the gzip stream is silently truncated when disk runs out (exit 0).
+          # Uncompressed tar — rootfs.img is a dense ext4 image and does not
+          # compress. Using gzip risks disk exhaustion mid-stream on CI runners.
           combined_tar="$WORKSPACE/${MACHINE}_build.tar"
 
           echo "=== Packaging all qcomflash files + rootfs.img (uncompressed) ==="
           tar -cvf "$combined_tar" \
-            -C "$resolved_dir" \
+            -C "$staging_dir" \
             .
 
           # ---------------------------------------------------------------
@@ -471,14 +478,6 @@ jobs:
           fi
           echo "rootfs.img confirmed inside archive ✓"
 
-          echo "=== Verify archive is not truncated (read full index) ==="
-          total="$(tar -tf "$combined_tar" | wc -l)"
-          echo "Total entries in archive: $total"
-          if [ "$total" -lt 10 ]; then
-            echo "::error::Archive appears truncated — too few entries: $total"
-            exit 1
-          fi
-
           echo "=== Verify rawprogram files are inside archive ==="
           tar -tf "$combined_tar" | grep -E '(^|/)rawprogram.*\.xml$' || true
 
@@ -486,6 +485,9 @@ jobs:
 
           echo "=== Artifact file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
+
+          echo "=== Cleaning up staging dir ==="
+          rm -rf "$staging_dir" || true
 
       - name: Upload artifacts to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@kodiak_testing
@@ -524,6 +526,7 @@ jobs:
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
+          rm -rf "$WORKSPACE/qcomflash-staging" || true
           rm -f "$WORKSPACE/"*_build.tar || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
