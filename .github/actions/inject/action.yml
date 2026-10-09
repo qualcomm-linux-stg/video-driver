@@ -40,6 +40,8 @@ runs:
           kaanapali-mtp|\
           glymur-crd|\
           shikra-evk|\
+          iq-x5121-evk|\
+          iq-x7181-evk|\
           qcom-armv8a)
             ;;
           *)
