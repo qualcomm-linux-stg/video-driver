@@ -351,7 +351,7 @@ jobs:
           ls -lh "$WORKSPACE/downloads"
 
       - name: Inject Iris test app to rootfs
-        uses: qualcomm-linux-stg/video-driver/.github/actions/inject@kodiak_testing
+        uses: qualcomm-linux-stg/video-driver/.github/actions/inject@testing_check
         with:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
@@ -439,7 +439,7 @@ jobs:
           tar -tf "$flash_tar" | grep -E '(^|/)rawprogram.*\.xml$' || true
 
       - name: Upload artifacts to S3
-        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@kodiak_testing
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@testing_check
         with:
           s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt

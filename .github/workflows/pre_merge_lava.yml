@@ -121,7 +121,7 @@ jobs:
       - verify-build
     if: ${{ needs.verify-build.result == 'success' }}
 
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@kodiak_testing
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/test.yml@testing_check
 
     with:
       docker_image: ${{ needs.verify-build.outputs.docker_image }}
