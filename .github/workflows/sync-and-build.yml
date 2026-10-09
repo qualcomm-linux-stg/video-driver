@@ -57,7 +57,7 @@ jobs:
           rm -rf "$WORKSPACE/downloads" || true
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
-          rm -f "$WORKSPACE/"*_build.tar.gz || true
+          rm -f "$WORKSPACE/"*_build.tar || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
           echo "=== Disk after clean ==="
@@ -259,7 +259,6 @@ jobs:
 
           if [ -z "$rootfs_img" ]; then
             echo "::error::rootfs.img not found in extracted artifact: $PREBUILT_ARTIFACT"
-            echo "=== Extracted files ==="
             find "$extract_dir" -maxdepth 5 -print | sort || true
             exit 1
           fi
@@ -356,12 +355,11 @@ jobs:
           machine: ${{ matrix.build_matrix.machine }}
 
       # -----------------------------------------------------------------------
-      # All qcomflash contents (including rootfs.img) are packaged into a
-      # single compressed archive: ${MACHINE}_build.tar.gz
-      # - rootfs.img (~8.5 GB) is incompressible — gzip passes it through at ~1:1
-      #   so it is NOT excluded; it is included as-is inside the archive
-      # - Flash files (XMLs, sparse images) compress well
-      # - Single archive → single S3 upload → single LAVA URL
+      # Prepare qcomflash archive
+      # - Frees disk before packaging (build/tmp, downloads, iris_test_app)
+      # - Packages all qcomflash files + rootfs.img as uncompressed tar
+      # - rootfs.img is a dense ext4 image (~3.8 GB) — gzip gives no benefit
+      #   and risks disk exhaustion mid-stream on CI runners
       # -----------------------------------------------------------------------
       - name: Prepare qcomflash archive
         shell: bash
@@ -380,7 +378,6 @@ jobs:
 
           if [ ! -e "$qcomflash_path" ]; then
             echo "::error::qcomflash path not found: $qcomflash_path"
-            echo "=== Available deploy image files ==="
             find "$deploy_dir" -maxdepth 3 -print | sort || true
             exit 1
           fi
@@ -394,46 +391,101 @@ jobs:
 
           if [ ! -f "$resolved_dir/rootfs.img" ]; then
             echo "::error::rootfs.img not found in: $resolved_dir"
-            echo "=== qcomflash contents ==="
             find "$resolved_dir" -maxdepth 2 -print | sort || true
             exit 1
           fi
+
+          # ---------------------------------------------------------------
+          # DIAGNOSTIC: disk state and sizes BEFORE cleanup
+          # ---------------------------------------------------------------
+          echo "=== [DIAG] Disk usage BEFORE cleanup ==="
+          df -h
+
+          echo "=== [DIAG] Top disk consumers in WORKSPACE ==="
+          du -sh "$WORKSPACE"/*/  2>/dev/null | sort -rh | head -20 || true
+
+          echo "=== [DIAG] rootfs.img size ==="
+          ls -lh "$resolved_dir/rootfs.img"
+          du -sh "$resolved_dir/rootfs.img"
+
+          echo "=== [DIAG] Full qcomflash dir size ==="
+          du -sh "$resolved_dir"
+
+          # ---------------------------------------------------------------
+          # FREE DISK: remove large items no longer needed after inject step
+          # ---------------------------------------------------------------
+          echo "=== Freeing disk before packaging ==="
+
+          echo "Removing build/tmp ..."
+          rm -rf "$WORKSPACE/build/tmp" || true
+
+          echo "Removing downloads ..."
+          rm -rf "$WORKSPACE/downloads" || true
+
+          echo "Removing iris_test_app build ..."
+          rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
+
+          # ---------------------------------------------------------------
+          # DIAGNOSTIC: disk state AFTER cleanup and BEFORE tar
+          # ---------------------------------------------------------------
+          echo "=== [DIAG] Disk usage AFTER cleanup ==="
+          df -h
+
+          echo "=== [DIAG] Available space on WORKSPACE partition ==="
+          df -h "$WORKSPACE" | awk 'NR==2 {
+            print "Total : " $2
+            print "Used  : " $3
+            print "Free  : " $4
+            print "Use%  : " $5
+          }'
 
           echo "=== qcomflash contents before packaging ==="
           ls -larth "$resolved_dir"
 
           mkdir -p "$WORKSPACE/artifacts"
 
-          combined_tar="$WORKSPACE/${MACHINE}_build.tar.gz"
+          # Uncompressed tar — rootfs.img is a dense ext4 image (~3.8 GB) and
+          # does not compress. Using gzip risks disk exhaustion mid-stream since
+          # the gzip stream is silently truncated when disk runs out (exit 0).
+          combined_tar="$WORKSPACE/${MACHINE}_build.tar"
 
-          echo "=== Packaging all qcomflash files including rootfs.img ==="
-          # rootfs.img is ~8.5 GB and already a dense image — gzip will not
-          # compress it meaningfully; it streams through at ~1:1 ratio.
-          # No --exclude applied — rootfs.img is included as-is.
-          tar -czvf "$combined_tar" \
+          echo "=== Packaging all qcomflash files + rootfs.img (uncompressed) ==="
+          tar -cvf "$combined_tar" \
             -C "$resolved_dir" \
             .
+
+          # ---------------------------------------------------------------
+          # DIAGNOSTIC: disk state AFTER tar
+          # ---------------------------------------------------------------
+          echo "=== [DIAG] Disk usage AFTER tar ==="
+          df -h
 
           echo "=== Archive created ==="
           ls -lh "$combined_tar"
 
           echo "=== Verify rootfs.img IS inside archive ==="
-          if ! tar -tzf "$combined_tar" | grep -qE '(^|/)rootfs\.img$'; then
-            echo "::error::rootfs.img not found inside archive — packaging may have failed"
+          count="$(tar -tf "$combined_tar" | grep -c -E '(^|/)rootfs\.img$' || true)"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::rootfs.img not found inside archive — packaging failed"
             exit 1
           fi
-          echo "rootfs.img correctly included in archive"
+          echo "rootfs.img confirmed inside archive ✓"
+
+          echo "=== Verify archive is not truncated (read full index) ==="
+          total="$(tar -tf "$combined_tar" | wc -l)"
+          echo "Total entries in archive: $total"
+          if [ "$total" -lt 10 ]; then
+            echo "::error::Archive appears truncated — too few entries: $total"
+            exit 1
+          fi
 
           echo "=== Verify rawprogram files are inside archive ==="
-          tar -tzf "$combined_tar" | grep -E '(^|/)rawprogram.*\.xml$' || true
+          tar -tf "$combined_tar" | grep -E '(^|/)rawprogram.*\.xml$' || true
 
           printf '%s\n' "$combined_tar" > "$WORKSPACE/artifacts/file_list.txt"
 
           echo "=== Artifact file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
-
-          echo "=== Disk after packaging ==="
-          df -h "$WORKSPACE" || true
 
       - name: Upload artifacts to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@kodiak_testing
@@ -455,9 +507,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_build.tar.gz
+          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_build.tar
           retention-days: 7
-          compression-level: 0      # already gzip'd — skip GitHub's re-compression
+          compression-level: 0
           if-no-files-found: error
 
       - name: Clean up
@@ -472,7 +524,7 @@ jobs:
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
-          rm -f "$WORKSPACE/"*_build.tar.gz || true
+          rm -f "$WORKSPACE/"*_build.tar || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
       - name: Update summary
