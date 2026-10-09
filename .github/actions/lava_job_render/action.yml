@@ -110,6 +110,10 @@ runs:
         printf 'dtb_name=%s\n'       "$dtb_name"      >> "$GITHUB_OUTPUT"
         printf 'job_render_dir=%s\n' "$job_render_dir" >> "$GITHUB_OUTPUT"
 
+        # flash_image key is REQUIRED by the renderer — it maps directly to
+        # platform_config.flash_image. We pass the combined _build.tar URL here.
+        # rootfs_image is kept empty — rootfs.img is extracted from the tar
+        # during the LAVA flash step via the flasher.jinja2 postprocess block.
         jq -n \
           --arg machine    "$MACHINE" \
           --arg lavaname   "$LAVA_NAME" \
@@ -131,7 +135,8 @@ runs:
               ramdisk: "",
               firmware: "",
               dtb: "",
-              build_archive: $build_url
+              flash_image: $build_url,
+              rootfs_image: ""
             },
             data: {
               kernel_revision: {
@@ -373,26 +378,21 @@ runs:
           exit 1
         fi
 
-        # Combined build archive URL must be present as a download
+        # flash_image URL (combined _build.tar) must be present
         if ! grep -qE 'url:.*_build\.tar' "$yaml_file"; then
           echo "::error::Combined build archive (_build.tar) URL is missing from rendered LAVA job"
           exit 1
         fi
 
         # rootfs.img must NOT appear as a separate top-level download URL
+        # It is extracted from the combined archive during the flash step
         if grep -qE 'url:.*rootfs\.img' "$yaml_file"; then
           echo "::error::rootfs.img must not appear as a separate download URL"
           echo "::error::It should be extracted from the combined build archive"
           exit 1
         fi
 
-        # ROOTFS_IMAGE env var must still be referenced in the postprocess step
-        if ! grep -q 'ROOTFS_IMAGE' "$yaml_file"; then
-          echo "::error::ROOTFS_IMAGE setting is missing from rendered LAVA job"
-          exit 1
-        fi
-
-        # Reject combined_flash.tar only if it appears as a direct S3/HTTP URL
+        # Reject combined_flash.tar if it appears as a direct S3/HTTP input URL
         if grep -E 'url:.*combined_flash\.tar' "$yaml_file" | grep -qE 'https?://|s3://'; then
           echo "::error::combined_flash.tar must not appear as a direct S3/HTTP download URL"
           exit 1
@@ -403,7 +403,6 @@ runs:
 
         echo "Rendered LAVA job validation passed for $MACHINE"
         echo "  - device_type              : present"
-        echo "  - combined build archive   : present as download URL"
+        echo "  - flash_image (_build.tar) : present as download URL"
         echo "  - rootfs.img               : extracted from archive (correct)"
-        echo "  - ROOTFS_IMAGE             : present"
         echo "  - combined_flash.tar       : intermediate only (correct)"
