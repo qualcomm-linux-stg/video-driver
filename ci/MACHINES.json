@@ -1,12 +1,4 @@
 {
-  /*"qcs9100-ride-sx": {
-    "machine": "qcs9100-ride-sx",
-    "kas_file": "../meta-qcom/ci/qcs9100-ride-sx.yml:../meta-qcom/ci/qcom-distro.yml",
-    "lavaname": "qcs9100-ride",
-    "build_command": "bitbake qcom-multimedia-proprietary-image",
-    "image_name": "qcom-multimedia-proprietary-image",
-    "prebuilt_artifact": "qcom-multimedia-proprietary-image-qcs9100-ride-sx.rootfs.qcomflash.tar.gz"
-  },*/
   "qcs6490-rb3gen2-core-kit": {
     "machine": "rb3gen2-core-kit",
     "kas_file": "../meta-qcom/ci/qcs6490-rb3gen2-core-kit.yml:../meta-qcom/ci/qcom-distro.yml",
