@@ -168,7 +168,7 @@ jobs:
 
           git clone \
             --depth 1 \
-            https://github.com/Manigurr/job_render \
+            https://github.com/qualcomm-linux/job_render \
             "$job_render_dir"
 
           echo "job_render cloned"
