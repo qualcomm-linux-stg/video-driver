@@ -293,9 +293,23 @@ jobs:
             exit 1
           fi
 
-          # ROOTFS_IMAGE env var must still be referenced in the postprocess step
-          if ! grep -q 'ROOTFS_IMAGE' "$job_file"; then
-            echo "::error::ROOTFS_IMAGE setting is missing from rendered LAVA job"
+          # DEVICE_TYPE setting must still be referenced in the postprocess step
+          if ! grep -q 'DEVICE_TYPE' "$job_file"; then
+            echo "::error::DEVICE_TYPE setting is missing from rendered LAVA job"
+            exit 1
+          fi
+
+          # Overlay must be baked into the rootfs partition via e2tools,
+          # not shipped as a separate overlay deploy image/OVERLAY_PATH
+          # setting (that path silently drops the test overlay - see
+          # qualcomm-linux/job_render#52)
+          if grep -qE 'OVERLAY(_PATH)?=' "$job_file"; then
+            echo "::error::OVERLAY/OVERLAY_PATH settings must not appear - overlay should be baked into the rootfs partition"
+            exit 1
+          fi
+
+          if ! grep -q 'e2cp' "$job_file"; then
+            echo "::error::Overlay-baking (e2cp) step is missing from rendered LAVA job"
             exit 1
           fi
 
@@ -308,7 +322,9 @@ jobs:
           echo "Rendered LAVA job configuration verified:"
           echo "  - combined build archive (_build.tar) : present as download URL"
           echo "  - rootfs.img                          : extracted from archive (correct)"
-          echo "  - ROOTFS_IMAGE                        : present"
+          echo "  - DEVICE_TYPE                         : present"
+          echo "  - overlay baking (e2cp)               : present"
+          echo "  - OVERLAY/OVERLAY_PATH                : absent (correct)"
           echo "  - combined_flash.tar                  : intermediate only (correct)"
 
       - name: Verify LAVA Docker environment
