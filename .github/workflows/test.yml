@@ -168,6 +168,7 @@ jobs:
 
           git clone \
             --depth 1 \
+            -b fix/kodiak-bake-overlay-into-rootfs \
             https://github.com/Manigurr/job_render \
             "$job_render_dir"
 
