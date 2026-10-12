@@ -23,13 +23,6 @@
     "image_name": "qcom-multimedia-image",
     "prebuilt_artifact": "qcom-multimedia-image-shikra-evk.rootfs.qcomflash.tar.gz"
   },
-  "sm8750-mtp": {
-    "machine": "sm8750-mtp",
-    "kas_file": "../meta-qcom/ci/sm8750-mtp.yml:../meta-qcom/ci/qcom-distro.yml",
-    "lavaname": "sm8750-mtp",
-    "build_command": "bitbake qcom-multimedia-image",
-    "image_name": "qcom-multimedia-image"
-  },
   "glymur-crd": {
     "machine": "glymur-crd",
     "kas_file": "../meta-qcom/ci/glymur-crd.yml:../meta-qcom/ci/qcom-distro.yml",
