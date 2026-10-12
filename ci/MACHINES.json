@@ -7,14 +7,6 @@
     "image_name": "qcom-multimedia-proprietary-image",
     "prebuilt_artifact": "qcom-multimedia-proprietary-image-rb3gen2-core-kit.rootfs.qcomflash.tar.gz"
   },
-  "sm8750-mtp": {
-    "machine": "sm8750-mtp",
-    "kas_file": "../meta-qcom/ci/sm8750-mtp.yml:../meta-qcom/ci/qcom-distro.yml",
-    "lavaname": "sm8750-mtp",
-    "build_command": "bitbake qcom-multimedia-image",
-    "image_name": "qcom-multimedia-image",
-    "prebuilt_artifact": "qcom-multimedia-image-sm8750-mtp.rootfs.qcomflash.tar.gz"
-  },
   "qcs615-ride": {
     "machine": "qcs615-ride",
     "kas_file": "../meta-qcom/ci/qcs615-ride.yml:../meta-qcom/ci/qcom-distro.yml",
