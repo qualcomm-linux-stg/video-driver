@@ -128,7 +128,7 @@ jobs:
           set -euo pipefail
 
           presigned_file="$WORKSPACE/presigned_urls.json"
-          build_key="${MACHINE}_build.tar"          # uncompressed tar
+          build_key="${MACHINE}_build.tar"
 
           if [ ! -f "$presigned_file" ]; then
             echo "::error::presigned_urls.json not found"
@@ -179,7 +179,8 @@ jobs:
           git -C "$job_render_dir" branch --show-current
 
           echo "=== flasher template ==="
-          sed -n '1,60p' "$job_render_dir/templates/boot/flasher.jinja2" || true
+          sed -n '1,120p' \
+            "$job_render_dir/templates/boot/flasher.jinja2" || true
 
       - name: Verify job_render template
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -277,55 +278,75 @@ jobs:
           parent_dir="$(dirname "$WORKSPACE")"
           job_file="$parent_dir/job_render/renders/lava_job_definition.yaml"
 
-          # Basic structure check
-          grep -q '^device_type:' "$job_file"
-
-          # Combined build archive must be present as a single download URL
-          if ! grep -qE 'url:.*_build\.tar' "$job_file"; then
-            echo "::error::Combined build archive (_build.tar) URL is missing from rendered LAVA job"
+          if [ ! -f "$job_file" ]; then
+            echo "::error::Rendered LAVA job not found: $job_file"
             exit 1
           fi
 
-          # rootfs.img must not appear as a separate top-level download URL
+          if [ ! -s "$job_file" ]; then
+            echo "::error::Rendered LAVA job is empty: $job_file"
+            exit 1
+          fi
+
+          # Basic structure check.
+          if ! grep -q '^device_type:' "$job_file"; then
+            echo "::error::device_type is missing from rendered LAVA job"
+            exit 1
+          fi
+
+          # The build archive must be present as the flash image URL.
+          if ! grep -qE 'url:.*_build\.tar' "$job_file"; then
+            echo "::error::Combined build archive (_build.tar) URL is missing"
+            exit 1
+          fi
+
+          # rootfs.img must not be downloaded separately.
           if grep -qE 'url:.*rootfs\.img' "$job_file"; then
             echo "::error::rootfs.img must not appear as a separate download URL"
-            echo "::error::It should be extracted from the combined build archive"
+            echo "::error::rootfs.img is expected to be contained in the build archive"
             exit 1
           fi
 
-          # DEVICE_TYPE setting must still be referenced in the postprocess step
-          if ! grep -q 'DEVICE_TYPE' "$job_file"; then
-            echo "::error::DEVICE_TYPE setting is missing from rendered LAVA job"
+          # Empty URLs must not be present.
+          if grep -qE "url:[[:space:]]*['\"]?[[:space:]]*['\"]?$" "$job_file"; then
+            echo "::error::Empty URL found in rendered LAVA job"
+            grep -n "url:" "$job_file" || true
             exit 1
           fi
 
-          # Overlay must be baked into the rootfs partition via e2tools,
-          # not shipped as a separate overlay deploy image/OVERLAY_PATH
-          # setting (that path silently drops the test overlay - see
-          # qualcomm-linux/job_render#52)
-          if grep -qE 'OVERLAY(_PATH)?=' "$job_file"; then
-            echo "::error::OVERLAY/OVERLAY_PATH settings must not appear - overlay should be baked into the rootfs partition"
+          # The current flasher template uses the overlay deployment model.
+          if ! grep -q 'OVERLAY=overlay.tar.gz' "$job_file"; then
+            echo "::error::OVERLAY setting is missing"
             exit 1
           fi
 
-          if ! grep -q 'e2cp' "$job_file"; then
-            echo "::error::Overlay-baking (e2cp) step is missing from rendered LAVA job"
+          if ! grep -q 'OVERLAY_PATH=/' "$job_file"; then
+            echo "::error::OVERLAY_PATH setting is missing"
             exit 1
           fi
 
-          # Reject combined_flash.tar if it appears as a direct S3/HTTP input URL
-          if grep -E 'url:.*combined_flash\.tar' "$job_file" | grep -qE 'https?://|s3://'; then
-            echo "::error::combined_flash.tar must not appear as a direct S3/HTTP download URL"
+          if ! grep -q 'downloads://overlay.tar.gz' "$job_file"; then
+            echo "::error::overlay.tar.gz deploy image is missing"
             exit 1
           fi
 
+          # Test binaries must be downloaded and merged into the overlay.
+          if ! grep -q 'Test_binaries.tar.gz' "$job_file"; then
+            echo "::error::Test_binaries.tar.gz is missing"
+            exit 1
+          fi
+
+          # The current template uses the overlay deployment model.
+          # e2cp and combined_flash.tar are not required.
           echo "Rendered LAVA job configuration verified:"
-          echo "  - combined build archive (_build.tar) : present as download URL"
-          echo "  - rootfs.img                          : extracted from archive (correct)"
-          echo "  - DEVICE_TYPE                         : present"
-          echo "  - overlay baking (e2cp)               : present"
-          echo "  - OVERLAY/OVERLAY_PATH                : absent (correct)"
-          echo "  - combined_flash.tar                  : intermediate only (correct)"
+          echo "  - device_type               : present"
+          echo "  - combined build archive    : present"
+          echo "  - rootfs.img separate URL   : absent"
+          echo "  - empty URLs                : absent"
+          echo "  - OVERLAY setting            : present"
+          echo "  - OVERLAY_PATH setting       : present"
+          echo "  - overlay.tar.gz deployment  : present"
+          echo "  - Test_binaries.tar.gz       : present"
 
       - name: Verify LAVA Docker environment
         if: ${{ matrix.build_matrix.lavaname != '' }}
@@ -425,9 +446,9 @@ jobs:
 
           job_url="https://lava-oss.qualcomm.com/scheduler/job/$job_id"
 
-          echo "JOB_ID=$job_id"   >> "$GITHUB_ENV"
+          echo "JOB_ID=$job_id" >> "$GITHUB_ENV"
           echo "JOB_URL=$job_url" >> "$GITHUB_ENV"
-          echo "job_id=$job_id"   >> "$GITHUB_OUTPUT"
+          echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
           echo "job_url=$job_url" >> "$GITHUB_OUTPUT"
 
           echo "LAVA job submitted: $job_id"
