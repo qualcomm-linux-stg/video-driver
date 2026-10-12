@@ -334,7 +334,7 @@ jobs:
           echo "Workspace: $WORKSPACE"
 
       - name: Build image
-        uses: qualcomm-linux-stg/video-driver/.github/actions/build@git_enable
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@job_render_main
         with:
           machine: ${{ matrix.build_matrix.machine }}
           docker_image: ${{ inputs.docker_image }}
@@ -408,7 +408,7 @@ jobs:
           ls -la "$WORKSPACE/downloads"
 
       - name: Inject Iris test app to rootfs
-        uses: qualcomm-linux-stg/video-driver/.github/actions/inject@git_enable
+        uses: qualcomm-linux-stg/video-driver/.github/actions/inject@job_render_main
         with:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
@@ -460,9 +460,10 @@ jobs:
           flash_tar="$WORKSPACE/${MACHINE}_flash_files.tar"
           rootfs_dest="$WORKSPACE/${MACHINE}_rootfs.img"
 
+          # Keep rootfs.img inside the flash archive because the generated
+          # flash.settings contains ROOTFS_IMAGE=rootfs.img.
           tar -cf "$flash_tar" \
             -C "$resolved_dir" \
-            --exclude='./rootfs.img' \
             .
 
           cp "$rootfs_img" "$rootfs_dest"
@@ -477,7 +478,7 @@ jobs:
           cat "$WORKSPACE/artifacts/file_list.txt"
 
       - name: Upload artifacts to S3
-        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@git_enable
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@job_render_main
         with:
           s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt

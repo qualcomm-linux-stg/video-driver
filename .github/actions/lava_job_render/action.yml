@@ -243,3 +243,9 @@ runs:
           "$yaml_file"
 
         echo "Patched device_type for $MACHINE"
+        echo "=== Rendered LAVA job validation ==="
+        grep -q '^device_type:' "$yaml_file"
+        grep -q 'Test_binaries.tar.gz' "$yaml_file"
+        grep -q 'downloads://overlay.tar.gz' "$yaml_file"
+        grep -q 'ROOTFS_IMAGE=rootfs.img' "$yaml_file"
+        echo "Required job_render deployment entries are present"
