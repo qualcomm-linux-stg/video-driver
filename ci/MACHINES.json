@@ -1,5 +1,5 @@
 {
-  qcs9100-ride-sx": {
+  "qcs9100-ride-sx": {
     "machine": "qcs9100-ride-sx",
     "kas_file": "../meta-qcom/ci/qcs9100-ride-sx.yml:../meta-qcom/ci/qcom-distro.yml",
     "lavaname": "qcs9100-ride",
