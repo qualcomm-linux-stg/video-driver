@@ -176,6 +176,7 @@ jobs:
 
           git clone \
             --depth 1 \
+            -b testing_original_job_render |\
             https://github.com/Manigurr/job_render \
             "$job_render_dir"
 
