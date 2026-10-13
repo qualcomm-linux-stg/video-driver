@@ -130,6 +130,7 @@ jobs:
           set -euo pipefail
 
           presigned_file="$WORKSPACE/presigned_urls.json"
+          build_key="${MACHINE}_build.tar"
 
           if [ ! -f "$presigned_file" ]; then
             echo "::error::presigned_urls.json not found"
@@ -139,25 +140,16 @@ jobs:
 
           jq empty "$presigned_file"
 
-          flash_key="${MACHINE}_flash_files.tar"
-          rootfs_key="${MACHINE}_rootfs.img"
+          build_url="$(jq -r --arg key "$build_key" '.[$key] // empty' "$presigned_file")"
 
-          flash_url="$(jq -r --arg key "$flash_key" '.[$key] // empty' "$presigned_file")"
-          rootfs_url="$(jq -r --arg key "$rootfs_key" '.[$key] // empty' "$presigned_file")"
-
-          if [ -z "$flash_url" ]; then
-            echo "::error::Missing presigned URL for $flash_key"
+          if [ -z "$build_url" ]; then
+            echo "::error::Missing presigned URL for $build_key"
+            echo "=== Available presigned URL keys ==="
+            jq -r 'keys[]' "$presigned_file"
             exit 1
           fi
 
-          if [ -z "$rootfs_url" ]; then
-            echo "::error::Missing presigned URL for $rootfs_key"
-            exit 1
-          fi
-
-          echo "Flash image URL found for: $flash_key"
-          echo "Rootfs image URL found for: $rootfs_key"
-
+          echo "Build archive URL found for: $build_key"
           echo "=== presigned_urls.json keys ==="
           jq -r 'keys[]' "$presigned_file"
 
@@ -176,7 +168,7 @@ jobs:
 
           git clone \
             --depth 1 \
-            -b testing_original_job_render |\
+            -b testing_original_job_render \
             https://github.com/Manigurr/job_render \
             "$job_render_dir"
 

@@ -413,7 +413,7 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
 
-      - name: Prepare qcomflash files
+      - name: Prepare single build archive
         shell: bash
         env:
           WORKSPACE: ${{ github.workspace }}
@@ -424,6 +424,7 @@ jobs:
 
           deploy_dir="$WORKSPACE/build/tmp/deploy/images/$MACHINE"
           symlink_path="$deploy_dir/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
+          archive_path="$WORKSPACE/${MACHINE}_build.tar"
 
           echo "Machine:    $MACHINE"
           echo "Image name: $IMAGE_NAME"
@@ -432,8 +433,7 @@ jobs:
 
           if [ ! -L "$symlink_path" ]; then
             echo "::error::qcomflash symlink not found: $symlink_path"
-            echo "Available deploy files:"
-            find "$deploy_dir" -maxdepth 1 -type l -o -type f -printf '%f\n' || true
+            find "$deploy_dir" -maxdepth 2 -print | sort || true
             exit 1
           fi
 
@@ -444,40 +444,45 @@ jobs:
             exit 1
           fi
 
-          rootfs_img="$resolved_dir/rootfs.img"
-
-          if [ ! -f "$rootfs_img" ]; then
-            echo "::error::rootfs.img not found: $rootfs_img"
+          if [ ! -f "$resolved_dir/rootfs.img" ]; then
+            echo "::error::rootfs.img not found: $resolved_dir/rootfs.img"
+            find "$resolved_dir" -maxdepth 2 -print | sort || true
             exit 1
           fi
 
           echo "=== qcomflash contents ==="
-          ls -larth "$resolved_dir"
+          find "$resolved_dir" -maxdepth 2 -type f -printf '%P\n' | sort
 
-          mkdir -p "$WORKSPACE/artifacts"
-          : > "$WORKSPACE/artifacts/file_list.txt"
+          rm -f "$archive_path"
 
-          flash_tar="$WORKSPACE/${MACHINE}_flash_files.tar"
-          rootfs_dest="$WORKSPACE/${MACHINE}_rootfs.img"
-
-          # Keep rootfs.img inside the flash archive because the generated
-          # flash.settings contains ROOTFS_IMAGE=rootfs.img.
-          tar -cf "$flash_tar" \
+          echo "=== Creating single build archive ==="
+          tar -cvf "$archive_path" \
             -C "$resolved_dir" \
             .
 
-          cp "$rootfs_img" "$rootfs_dest"
+          if [ ! -s "$archive_path" ]; then
+            echo "::error::Build archive was not created or is empty: $archive_path"
+            exit 1
+          fi
 
-          printf '%s\n' "$flash_tar" \
-            >> "$WORKSPACE/artifacts/file_list.txt"
+          echo "=== Verifying archive contents ==="
+          tar -tf "$archive_path" | sed -n '1,200p'
 
-          printf '%s\n' "$rootfs_dest" \
-            >> "$WORKSPACE/artifacts/file_list.txt"
+          if ! tar -tf "$archive_path" | grep -qE '(^|/)rootfs\.img$'; then
+            echo "::error::rootfs.img is missing from $archive_path"
+            exit 1
+          fi
 
-          echo "=== Artifact file list ==="
+          echo "rootfs.img confirmed inside archive"
+
+          mkdir -p "$WORKSPACE/artifacts"
+          printf '%s\n' "$archive_path" > "$WORKSPACE/artifacts/file_list.txt"
+
+          echo "=== Single S3 upload file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
+          ls -lh "$archive_path"
 
-      - name: Upload artifacts to S3
+      - name: Upload single build archive to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@job_render_main
         with:
           s3_bucket: qli-stg-video-gh-artifacts
@@ -491,6 +496,14 @@ jobs:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}/presigned_urls.json
           retention-days: 7
+      - name: Upload single build archive as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_build.tar
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
 
       - name: Clean up
         if: always()
@@ -505,8 +518,7 @@ jobs:
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
-          rm -f "$WORKSPACE/"*_flash_files.tar || true
-          rm -f "$WORKSPACE/"*_rootfs.img || true
+          rm -f "$WORKSPACE/"*_build.tar || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
       - name: Update summary
