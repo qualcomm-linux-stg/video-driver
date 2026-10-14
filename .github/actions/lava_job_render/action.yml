@@ -31,7 +31,7 @@ runs:
       run: |
         set -euo pipefail
 
-        build_key="${MACHINE}_build.tar"
+        build_key="${MACHINE}_build.tar.gz"
 
         if [ ! -f "$PRESIGNED_FILE" ]; then
           echo "::error::Presigned URL file not found: $PRESIGNED_FILE"
@@ -424,8 +424,8 @@ runs:
           exit 1
         fi
 
-        if ! grep -qE 'url:.*_build\.tar' "$yaml_file"; then
-          echo "::error::Combined build archive (_build.tar) URL is missing from rendered LAVA job"
+        if ! grep -qE 'url:.*_build\.tar\.gz' "$yaml_file"; then
+          echo "::error::Compressed build archive (_build.tar.gz) URL is missing from rendered LAVA job"
           exit 1
         fi
 
@@ -451,7 +451,7 @@ runs:
 
         echo "Rendered LAVA job validation passed for $MACHINE"
         echo "  - device_type              : present"
-        echo "  - flash_image (_build.tar) : present as download URL"
+        echo "  - flash_image (_build.tar.gz): present as download URL"
         echo "  - rootfs.img               : extracted from archive"
         echo "  - empty URLs               : none"
         echo "  - combined_flash.tar       : intermediate only"

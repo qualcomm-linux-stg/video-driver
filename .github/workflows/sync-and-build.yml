@@ -413,7 +413,7 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
 
-      - name: Prepare single build archive
+      - name: Prepare compressed build archive
         shell: bash
         env:
           WORKSPACE: ${{ github.workspace }}
@@ -424,7 +424,7 @@ jobs:
 
           deploy_dir="$WORKSPACE/build/tmp/deploy/images/$MACHINE"
           symlink_path="$deploy_dir/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
-          archive_path="$WORKSPACE/${MACHINE}_build.tar"
+          archive_path="$WORKSPACE/${MACHINE}_build.tar.gz"
 
           echo "Machine:    $MACHINE"
           echo "Image name: $IMAGE_NAME"
@@ -455,25 +455,33 @@ jobs:
 
           rm -f "$archive_path"
 
-          echo "=== Creating single build archive ==="
-          tar -cvf "$archive_path" \
-            -C "$resolved_dir" \
-            .
+          echo "=== Creating compressed build archive ==="
+          if command -v pigz >/dev/null 2>&1; then
+            tar -I "pigz -p $(nproc) -1" \
+              -cf "$archive_path" \
+              -C "$resolved_dir" \
+              .
+          else
+            echo "pigz is not available; using gzip"
+            tar -czf "$archive_path" \
+              -C "$resolved_dir" \
+              .
+          fi
 
           if [ ! -s "$archive_path" ]; then
             echo "::error::Build archive was not created or is empty: $archive_path"
             exit 1
           fi
 
-          echo "=== Verifying archive contents ==="
-          tar -tf "$archive_path" | sed -n '1,200p'
+          echo "=== Verifying compressed archive contents ==="
+          tar -tzf "$archive_path" | sed -n '1,200p'
 
-          if ! tar -tf "$archive_path" | grep -qE '(^|/)rootfs\.img$'; then
+          if ! tar -tzf "$archive_path" | grep -qE '(^|/)rootfs\.img$'; then
             echo "::error::rootfs.img is missing from $archive_path"
             exit 1
           fi
 
-          echo "rootfs.img confirmed inside archive"
+          echo "rootfs.img confirmed inside compressed archive"
 
           mkdir -p "$WORKSPACE/artifacts"
           printf '%s\n' "$archive_path" > "$WORKSPACE/artifacts/file_list.txt"
@@ -500,7 +508,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_build.tar
+          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_build.tar.gz
           retention-days: 7
           compression-level: 0
           if-no-files-found: error
@@ -518,7 +526,7 @@ jobs:
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
-          rm -f "$WORKSPACE/"*_build.tar || true
+          rm -f "$WORKSPACE/"*_build.tar "$WORKSPACE/"*_build.tar.gz || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
       - name: Update summary
