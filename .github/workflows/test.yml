@@ -288,33 +288,28 @@ jobs:
             exit 1
           fi
 
-          # Basic structure check.
           if ! grep -q '^device_type:' "$job_file"; then
             echo "::error::device_type is missing from rendered LAVA job"
             exit 1
           fi
 
-          # The build archive must be present as the flash image URL.
           if ! grep -qE 'url:.*_build\.tar' "$job_file"; then
             echo "::error::Combined build archive (_build.tar) URL is missing"
             exit 1
           fi
 
-          # rootfs.img must not be downloaded separately.
           if grep -qE 'url:.*rootfs\.img' "$job_file"; then
             echo "::error::rootfs.img must not appear as a separate download URL"
             echo "::error::rootfs.img is expected to be contained in the build archive"
             exit 1
           fi
 
-          # Empty URLs must not be present.
           if grep -qE "url:[[:space:]]*['\"]?[[:space:]]*['\"]?$" "$job_file"; then
             echo "::error::Empty URL found in rendered LAVA job"
             grep -n "url:" "$job_file" || true
             exit 1
           fi
 
-          # The current flasher template uses the overlay deployment model.
           if ! grep -q 'OVERLAY=overlay.tar.gz' "$job_file"; then
             echo "::error::OVERLAY setting is missing"
             exit 1
@@ -330,14 +325,11 @@ jobs:
             exit 1
           fi
 
-          # Test binaries must be downloaded and merged into the overlay.
           if ! grep -q 'Test_binaries.tar.gz' "$job_file"; then
             echo "::error::Test_binaries.tar.gz is missing"
             exit 1
           fi
 
-          # The current template uses the overlay deployment model.
-          # e2cp and combined_flash.tar are not required.
           echo "Rendered LAVA job configuration verified:"
           echo "  - device_type               : present"
           echo "  - combined build archive    : present"
@@ -448,6 +440,7 @@ jobs:
 
           echo "JOB_ID=$job_id" >> "$GITHUB_ENV"
           echo "JOB_URL=$job_url" >> "$GITHUB_ENV"
+
           echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
           echo "job_url=$job_url" >> "$GITHUB_OUTPUT"
 
@@ -465,12 +458,200 @@ jobs:
             echo "- Job URL: $job_url"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Poll LAVA job
+        if: ${{ success() && matrix.build_matrix.lavaname != '' }}
+        id: poll_job
+        shell: bash
+        env:
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+          LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
+          LAVA_OSS_USER: ${{ secrets.LAVA_OSS_USER }}
+          JOB_ID: ${{ steps.submit_job.outputs.job_id }}
+          JOB_URL: ${{ steps.submit_job.outputs.job_url }}
+          WORKSPACE: ${{ github.workspace }}
+          MACHINE: ${{ matrix.build_matrix.machine }}
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$JOB_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid LAVA job ID: $JOB_ID"
+            exit 1
+          fi
+
+          poll_interval=30
+          max_polls=240
+          poll_count=0
+
+          status_log="$WORKSPACE/lava-status-${JOB_ID}.txt"
+
+          final_state="Unknown"
+          final_health="Unknown"
+
+          echo "Polling LAVA job: $JOB_ID"
+          echo "LAVA URL: ${JOB_URL:-https://lava-oss.qualcomm.com/scheduler/job/$JOB_ID}"
+          echo "Polling interval: ${poll_interval}s"
+          echo "Maximum polling attempts: ${max_polls}"
+          echo "Maximum wait time: $((poll_interval * max_polls / 60)) minutes"
+
+          : > "$status_log"
+
+          while [ "$poll_count" -lt "$max_polls" ]; do
+            poll_count=$((poll_count + 1))
+
+            echo ""
+            echo "============================================================"
+            echo "LAVA status poll $poll_count/$max_polls"
+            echo "============================================================"
+
+            set +e
+
+            lava_status="$(
+              docker run --rm \
+                -e LAVA_OSS_TOKEN \
+                -e LAVA_OSS_USER \
+                "$DOCKER_IMAGE" \
+                bash -s -- "$JOB_ID" <<'CONTAINER_SCRIPT'
+          set -euo pipefail
+
+          job_id="$1"
+
+          lavacli identities add \
+            --token "$LAVA_OSS_TOKEN" \
+            --uri https://lava-oss.qualcomm.com/RPC2 \
+            --username "$LAVA_OSS_USER" \
+            production >/dev/null
+
+          lavacli -i production jobs show "$job_id"
+          CONTAINER_SCRIPT
+            )"
+
+            query_status=$?
+
+            set -e
+
+            {
+              echo ""
+              echo "===== Poll $poll_count - $(date -u '+%Y-%m-%dT%H:%M:%SZ') ====="
+              printf '%s\n' "$lava_status"
+            } | tee -a "$status_log"
+
+            if [ "$query_status" -ne 0 ]; then
+              echo "::warning::Unable to query LAVA job status on poll $poll_count"
+              echo "::warning::lavacli exit code: $query_status"
+
+              if [ "$poll_count" -lt "$max_polls" ]; then
+                sleep "$poll_interval"
+                continue
+              fi
+
+              echo "::error::Unable to query LAVA job status after $max_polls attempts"
+              exit 1
+            fi
+
+            final_state="$(
+              printf '%s\n' "$lava_status" |
+                awk -F: '
+                  tolower($1) ~ /^[[:space:]]*state[[:space:]]*$/ {
+                    value=$2
+                    gsub(/^[ \t]+|[ \t]+$/, "", value)
+                    print value
+                    exit
+                  }
+                '
+            )"
+
+            final_health="$(
+              printf '%s\n' "$lava_status" |
+                awk -F: '
+                  tolower($1) ~ /^[[:space:]]*health[[:space:]]*$/ {
+                    value=$2
+                    gsub(/^[ \t]+|[ \t]+$/, "", value)
+                    print value
+                    exit
+                  }
+                '
+            )"
+
+            final_state="${final_state:-Unknown}"
+            final_health="${final_health:-Unknown}"
+
+            echo "Parsed LAVA state : $final_state"
+            echo "Parsed LAVA health: $final_health"
+
+            normalized_state="$(
+              printf '%s' "$final_state" |
+                tr '[:upper:]' '[:lower:]' |
+                tr -d '[:space:]'
+            )"
+
+            normalized_health="$(
+              printf '%s' "$final_health" |
+                tr '[:upper:]' '[:lower:]' |
+                tr -d '[:space:]'
+            )"
+
+            case "$normalized_state" in
+              finished|complete|completed|cancelled|canceled|failed|incomplete)
+                echo "LAVA job reached terminal state: $final_state"
+
+                if [ "$normalized_state" = "finished" ] &&
+                   [ "$normalized_health" = "complete" ]; then
+                  echo "LAVA job completed successfully"
+                  break
+                fi
+
+                echo "::error::LAVA job did not complete successfully"
+                echo "::error::Final state: $final_state"
+                echo "::error::Final health: $final_health"
+                exit 1
+                ;;
+              *)
+                echo "LAVA job is still running"
+                ;;
+            esac
+
+            if [ "$poll_count" -lt "$max_polls" ]; then
+              echo "Sleeping for ${poll_interval} seconds"
+              sleep "$poll_interval"
+            fi
+          done
+
+          if [ "$poll_count" -ge "$max_polls" ]; then
+            echo "::error::LAVA job polling timed out"
+            echo "::error::Job ID: $JOB_ID"
+            echo "::error::Last state: $final_state"
+            echo "::error::Last health: $final_health"
+            exit 1
+          fi
+
+          echo "Final LAVA state : $final_state"
+          echo "Final LAVA health: $final_health"
+
+          {
+            echo "### LAVA Job Result"
+            echo ""
+            echo "- Machine: \`$MACHINE\`"
+            echo "- Job ID: [$JOB_ID]($JOB_URL)"
+            echo "- State: \`$final_state\`"
+            echo "- Health: \`$final_health\`"
+            echo "- Result: **PASS**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload LAVA submission log
         if: ${{ always() && matrix.build_matrix.lavaname != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: lava-submit-log-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}/lava-submit-output.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload LAVA status log
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lava-status-log-${{ matrix.build_matrix.machine }}
+          path: ${{ github.workspace }}/lava-status-*.txt
           if-no-files-found: ignore
           retention-days: 7
 
@@ -496,9 +677,10 @@ jobs:
           fi
 
           {
-            echo "### LAVA Job Result"
+            echo "### LAVA Job Summary"
             echo ""
             echo "- Machine: \`$MACHINE\`"
+
             if [ -n "$job_url" ]; then
               echo "- Job ID: [$job_id]($job_url)"
               echo "- Job URL: $job_url"
