@@ -410,7 +410,8 @@ jobs:
 
           echo "LAVA job submitted: https://lava-oss.qualcomm.com/scheduler/job/$job_id"
 
-      - name: Poll LAVA job
+      
+      - name: Poll LAVA job and validate all testcases
         if: ${{ success() && matrix.build_matrix.lavaname != '' }}
         shell: bash
         env:
@@ -424,18 +425,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "LAVA polling implementation: jobs-show-v1"
+
           if ! [[ "$JOB_ID" =~ ^[0-9]+$ ]]; then
             echo "::error::Invalid LAVA job ID: $JOB_ID"
-            exit 1
-          fi
-
-          if [ -z "${LAVA_OSS_TOKEN:-}" ]; then
-            echo "::error::LAVA_OSS_TOKEN is empty"
-            exit 1
-          fi
-
-          if [ -z "${LAVA_OSS_USER:-}" ]; then
-            echo "::error::LAVA_OSS_USER is empty"
             exit 1
           fi
 
@@ -443,7 +436,6 @@ jobs:
           max_polls=240
           poll_count=0
           job_finished=false
-          job_succeeded=false
 
           status_log="$WORKSPACE/lava-status-${JOB_ID}.txt"
           job_log="$WORKSPACE/lava-job-${JOB_ID}.log"
@@ -464,142 +456,139 @@ jobs:
 
             echo
             echo "============================================================"
-            echo "LAVA log poll $poll_count/$max_polls"
+            echo "LAVA status poll $poll_count/$max_polls"
             echo "============================================================"
 
             set +e
 
-            lava_log="$(
-              docker run --rm \
-                -e LAVA_OSS_TOKEN \
-                -e LAVA_OSS_USER \
-                "$DOCKER_IMAGE" \
-                bash -s -- "$JOB_ID" 2>&1 <<'CONTAINER_SCRIPT'
-          set -u
+            lava_status="$(
+              timeout --signal=TERM --kill-after=10s 90s \
+                docker run --rm \
+                  -e LAVA_OSS_TOKEN \
+                  -e LAVA_OSS_USER \
+                  "$DOCKER_IMAGE" \
+                  bash -c '
+                    set -euo pipefail
 
-          job_id="$1"
+                    lavacli identities add \
+                      --token "$LAVA_OSS_TOKEN" \
+                      --uri https://lava-oss.qualcomm.com/RPC2 \
+                      --username "$LAVA_OSS_USER" \
+                      production
 
-          echo "Configuring LAVA identity"
-
-          lavacli identities add \
-            --token "$LAVA_OSS_TOKEN" \
-            --uri https://lava-oss.qualcomm.com/RPC2 \
-            --username "$LAVA_OSS_USER" \
-            production
-
-          echo "Retrieving LAVA job logs"
-
-          lavacli -i production jobs logs "$job_id"
-          CONTAINER_SCRIPT
+                    lavacli -i production jobs show "$1"
+                  ' bash "$JOB_ID" 2>&1
             )"
 
-            logs_rc=$?
+            status_rc=$?
 
             set -e
 
             {
               echo
-              echo "===== Poll $poll_count - $(date -u '+%Y-%m-%dT%H:%M:%SZ') ====="
-              printf '%s\n' "$lava_log"
+              echo "===== Status poll $poll_count - $(date -u '+%Y-%m-%dT%H:%M:%SZ') ====="
+              printf '%s\n' "$lava_status"
             } | tee -a "$status_log"
 
-            echo "lavacli jobs logs exit code: $logs_rc"
+            if [ "$status_rc" -eq 124 ] || [ "$status_rc" -eq 137 ]; then
+              echo "::warning::LAVA status request timed out; retrying"
+              sleep "$poll_interval"
+              continue
+            fi
 
-            if [ "$logs_rc" -ne 0 ]; then
-              echo "::error::Unable to query LAVA job logs"
-              echo "::error::LAVA response:"
-              printf '%s\n' "$lava_log"
+            if [ "$status_rc" -ne 0 ]; then
+              echo "::error::Unable to retrieve LAVA job status"
+              echo "::error::lavacli exit code: $status_rc"
+              printf '%s\n' "$lava_status"
               exit 1
             fi
 
-            if [ -z "$lava_log" ]; then
-              echo "::error::LAVA returned an empty log response"
-              exit 1
+            if [ -z "$lava_status" ]; then
+              echo "::warning::LAVA returned an empty status response; retrying"
+              sleep "$poll_interval"
+              continue
             fi
 
-            printf '%s\n' "$lava_log" > "$job_log"
+            echo "=== LAVA job status ==="
+            printf '%s\n' "$lava_status"
 
-            echo "=== Latest LAVA log output ==="
-            printf '%s\n' "$lava_log"
-
-            if printf '%s\n' "$lava_log" |
+            if printf '%s\n' "$lava_status" |
               grep -Eiq \
-                'Job finished correctly|job finished correctly'
+                'job[[:space:]]+finished[[:space:]]+correctly|finished[[:space:]]+correctly|status[[:space:]]*:[[:space:]]*(complete|completed|finished|failed|incomplete|cancelled|canceled|aborted|timeout|timed[[:space:]]+out)|state[[:space:]]*:[[:space:]]*(complete|completed|finished|failed|incomplete|cancelled|canceled|aborted|timeout|timed[[:space:]]+out)'
             then
+              echo "LAVA job reached a terminal state"
               job_finished=true
-              job_succeeded=true
-              echo "LAVA job finished correctly"
               break
             fi
 
-            if printf '%s\n' "$lava_log" |
+            if printf '%s\n' "$lava_status" |
               grep -Eiq \
-                'Job finished|job failed|job aborted|job cancelled|job canceled|job timed out|job timeout|incomplete'
+                'job[[:space:]]+(failed|aborted|cancelled|canceled|timeout|timed[[:space:]]+out)|job[[:space:]]+finished[[:space:]]+incorrectly'
             then
+              echo "::error::LAVA reported a failed, aborted, cancelled, or timed-out job"
               job_finished=true
-              job_succeeded=false
-              echo "LAVA job reached a terminal failure state"
               break
             fi
 
             echo "LAVA job is still running"
-            echo "Sleeping for $poll_interval seconds"
             sleep "$poll_interval"
           done
 
           if [ "$job_finished" != true ]; then
-            echo "::error::LAVA job did not reach a terminal state within the timeout"
+            echo "::error::LAVA job did not complete within the polling timeout"
             exit 1
           fi
 
           echo
           echo "============================================================"
-          echo "Retrieving final LAVA job log"
+          echo "Fetching final LAVA logs"
           echo "============================================================"
 
           set +e
 
-          docker run --rm \
-            -e LAVA_OSS_TOKEN \
-            -e LAVA_OSS_USER \
-            "$DOCKER_IMAGE" \
-            bash -s -- "$JOB_ID" 2>&1 <<'CONTAINER_SCRIPT' |
-          set -u
+          final_lava_log="$(
+            timeout --signal=TERM --kill-after=10s 120s \
+              docker run --rm \
+                -e LAVA_OSS_TOKEN \
+                -e LAVA_OSS_USER \
+                "$DOCKER_IMAGE" \
+                bash -c '
+                  set -euo pipefail
 
-          job_id="$1"
+                  lavacli identities add \
+                    --token "$LAVA_OSS_TOKEN" \
+                    --uri https://lava-oss.qualcomm.com/RPC2 \
+                    --username "$LAVA_OSS_USER" \
+                    production
 
-          lavacli identities add \
-            --token "$LAVA_OSS_TOKEN" \
-            --uri https://lava-oss.qualcomm.com/RPC2 \
-            --username "$LAVA_OSS_USER" \
-            production
+                  lavacli -i production jobs logs "$1"
+                ' bash "$JOB_ID" 2>&1
+          )"
 
-          lavacli -i production jobs logs "$job_id"
-          CONTAINER_SCRIPT
-            tee "$job_log"
-
-          logs_rc="${PIPESTATUS[0]}"
+          logs_rc=$?
 
           set -e
 
+          if [ "$logs_rc" -eq 124 ] || [ "$logs_rc" -eq 137 ]; then
+            echo "::error::Timed out while fetching final LAVA logs"
+            exit 1
+          fi
+
           if [ "$logs_rc" -ne 0 ]; then
-            echo "::error::Unable to retrieve final LAVA job log"
-            echo "::error::lavacli jobs logs exit code: $logs_rc"
+            echo "::error::Unable to retrieve final LAVA logs"
+            echo "::error::lavacli exit code: $logs_rc"
+            printf '%s\n' "$final_lava_log"
             exit 1
           fi
 
-          if [ ! -s "$job_log" ]; then
-            echo "::error::Final LAVA job log is empty"
+          if [ -z "$final_lava_log" ]; then
+            echo "::error::Final LAVA log is empty"
+            echo "=== LAVA status response ==="
+            cat "$status_log" || true
             exit 1
           fi
 
-          echo "Final LAVA job log saved to: $job_log"
-
-          if [ "$job_succeeded" != true ]; then
-            echo "::error::LAVA job did not finish correctly"
-            tail -n 200 "$job_log" || true
-            exit 1
-          fi
+          printf '%s\n' "$final_lava_log" > "$job_log"
 
           echo
           echo "============================================================"
@@ -607,15 +596,14 @@ jobs:
           echo "============================================================"
 
           grep -Eo \
-            'TEST_CASE_ID=[^[:space:]>]+[[:space:]]+RESULT=[^[:space:]>]+' \
+            'TEST_CASE_ID=[^[:space:]>"]+[[:space:]]+RESULT=[^[:space:]>"]+' \
             "$job_log" |
             sed -E \
-              's/^TEST_CASE_ID=([^[:space:]>]+)[[:space:]]+RESULT=([^[:space:]>]+)$/\1\t\2/' |
+              's/.*TEST_CASE_ID=([^[:space:]>"]+)[[:space:]]+RESULT=([^[:space:]>"]+).*/\1\t\2/' |
             sort -u > "$testcase_results" || true
 
           if [ ! -s "$testcase_results" ]; then
-            echo "::error::No LAVA testcase results found"
-            echo "::error::The LAVA job cannot be marked as passed"
+            echo "::error::No LAVA testcase results were found"
             tail -n 200 "$job_log" || true
             exit 1
           fi
@@ -627,10 +615,8 @@ jobs:
           passed_count=0
           failed_count=0
 
-          while IFS=$'\t' read -r testcase_id testcase_result; do
-            if [ -z "$testcase_id" ]; then
-              continue
-            fi
+          while IFS="$(printf '\t')" read -r testcase_id testcase_result; do
+            [ -n "$testcase_id" ] || continue
 
             testcase_count=$((testcase_count + 1))
 
@@ -655,33 +641,32 @@ jobs:
           echo "============================================================"
           echo "LAVA testcase summary"
           echo "============================================================"
-          echo "Machine      : $MACHINE"
-          echo "Job ID       : $JOB_ID"
-          echo "Testcases    : $testcase_count"
-          echo "Passed       : $passed_count"
-          echo "Failed       : $failed_count"
+          echo "Machine : $MACHINE"
+          echo "Job ID  : $JOB_ID"
+          echo "Total   : $testcase_count"
+          echo "Passed  : $passed_count"
+          echo "Failed  : $failed_count"
 
           {
             echo "### LAVA Test Result"
             echo
             echo "- Machine: \`$MACHINE\`"
             echo "- Job ID: [$JOB_ID](${JOB_URL:-https://lava-oss.qualcomm.com/scheduler/job/$JOB_ID})"
-            echo "- Testcases: \`$testcase_count\`"
+            echo "- Total testcases: \`$testcase_count\`"
             echo "- Passed: \`$passed_count\`"
             echo "- Failed: \`$failed_count\`"
             echo
             echo "#### Testcase Results"
             echo
 
-            while IFS=$'\t' read -r testcase_id testcase_result; do
-              if [ -n "$testcase_id" ]; then
-                echo "- \`$testcase_id\`: \`$testcase_result\`"
-              fi
+            while IFS="$(printf '\t')" read -r testcase_id testcase_result; do
+              [ -n "$testcase_id" ] || continue
+              echo "- \`$testcase_id\`: \`$testcase_result\`"
             done < "$testcase_results"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$testcase_count" -eq 0 ]; then
-            echo "::error::No testcases were found"
+            echo "::error::No testcases were detected"
             exit 1
           fi
 
@@ -697,7 +682,7 @@ jobs:
 
           echo "All $testcase_count LAVA testcases passed"
 
-      - name: Upload LAVA polling and result logs
+      - name: Upload LAVA logs
         if: ${{ always() && matrix.build_matrix.lavaname != '' }}
         uses: actions/upload-artifact@v4
         with:
@@ -709,3 +694,37 @@ jobs:
             ${{ github.workspace }}/lava-testcase-results-*.txt
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Save job ID
+        if: ${{ always() && matrix.build_matrix.lavaname != '' }}
+        shell: bash
+        env:
+          MACHINE: ${{ matrix.build_matrix.machine }}
+          JOB_ID: ${{ env.JOB_ID }}
+          JOB_URL: ${{ env.JOB_URL }}
+        run: |
+          set -euo pipefail
+
+          job_id="${JOB_ID:-unknown}"
+          job_url="${JOB_URL:-}"
+
+          echo "Machine  : $MACHINE"
+          echo "Job ID   : $job_id"
+          echo "Job URL  : ${job_url:-N/A}"
+
+          if [ "$job_id" = "unknown" ]; then
+            echo "::warning::No LAVA job ID recorded for machine: $MACHINE"
+          fi
+
+          {
+            echo "### LAVA Job Summary"
+            echo
+            echo "- Machine: \`$MACHINE\`"
+
+            if [ -n "$job_url" ]; then
+              echo "- Job ID: [$job_id]($job_url)"
+              echo "- Job URL: $job_url"
+            else
+              echo "- Job ID: \`$job_id\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
