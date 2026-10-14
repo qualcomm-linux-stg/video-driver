@@ -447,6 +447,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "LAVA polling implementation: testcase-log-v3"
+
           if ! [[ "$JOB_ID" =~ ^[0-9]+$ ]]; then
             echo "::error::Invalid LAVA job ID: $JOB_ID"
             exit 1
@@ -512,20 +514,15 @@ jobs:
             } | tee -a "$status_log"
 
             if [ "$logs_rc" -ne 0 ]; then
-              echo "::warning::Unable to retrieve LAVA logs"
-              echo "::warning::lavacli exit code: $logs_rc"
-
-              if [ "$poll_count" -ge "$max_polls" ]; then
-                echo "::error::Unable to retrieve LAVA logs after timeout"
-                exit 1
-              fi
-
-              sleep "$poll_interval"
-              continue
+              echo "::error::Unable to retrieve LAVA logs"
+              echo "::error::lavacli exit code: $logs_rc"
+              printf '%s\n' "$lava_log"
+              exit 1
             fi
 
             if [ -z "$lava_log" ]; then
-              echo "::warning::LAVA returned an empty log response"
+              echo "LAVA returned an empty log response"
+              echo "The job is not complete yet"
               sleep "$poll_interval"
               continue
             fi
@@ -541,7 +538,8 @@ jobs:
             fi
 
             if printf '%s\n' "$lava_log" |
-              grep -Eiq 'job[[:space:]]+(failed|aborted|cancelled|canceled|timed out|timeout)'
+              grep -Eiq \
+                'job[[:space:]]+(failed|aborted|cancelled|canceled|timeout|timed out)'
             then
               echo "::error::LAVA reported a failed or aborted job"
               job_finished=true
@@ -549,7 +547,6 @@ jobs:
             fi
 
             echo "LAVA job is still running"
-            echo "Sleeping for $poll_interval seconds"
             sleep "$poll_interval"
           done
 
@@ -558,16 +555,16 @@ jobs:
             exit 1
           fi
 
+          if [ ! -s "$job_log" ]; then
+            echo "::error::Final LAVA log is empty"
+            exit 1
+          fi
+
           echo
           echo "============================================================"
           echo "Extracting testcase results"
           echo "============================================================"
 
-          # Parse standard LAVA testcase signals:
-          #
-          # TEST_CASE_ID=login-action RESULT=PASS
-          # TEST_CASE_ID=Video_V4L2_Runner RESULT=FAIL
-          #
           grep -Eo \
             'TEST_CASE_ID=[^[:space:]>]+[[:space:]]+RESULT=[^[:space:]>]+' \
             "$job_log" |
@@ -575,40 +572,8 @@ jobs:
               's/^TEST_CASE_ID=([^[:space:]>]+)[[:space:]]+RESULT=([^[:space:]>]+)$/\1\t\2/' |
             sort -u > "$testcase_results" || true
 
-          # Parse LAVA result records from JSON-style log lines:
-          #
-          # "case": "pdu-reboot", ... "result": "pass"
-          #
-          awk '
-            /"case"[[:space:]]*:/ && /"result"[[:space:]]*:/ {
-              case_name = ""
-              result_name = ""
-
-              if (match($0, /"case"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
-                text = substr($0, RSTART, RLENGTH)
-                sub(/.*:[[:space:]]*"/, "", text)
-                sub(/"$/, "", text)
-                case_name = text
-              }
-
-              if (match($0, /"result"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
-                text = substr($0, RSTART, RLENGTH)
-                sub(/.*:[[:space:]]*"/, "", text)
-                sub(/"$/, "", text)
-                result_name = text
-              }
-
-              if (case_name != "" && result_name != "") {
-                print case_name "\t" result_name
-              }
-            }
-          ' "$job_log" | sort -u >> "$testcase_results" || true
-
-          sort -u "$testcase_results" -o "$testcase_results"
-
           if [ ! -s "$testcase_results" ]; then
-            echo "::error::No testcase results were found in the final LAVA log"
-            echo "::error::The job cannot be marked as passed"
+            echo "::error::No LAVA testcase results were found"
             tail -n 200 "$job_log" || true
             exit 1
           fi
@@ -621,9 +586,7 @@ jobs:
           failed_count=0
 
           while IFS="$(printf '\t')" read -r testcase_id testcase_result; do
-            if [ -z "$testcase_id" ]; then
-              continue
-            fi
+            [ -n "$testcase_id" ] || continue
 
             testcase_count=$((testcase_count + 1))
 
@@ -648,18 +611,18 @@ jobs:
           echo "============================================================"
           echo "LAVA testcase summary"
           echo "============================================================"
-          echo "Machine      : $MACHINE"
-          echo "Job ID       : $JOB_ID"
-          echo "Testcases    : $testcase_count"
-          echo "Passed       : $passed_count"
-          echo "Failed       : $failed_count"
+          echo "Machine : $MACHINE"
+          echo "Job ID  : $JOB_ID"
+          echo "Total   : $testcase_count"
+          echo "Passed  : $passed_count"
+          echo "Failed  : $failed_count"
 
           {
             echo "### LAVA Test Result"
             echo
             echo "- Machine: \`$MACHINE\`"
             echo "- Job ID: [$JOB_ID](${JOB_URL:-https://lava-oss.qualcomm.com/scheduler/job/$JOB_ID})"
-            echo "- Testcases: \`$testcase_count\`"
+            echo "- Total testcases: \`$testcase_count\`"
             echo "- Passed: \`$passed_count\`"
             echo "- Failed: \`$failed_count\`"
             echo
@@ -667,14 +630,13 @@ jobs:
             echo
 
             while IFS="$(printf '\t')" read -r testcase_id testcase_result; do
-              if [ -n "$testcase_id" ]; then
-                echo "- \`$testcase_id\`: \`$testcase_result\`"
-              fi
+              [ -n "$testcase_id" ] || continue
+              echo "- \`$testcase_id\`: \`$testcase_result\`"
             done < "$testcase_results"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$testcase_count" -eq 0 ]; then
-            echo "::error::No testcases were found"
+            echo "::error::No testcases were detected"
             exit 1
           fi
 
