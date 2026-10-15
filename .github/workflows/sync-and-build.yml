@@ -55,7 +55,7 @@ jobs:
           set -euo pipefail
 
           echo "=== Disk before clean ==="
-          df -h
+          df -hT
 
           rm -rf "$WORKSPACE/build/tmp" || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
@@ -64,7 +64,8 @@ jobs:
           rm -f "$WORKSPACE/"*_archive_manifest.txt || true
 
           echo "=== Disk after clean ==="
-          df -h
+          df -hT
+          df -ih
           free -h
 
       - name: Validate build inputs
@@ -414,6 +415,49 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
 
+      - name: Check disk space after build
+        if: always()
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -u
+
+          echo "========================================"
+          echo "Disk diagnostics after build"
+          echo "========================================"
+
+          echo
+          echo "=== Mounted filesystem usage ==="
+          df -hT
+
+          echo
+          echo "=== Inode usage ==="
+          df -ih
+
+          echo
+          echo "=== Memory and swap ==="
+          free -h
+          swapon --show || true
+
+          echo
+          echo "=== Workspace filesystem ==="
+          df -hT "$WORKSPACE"
+
+          echo
+          echo "=== Workspace size ==="
+          du -sh "$WORKSPACE" 2>/dev/null || true
+
+          echo
+          echo "=== Build directory size ==="
+          du -sh "$WORKSPACE/build" 2>/dev/null || true
+
+          echo
+          echo "=== Largest workspace directories ==="
+          du -x -h -d 2 "$WORKSPACE" 2>/dev/null \
+            | sort -h \
+            | tail -30 || true
+
       - name: Print deploy directory contents
         shell: bash
         env:
@@ -473,11 +517,13 @@ jobs:
           symlink_path="$deploy_dir/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
           archive_path="$WORKSPACE/${MACHINE}_build.tar.gz"
           manifest_path="$WORKSPACE/${MACHINE}_archive_manifest.txt"
+          validation_dir="$WORKSPACE/archive-validation"
 
           echo "Machine:    $MACHINE"
           echo "Image name: $IMAGE_NAME"
           echo "Deploy dir: $deploy_dir"
           echo "qcomflash:  $symlink_path"
+          echo "Archive:    $archive_path"
 
           if [ ! -L "$symlink_path" ]; then
             echo "::error::qcomflash symlink not found: $symlink_path"
@@ -500,29 +546,130 @@ jobs:
 
           echo "Resolved qcomflash directory: $resolved_dir"
 
+          echo
           echo "=== qcomflash contents ==="
           find "$resolved_dir" \
             -maxdepth 2 \
             -printf '%y %p -> %l\n' | sort
 
-          echo "=== Disk space before archive creation ==="
-          df -h "$WORKSPACE"
+          echo
+          echo "=== qcomflash size ==="
+          du -sh "$resolved_dir"
+          du -sh "$resolved_dir/rootfs.img"
+
+          echo
+          echo "=== Complete filesystem usage before archive ==="
+          df -hT
+
+          echo
+          echo "=== Inode usage before archive ==="
+          df -ih
+
+          echo
+          echo "=== Archive filesystem usage ==="
+          df -hT "$WORKSPACE"
+
+          echo
+          echo "=== Workspace usage before archive ==="
+          du -sh "$WORKSPACE" 2>/dev/null || true
+
+          echo
+          echo "=== Build usage before archive ==="
+          du -sh "$WORKSPACE/build" 2>/dev/null || true
+
+          source_size_bytes="$(du -sb "$resolved_dir" | awk '{print $1}')"
+          available_bytes="$(df -B1 --output=avail "$WORKSPACE" | tail -1 | tr -d '[:space:]')"
+
+          # The source qcomflash directory remains on disk while the archive
+          # is created. Reserve space for:
+          #   1. The compressed archive.
+          #   2. Archive metadata and filesystem overhead.
+          #   3. A 1 GiB safety margin.
+          safety_margin_bytes=$((1024 * 1024 * 1024))
+          required_bytes=$((source_size_bytes + safety_margin_bytes))
+
+          source_size_gib="$(awk "BEGIN {printf \"%.2f\", $source_size_bytes / 1024 / 1024 / 1024}")"
+          available_gib="$(awk "BEGIN {printf \"%.2f\", $available_bytes / 1024 / 1024 / 1024}")"
+          required_gib="$(awk "BEGIN {printf \"%.2f\", $required_bytes / 1024 / 1024 / 1024}")"
+
+          echo
+          echo "=== Archive disk-space calculation ==="
+          echo "Source qcomflash size : ${source_size_gib} GiB"
+          echo "Safety margin         : 1.00 GiB"
+          echo "Required free space   : ${required_gib} GiB"
+          echo "Available free space  : ${available_gib} GiB"
+
+          if [ "$available_bytes" -lt "$required_bytes" ]; then
+            echo "::error::Insufficient disk space for archive creation"
+            echo "::error::Required free space: ${required_gib} GiB"
+            echo "::error::Available free space: ${available_gib} GiB"
+            echo "::error::Filesystem containing workspace: $WORKSPACE"
+
+            echo
+            echo "=== Detailed filesystem usage ==="
+            df -hT
+
+            echo
+            echo "=== Largest workspace entries ==="
+            du -x -h -d 2 "$WORKSPACE" 2>/dev/null \
+              | sort -h \
+              | tail -50 || true
+
+            exit 1
+          fi
+
+          echo "✅ Sufficient disk space is available for archive creation"
 
           rm -f "$archive_path" "$manifest_path"
+          rm -rf "$validation_dir"
 
+          echo
           echo "=== Creating compressed build archive ==="
 
+          archive_status=0
+
           if command -v pigz >/dev/null 2>&1; then
-            tar -I "pigz -p $(nproc) -1" \
+            pigz_threads="$(nproc)"
+
+            if [ "$pigz_threads" -gt 8 ]; then
+              pigz_threads=8
+            fi
+
+            echo "Using pigz with $pigz_threads threads"
+
+            tar -I "pigz -p $pigz_threads -1" \
               -cf "$archive_path" \
               -C "$resolved_dir" \
-              .
+              . || archive_status=$?
           else
             echo "pigz is not available; using gzip"
 
             tar -czf "$archive_path" \
               -C "$resolved_dir" \
-              .
+              . || archive_status=$?
+          fi
+
+          if [ "$archive_status" -ne 0 ]; then
+            echo "::error::Archive creation failed with exit code: $archive_status"
+
+            echo
+            echo "=== Filesystem usage after archive failure ==="
+            df -hT
+
+            echo
+            echo "=== Inode usage after archive failure ==="
+            df -ih
+
+            echo
+            echo "=== Partial archive details ==="
+            if [ -e "$archive_path" ]; then
+              ls -lh "$archive_path"
+              du -h "$archive_path" || true
+            else
+              echo "Archive file was not created"
+            fi
+
+            exit "$archive_status"
           fi
 
           if [ ! -s "$archive_path" ]; then
@@ -530,12 +677,32 @@ jobs:
             exit 1
           fi
 
+          echo
+          echo "=== Archive details ==="
+          ls -lh "$archive_path"
+          du -h "$archive_path"
+
+          echo
+          echo "=== Filesystem usage after archive creation ==="
+          df -hT "$WORKSPACE"
+
+          echo
           echo "=== Validating gzip stream ==="
-          gzip -t "$archive_path"
+          if ! gzip -t "$archive_path"; then
+            echo "::error::Compressed archive is corrupt: $archive_path"
+            exit 1
+          fi
 
+          echo "✅ Gzip stream is valid"
+
+          echo
           echo "=== Generating archive manifest ==="
-          tar -tzf "$archive_path" > "$manifest_path"
+          if ! tar -tzf "$archive_path" > "$manifest_path"; then
+            echo "::error::Unable to read archive contents: $archive_path"
+            exit 1
+          fi
 
+          echo
           echo "=== Verifying compressed archive contents ==="
           sed -n '1,200p' "$manifest_path"
 
@@ -554,13 +721,55 @@ jobs:
           echo "✅ rootfs.img confirmed inside compressed archive"
           echo "✅ contents.xml confirmed inside compressed archive"
 
-          echo "=== Archive details ==="
+          echo
+          echo "=== Verifying rootfs.img extraction ==="
+          mkdir -p "$validation_dir"
+
+          if ! tar -xzf "$archive_path" \
+            -C "$validation_dir" \
+            ./rootfs.img; then
+            echo "::error::Unable to extract rootfs.img from archive"
+            rm -rf "$validation_dir"
+            exit 1
+          fi
+
+          extracted_rootfs="$validation_dir/rootfs.img"
+
+          if [ ! -s "$extracted_rootfs" ]; then
+            echo "::error::Extracted rootfs.img is missing or empty"
+            rm -rf "$validation_dir"
+            exit 1
+          fi
+
+          source_rootfs_size="$(stat -c '%s' "$resolved_dir/rootfs.img")"
+          extracted_rootfs_size="$(stat -c '%s' "$extracted_rootfs")"
+
+          echo "Original rootfs.img size : $source_rootfs_size bytes"
+          echo "Extracted rootfs.img size: $extracted_rootfs_size bytes"
+
+          if [ "$source_rootfs_size" -ne "$extracted_rootfs_size" ]; then
+            echo "::error::Extracted rootfs.img size does not match the original"
+            rm -rf "$validation_dir"
+            exit 1
+          fi
+
+          rm -rf "$validation_dir"
+
+          echo "✅ rootfs.img extraction and size validation passed"
+
+          echo
+          echo "=== Final archive details ==="
           ls -lh "$archive_path"
           du -h "$archive_path"
+
+          echo
+          echo "=== Final filesystem usage ==="
+          df -hT "$WORKSPACE"
 
           mkdir -p "$WORKSPACE/artifacts"
           printf '%s\n' "$archive_path" > "$WORKSPACE/artifacts/file_list.txt"
 
+          echo
           echo "=== Single S3 upload file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
 
@@ -601,6 +810,7 @@ jobs:
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
+          rm -rf "$WORKSPACE/archive-validation" || true
           rm -f "$WORKSPACE/"*_build.tar || true
           rm -f "$WORKSPACE/"*_build.tar.gz || true
           rm -f "$WORKSPACE/"*_archive_manifest.txt || true
