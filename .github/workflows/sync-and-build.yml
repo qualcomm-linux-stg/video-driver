@@ -61,6 +61,7 @@ jobs:
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
           rm -f "$WORKSPACE/.hydra_wifi_password" || true
           rm -rf "$WORKSPACE/classes" || true
+          rm -f "$WORKSPACE/"*_archive_manifest.txt || true
 
           echo "=== Disk after clean ==="
           df -h
@@ -413,6 +414,52 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
 
+      - name: Print deploy directory contents
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          MACHINE: '${{ matrix.build_matrix.machine }}'
+        run: |
+          set -euo pipefail
+
+          images_dir="$WORKSPACE/build/tmp/deploy/images"
+          deploy_dir="$images_dir/$MACHINE"
+
+          echo "========================================"
+          echo "Deploy directory diagnostics"
+          echo "Workspace  : $WORKSPACE"
+          echo "Images dir : $images_dir"
+          echo "Deploy dir : $deploy_dir"
+          echo "========================================"
+
+          echo
+          echo "=== Parent images directory ==="
+          if [ -d "$images_dir" ]; then
+            find "$images_dir" \
+              -maxdepth 3 \
+              -printf '%y %p -> %l\n' | sort
+          else
+            echo "::warning::Directory does not exist: $images_dir"
+          fi
+
+          echo
+          echo "=== Machine-specific deploy directory ==="
+          if [ -d "$deploy_dir" ]; then
+            find "$deploy_dir" \
+              -maxdepth 3 \
+              -printf '%y %p -> %l\n' | sort
+          else
+            echo "::warning::Directory does not exist: $deploy_dir"
+          fi
+
+          echo
+          echo "=== qcomflash-related entries ==="
+          if [ -d "$images_dir" ]; then
+            find "$images_dir" \
+              \( -name '*.qcomflash' -o -name '*qcomflash*' -o -name 'rootfs.img' \) \
+              -printf '%y %p -> %l\n' | sort || true
+          fi
+
       - name: Prepare compressed build archive
         shell: bash
         env:
@@ -425,6 +472,7 @@ jobs:
           deploy_dir="$WORKSPACE/build/tmp/deploy/images/$MACHINE"
           symlink_path="$deploy_dir/${IMAGE_NAME}-${MACHINE}.rootfs.qcomflash"
           archive_path="$WORKSPACE/${MACHINE}_build.tar.gz"
+          manifest_path="$WORKSPACE/${MACHINE}_archive_manifest.txt"
 
           echo "Machine:    $MACHINE"
           echo "Image name: $IMAGE_NAME"
@@ -433,7 +481,7 @@ jobs:
 
           if [ ! -L "$symlink_path" ]; then
             echo "::error::qcomflash symlink not found: $symlink_path"
-            find "$deploy_dir" -maxdepth 2 -print | sort || true
+            find "$deploy_dir" -maxdepth 3 -printf '%y %p -> %l\n' | sort || true
             exit 1
           fi
 
@@ -446,16 +494,24 @@ jobs:
 
           if [ ! -f "$resolved_dir/rootfs.img" ]; then
             echo "::error::rootfs.img not found: $resolved_dir/rootfs.img"
-            find "$resolved_dir" -maxdepth 2 -print | sort || true
+            find "$resolved_dir" -maxdepth 2 -printf '%y %p -> %l\n' | sort || true
             exit 1
           fi
 
-          echo "=== qcomflash contents ==="
-          find "$resolved_dir" -maxdepth 2 -type f -printf '%P\n' | sort
+          echo "Resolved qcomflash directory: $resolved_dir"
 
-          rm -f "$archive_path"
+          echo "=== qcomflash contents ==="
+          find "$resolved_dir" \
+            -maxdepth 2 \
+            -printf '%y %p -> %l\n' | sort
+
+          echo "=== Disk space before archive creation ==="
+          df -h "$WORKSPACE"
+
+          rm -f "$archive_path" "$manifest_path"
 
           echo "=== Creating compressed build archive ==="
+
           if command -v pigz >/dev/null 2>&1; then
             tar -I "pigz -p $(nproc) -1" \
               -cf "$archive_path" \
@@ -463,6 +519,7 @@ jobs:
               .
           else
             echo "pigz is not available; using gzip"
+
             tar -czf "$archive_path" \
               -C "$resolved_dir" \
               .
@@ -473,22 +530,39 @@ jobs:
             exit 1
           fi
 
-          echo "=== Verifying compressed archive contents ==="
-          tar -tzf "$archive_path" | sed -n '1,200p'
+          echo "=== Validating gzip stream ==="
+          gzip -t "$archive_path"
 
-          if ! tar -tzf "$archive_path" | grep -qE '(^|/)rootfs\.img$'; then
+          echo "=== Generating archive manifest ==="
+          tar -tzf "$archive_path" > "$manifest_path"
+
+          echo "=== Verifying compressed archive contents ==="
+          sed -n '1,200p' "$manifest_path"
+
+          if ! grep -Fxq './rootfs.img' "$manifest_path"; then
             echo "::error::rootfs.img is missing from $archive_path"
+            echo "Matching rootfs entries:"
+            grep -i 'rootfs' "$manifest_path" || true
             exit 1
           fi
 
-          echo "rootfs.img confirmed inside compressed archive"
+          if ! grep -Fxq './contents.xml' "$manifest_path"; then
+            echo "::error::contents.xml is missing from $archive_path"
+            exit 1
+          fi
+
+          echo "✅ rootfs.img confirmed inside compressed archive"
+          echo "✅ contents.xml confirmed inside compressed archive"
+
+          echo "=== Archive details ==="
+          ls -lh "$archive_path"
+          du -h "$archive_path"
 
           mkdir -p "$WORKSPACE/artifacts"
           printf '%s\n' "$archive_path" > "$WORKSPACE/artifacts/file_list.txt"
 
           echo "=== Single S3 upload file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
-          ls -lh "$archive_path"
 
       - name: Upload single build archive to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@job_render_main
@@ -504,6 +578,7 @@ jobs:
           name: presigned-urls-${{ matrix.build_matrix.machine }}
           path: ${{ github.workspace }}/presigned_urls.json
           retention-days: 7
+
       - name: Upload single build archive as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -526,7 +601,9 @@ jobs:
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
-          rm -f "$WORKSPACE/"*_build.tar "$WORKSPACE/"*_build.tar.gz || true
+          rm -f "$WORKSPACE/"*_build.tar || true
+          rm -f "$WORKSPACE/"*_build.tar.gz || true
+          rm -f "$WORKSPACE/"*_archive_manifest.txt || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
       - name: Update summary
