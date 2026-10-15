@@ -61,6 +61,7 @@ jobs:
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
           rm -f "$WORKSPACE/.hydra_wifi_password" || true
           rm -rf "$WORKSPACE/classes" || true
+          rm -rf "$WORKSPACE/archive-validation" || true
           rm -f "$WORKSPACE/"*_archive_manifest.txt || true
 
           echo "=== Disk after clean ==="
@@ -581,10 +582,7 @@ jobs:
           available_bytes="$(df -B1 --output=avail "$WORKSPACE" | tail -1 | tr -d '[:space:]')"
 
           # The source qcomflash directory remains on disk while the archive
-          # is created. Reserve space for:
-          #   1. The compressed archive.
-          #   2. Archive metadata and filesystem overhead.
-          #   3. A 1 GiB safety margin.
+          # is created. Reserve space for the archive and a safety margin.
           safety_margin_bytes=$((1024 * 1024 * 1024))
           required_bytes=$((source_size_bytes + safety_margin_bytes))
 
@@ -713,13 +711,21 @@ jobs:
             exit 1
           fi
 
-          if ! grep -Fxq './contents.xml' "$manifest_path"; then
-            echo "::error::contents.xml is missing from $archive_path"
-            exit 1
-          fi
-
           echo "✅ rootfs.img confirmed inside compressed archive"
-          echo "✅ contents.xml confirmed inside compressed archive"
+
+          # contents.xml is optional because it is not generated for every
+          # machine. If it exists, verify that it is present in the archive.
+          if [ -f "$resolved_dir/contents.xml" ]; then
+            if grep -Fxq './contents.xml' "$manifest_path"; then
+              echo "✅ contents.xml confirmed inside compressed archive"
+            else
+              echo "::error::contents.xml exists in the source qcomflash directory but is missing from the archive"
+              exit 1
+            fi
+          else
+            echo "ℹ️ contents.xml is not present for machine: $MACHINE"
+            echo "Continuing because contents.xml is optional for this image layout"
+          fi
 
           echo
           echo "=== Verifying rootfs.img extraction ==="
