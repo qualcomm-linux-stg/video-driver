@@ -266,7 +266,7 @@ runs:
             python3 /job_render/lava_Job_definition_generator.py \
               --localjson /job_render/data/cloudData.json \
               --meta-qcom \
-              --video_pre-merge
+              --video-test-suite-import
 
             echo "=== YAML files generated inside container ==="
 
