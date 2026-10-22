@@ -5,7 +5,7 @@
     "lavaname": "qcs6490-rb3gen2",
     "build_command": "bitbake qcom-multimedia-proprietary-image",
     "image_name": "qcom-multimedia-proprietary-image",
-    "prebuilt_artifact": "rb3gen2-core-kit_build.tar.gz"
+    "prebuilt_artifact": "qcom-multimedia-proprietary-image-rb3gen2-core-kit.rootfs.qcomflash.tar.gz"
   },
   "qcs615-ride": {
     "machine": "qcs615-ride",
