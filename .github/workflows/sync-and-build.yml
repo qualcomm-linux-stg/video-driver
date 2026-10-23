@@ -56,9 +56,12 @@ jobs:
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
           rm -rf "$WORKSPACE/artifacts" || true
+          rm -rf "$WORKSPACE/archive-validation" || true
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
           rm -rf "$WORKSPACE/qcomflash-staging" || true
           rm -f "$WORKSPACE/"*_build.tar || true
+          rm -f "$WORKSPACE/"*_build.tar.gz || true
+          rm -f "$WORKSPACE/"*_archive_manifest.txt || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
           echo "=== Disk after clean ==="
@@ -389,39 +392,29 @@ jobs:
             exit 1
           fi
 
-          # ---------------------------------------------------------------
-          # DIAGNOSTIC: disk state and sizes BEFORE cleanup
-          # ---------------------------------------------------------------
           echo "=== [DIAG] Disk usage BEFORE cleanup ==="
           df -h
 
           echo "=== [DIAG] Top disk consumers in WORKSPACE ==="
-          du -sh "$WORKSPACE"/*/  2>/dev/null | sort -rh | head -20 || true
+          du -sh "$WORKSPACE"/*/ 2>/dev/null | sort -rh | head -20 || true
 
           echo "=== [DIAG] rootfs.img size ==="
           ls -lh "$resolved_dir/rootfs.img"
           du -sh "$resolved_dir/rootfs.img"
 
-          echo "=== [DIAG] Full qcomflash dir size ==="
+          echo "=== [DIAG] Full qcomflash directory size ==="
           du -sh "$resolved_dir"
 
-          # ---------------------------------------------------------------
-          # MOVE qcomflash OUT of build/tmp BEFORE cleanup
-          # so rm -rf build/tmp does not delete it
-          # ---------------------------------------------------------------
           staging_dir="$WORKSPACE/qcomflash-staging"
 
-          echo "=== Moving qcomflash dir out of build/tmp before cleanup ==="
+          echo "=== Moving qcomflash directory out of build/tmp ==="
           rm -rf "$staging_dir"
           mv "$resolved_dir" "$staging_dir"
 
-          echo "=== Confirming staging dir ==="
+          echo "=== Confirming staging directory ==="
           ls -lh "$staging_dir/rootfs.img"
           du -sh "$staging_dir"
 
-          # ---------------------------------------------------------------
-          # FREE DISK: remove large items no longer needed after inject step
-          # ---------------------------------------------------------------
           echo "=== Freeing disk before packaging ==="
 
           echo "Removing build/tmp ..."
@@ -433,9 +426,6 @@ jobs:
           echo "Removing iris_test_app build ..."
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
 
-          # ---------------------------------------------------------------
-          # DIAGNOSTIC: disk state AFTER cleanup and BEFORE tar
-          # ---------------------------------------------------------------
           echo "=== [DIAG] Disk usage AFTER cleanup ==="
           df -h
 
@@ -450,44 +440,263 @@ jobs:
           echo "=== qcomflash contents before packaging ==="
           ls -larth "$staging_dir"
 
-          mkdir -p "$WORKSPACE/artifacts"
+      - name: Prepare compressed build archive
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          MACHINE: ${{ matrix.build_matrix.machine }}
+          IMAGE_NAME: ${{ matrix.build_matrix.image_name }}
+        run: |
+          set -euo pipefail
 
-          # Uncompressed tar — rootfs.img is a dense ext4 image and does not
-          # compress. Using gzip risks disk exhaustion mid-stream on CI runners.
-          combined_tar="$WORKSPACE/${MACHINE}_build.tar"
+          staging_dir="$WORKSPACE/qcomflash-staging"
+          archive_path="$WORKSPACE/${MACHINE}_build.tar.gz"
+          manifest_path="$WORKSPACE/${MACHINE}_archive_manifest.txt"
+          validation_dir="$WORKSPACE/archive-validation"
 
-          echo "=== Packaging all qcomflash files + rootfs.img (uncompressed) ==="
-          tar -cvf "$combined_tar" \
-            -C "$staging_dir" \
-            .
+          echo "Machine:    $MACHINE"
+          echo "Image name: $IMAGE_NAME"
+          echo "Staging:    $staging_dir"
+          echo "Archive:    $archive_path"
 
-          # ---------------------------------------------------------------
-          # DIAGNOSTIC: disk state AFTER tar
-          # ---------------------------------------------------------------
-          echo "=== [DIAG] Disk usage AFTER tar ==="
-          df -h
-
-          echo "=== Archive created ==="
-          ls -lh "$combined_tar"
-
-          echo "=== Verify rootfs.img IS inside archive ==="
-          count="$(tar -tf "$combined_tar" | grep -c -E '(^|/)rootfs\.img$' || true)"
-          if [ "$count" -eq 0 ]; then
-            echo "::error::rootfs.img not found inside archive — packaging failed"
+          if [ ! -d "$staging_dir" ]; then
+            echo "::error::qcomflash staging directory not found: $staging_dir"
             exit 1
           fi
-          echo "rootfs.img confirmed inside archive ✓"
 
-          echo "=== Verify rawprogram files are inside archive ==="
-          tar -tf "$combined_tar" | grep -E '(^|/)rawprogram.*\.xml$' || true
+          if [ ! -f "$staging_dir/rootfs.img" ]; then
+            echo "::error::rootfs.img not found: $staging_dir/rootfs.img"
+            find "$staging_dir" -maxdepth 2 -printf '%y %p -> %l\n' | sort || true
+            exit 1
+          fi
 
-          printf '%s\n' "$combined_tar" > "$WORKSPACE/artifacts/file_list.txt"
+          echo
+          echo "=== qcomflash contents ==="
+          find "$staging_dir" \
+            -maxdepth 2 \
+            -printf '%y %p -> %l\n' | sort
 
-          echo "=== Artifact file list ==="
+          echo
+          echo "=== qcomflash size ==="
+          du -sh "$staging_dir"
+          du -sh "$staging_dir/rootfs.img"
+
+          echo
+          echo "=== Complete filesystem usage before archive ==="
+          df -hT
+
+          echo
+          echo "=== Inode usage before archive ==="
+          df -ih
+
+          echo
+          echo "=== Archive filesystem usage ==="
+          df -hT "$WORKSPACE"
+
+          echo
+          echo "=== Workspace usage before archive ==="
+          du -sh "$WORKSPACE" 2>/dev/null || true
+
+          source_size_bytes="$(du -sb "$staging_dir" | awk '{print $1}')"
+          available_bytes="$(df -B1 --output=avail "$WORKSPACE" | tail -1 | tr -d '[:space:]')"
+
+          # The source qcomflash directory remains on disk while the archive
+          # is created. Reserve one GiB as a safety margin.
+          safety_margin_bytes=$((1024 * 1024 * 1024))
+          required_bytes=$((source_size_bytes + safety_margin_bytes))
+
+          source_size_gib="$(awk "BEGIN {printf \"%.2f\", $source_size_bytes / 1024 / 1024 / 1024}")"
+          available_gib="$(awk "BEGIN {printf \"%.2f\", $available_bytes / 1024 / 1024 / 1024}")"
+          required_gib="$(awk "BEGIN {printf \"%.2f\", $required_bytes / 1024 / 1024 / 1024}")"
+
+          echo
+          echo "=== Archive disk-space calculation ==="
+          echo "Source qcomflash size : ${source_size_gib} GiB"
+          echo "Safety margin         : 1.00 GiB"
+          echo "Required free space   : ${required_gib} GiB"
+          echo "Available free space  : ${available_gib} GiB"
+
+          if [ "$available_bytes" -lt "$required_bytes" ]; then
+            echo "::error::Insufficient disk space for archive creation"
+            echo "::error::Required free space: ${required_gib} GiB"
+            echo "::error::Available free space: ${available_gib} GiB"
+            echo "::error::Filesystem containing workspace: $WORKSPACE"
+
+            echo
+            echo "=== Detailed filesystem usage ==="
+            df -hT
+
+            echo
+            echo "=== Largest workspace entries ==="
+            du -x -h -d 2 "$WORKSPACE" 2>/dev/null \
+              | sort -h \
+              | tail -50 || true
+
+            exit 1
+          fi
+
+          echo "Sufficient disk space is available for archive creation"
+
+          rm -f "$archive_path" "$manifest_path"
+          rm -rf "$validation_dir"
+
+          echo
+          echo "=== Creating compressed build archive ==="
+
+          archive_status=0
+
+          if command -v pigz >/dev/null 2>&1; then
+            pigz_threads="$(nproc)"
+
+            if [ "$pigz_threads" -gt 8 ]; then
+              pigz_threads=8
+            fi
+
+            echo "Using pigz with $pigz_threads threads"
+
+            tar -I "pigz -p $pigz_threads -1" \
+              -cf "$archive_path" \
+              -C "$staging_dir" \
+              . || archive_status=$?
+          else
+            echo "pigz is not available; using gzip"
+
+            tar -czf "$archive_path" \
+              -C "$staging_dir" \
+              . || archive_status=$?
+          fi
+
+          if [ "$archive_status" -ne 0 ]; then
+            echo "::error::Archive creation failed with exit code: $archive_status"
+
+            echo
+            echo "=== Filesystem usage after archive failure ==="
+            df -hT
+
+            echo
+            echo "=== Inode usage after archive failure ==="
+            df -ih
+
+            echo
+            echo "=== Partial archive details ==="
+            if [ -e "$archive_path" ]; then
+              ls -lh "$archive_path"
+              du -h "$archive_path" || true
+            else
+              echo "Archive file was not created"
+            fi
+
+            exit "$archive_status"
+          fi
+
+          if [ ! -s "$archive_path" ]; then
+            echo "::error::Build archive was not created or is empty: $archive_path"
+            exit 1
+          fi
+
+          echo
+          echo "=== Archive details ==="
+          ls -lh "$archive_path"
+          du -h "$archive_path"
+
+          echo
+          echo "=== Filesystem usage after archive creation ==="
+          df -hT "$WORKSPACE"
+
+          echo
+          echo "=== Validating gzip stream ==="
+          if ! gzip -t "$archive_path"; then
+            echo "::error::Compressed archive is corrupt: $archive_path"
+            exit 1
+          fi
+
+          echo "Gzip stream is valid"
+
+          echo
+          echo "=== Generating archive manifest ==="
+          if ! tar -tzf "$archive_path" > "$manifest_path"; then
+            echo "::error::Unable to read archive contents: $archive_path"
+            exit 1
+          fi
+
+          echo
+          echo "=== Verifying compressed archive contents ==="
+          sed -n '1,200p' "$manifest_path"
+
+          if ! grep -Fxq './rootfs.img' "$manifest_path"; then
+            echo "::error::rootfs.img is missing from $archive_path"
+            echo "Matching rootfs entries:"
+            grep -i 'rootfs' "$manifest_path" || true
+            exit 1
+          fi
+
+          echo "rootfs.img confirmed inside compressed archive"
+
+          # contents.xml is optional because it is not generated for every
+          # machine. If it exists, verify that it is present in the archive.
+          if [ -f "$staging_dir/contents.xml" ]; then
+            if grep -Fxq './contents.xml' "$manifest_path"; then
+              echo "contents.xml confirmed inside compressed archive"
+            else
+              echo "::error::contents.xml exists in the source qcomflash directory but is missing from the archive"
+              exit 1
+            fi
+          else
+            echo "contents.xml is not present for machine: $MACHINE"
+            echo "Continuing because contents.xml is optional for this image layout"
+          fi
+
+          echo
+          echo "=== Verifying rootfs.img extraction ==="
+          mkdir -p "$validation_dir"
+
+          if ! tar -xzf "$archive_path" \
+            -C "$validation_dir" \
+            ./rootfs.img; then
+            echo "::error::Unable to extract rootfs.img from archive"
+            rm -rf "$validation_dir"
+            exit 1
+          fi
+
+          extracted_rootfs="$validation_dir/rootfs.img"
+
+          if [ ! -s "$extracted_rootfs" ]; then
+            echo "::error::Extracted rootfs.img is missing or empty"
+            rm -rf "$validation_dir"
+            exit 1
+          fi
+
+          source_rootfs_size="$(stat -c '%s' "$staging_dir/rootfs.img")"
+          extracted_rootfs_size="$(stat -c '%s' "$extracted_rootfs")"
+
+          echo "Original rootfs.img size : $source_rootfs_size bytes"
+          echo "Extracted rootfs.img size: $extracted_rootfs_size bytes"
+
+          if [ "$source_rootfs_size" -ne "$extracted_rootfs_size" ]; then
+            echo "::error::Extracted rootfs.img size does not match the original"
+            rm -rf "$validation_dir"
+            exit 1
+          fi
+
+          rm -rf "$validation_dir"
+
+          echo "rootfs.img extraction and size validation passed"
+
+          echo
+          echo "=== Final archive details ==="
+          ls -lh "$archive_path"
+          du -h "$archive_path"
+
+          echo
+          echo "=== Final filesystem usage ==="
+          df -hT "$WORKSPACE"
+
+          mkdir -p "$WORKSPACE/artifacts"
+          printf '%s\n' "$archive_path" > "$WORKSPACE/artifacts/file_list.txt"
+
+          echo
+          echo "=== Single S3 upload file list ==="
           cat "$WORKSPACE/artifacts/file_list.txt"
-
-          echo "=== Cleaning up staging dir ==="
-          rm -rf "$staging_dir" || true
 
       - name: Upload artifacts to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@video-test-suite
@@ -505,11 +714,11 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      - name: Upload combined build archive
+      - name: Upload compressed build archive
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.build_matrix.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_build.tar
+          path: ${{ github.workspace }}/${{ matrix.build_matrix.machine }}_build.tar.gz
           retention-days: 7
           compression-level: 0
           if-no-files-found: error
@@ -525,9 +734,12 @@ jobs:
           rm -rf "$WORKSPACE/artifacts" || true
           rm -rf "$WORKSPACE/build" || true
           rm -rf "$WORKSPACE/downloads" || true
+          rm -rf "$WORKSPACE/archive-validation" || true
           rm -rf "$WORKSPACE/v4l-video-test-app/build" || true
           rm -rf "$WORKSPACE/qcomflash-staging" || true
           rm -f "$WORKSPACE/"*_build.tar || true
+          rm -f "$WORKSPACE/"*_build.tar.gz || true
+          rm -f "$WORKSPACE/"*_archive_manifest.txt || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
       - name: Update summary

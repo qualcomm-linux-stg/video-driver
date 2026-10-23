@@ -127,11 +127,16 @@ jobs:
           set -euo pipefail
 
           presigned_file="$WORKSPACE/presigned_urls.json"
-          build_key="${MACHINE}_build.tar"
+          build_key="${MACHINE}_build.tar.gz"
 
           if [ ! -f "$presigned_file" ]; then
             echo "::error::presigned_urls.json not found"
             ls -la "$WORKSPACE"
+            exit 1
+          fi
+
+          if [ ! -s "$presigned_file" ]; then
+            echo "::error::presigned_urls.json is empty"
             exit 1
           fi
 
@@ -145,7 +150,7 @@ jobs:
           )"
 
           if [ -z "$build_url" ]; then
-            echo "::error::Combined build archive URL is missing"
+            echo "::error::Compressed combined build archive URL is missing"
             echo "::error::Expected key: $build_key"
             exit 1
           fi
@@ -280,8 +285,14 @@ jobs:
             exit 1
           fi
 
-          if ! grep -qE 'url:.*_build\.tar' "$job_file"; then
-            echo "::error::Combined build archive (_build.tar) URL is missing"
+          if ! grep -qE 'url:.*_build\.tar\.gz' "$job_file"; then
+            echo "::error::Compressed combined build archive (_build.tar.gz) URL is missing"
+            exit 1
+          fi
+
+          if grep -qE 'url:.*_build\.tar([[:space:]]|$)' "$job_file"; then
+            echo "::error::Uncompressed combined build archive (_build.tar) URL must not be used"
+            grep -nE 'url:.*_build\.tar' "$job_file" || true
             exit 1
           fi
 
