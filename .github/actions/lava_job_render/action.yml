@@ -31,14 +31,22 @@ runs:
       run: |
         set -euo pipefail
 
-        build_key="${MACHINE}_build.tar"
+        build_key="${MACHINE}_build.tar.gz"
 
         if [ ! -f "$PRESIGNED_FILE" ]; then
           echo "::error::Presigned URL file not found: $PRESIGNED_FILE"
           exit 1
         fi
 
-        jq empty "$PRESIGNED_FILE"
+        if [ ! -s "$PRESIGNED_FILE" ]; then
+          echo "::error::Presigned URL file is empty: $PRESIGNED_FILE"
+          exit 1
+        fi
+
+        if ! jq empty "$PRESIGNED_FILE"; then
+          echo "::error::Invalid JSON in presigned URL file: $PRESIGNED_FILE"
+          exit 1
+        fi
 
         echo "=== Presigned URL keys ==="
         jq -r 'keys[]' "$PRESIGNED_FILE"
@@ -48,12 +56,13 @@ runs:
         )"
 
         if [ -z "$build_url" ]; then
-          echo "::error::Combined build archive URL is missing"
+          echo "::error::Compressed combined build archive URL is missing"
           echo "::error::Expected key: $build_key"
           exit 1
         fi
 
         echo "Build archive found: $build_key"
+        echo "Build archive type: gzip-compressed tar archive"
 
         {
           printf 'build_key=%s\n' "$build_key"
@@ -421,8 +430,14 @@ runs:
           exit 1
         fi
 
-        if ! grep -qE 'url:.*_build\.tar' "$yaml_file"; then
-          echo "::error::Combined build archive (_build.tar) URL is missing from rendered LAVA job"
+        if ! grep -qE 'url:.*_build\.tar\.gz' "$yaml_file"; then
+          echo "::error::Compressed combined build archive (_build.tar.gz) URL is missing from rendered LAVA job"
+          exit 1
+        fi
+
+        if grep -qE 'url:.*_build\.tar([[:space:]]|$)' "$yaml_file"; then
+          echo "::error::Uncompressed combined build archive (_build.tar) must not be used"
+          grep -nE 'url:.*_build\.tar' "$yaml_file" || true
           exit 1
         fi
 
@@ -447,8 +462,8 @@ runs:
         sed -n '1,320p' "$yaml_file"
 
         echo "Rendered LAVA job validation passed for $MACHINE"
-        echo "  - device_type              : present"
-        echo "  - flash_image (_build.tar) : present as download URL"
-        echo "  - rootfs.img               : extracted from archive"
-        echo "  - empty URLs               : none"
-        echo "  - combined_flash.tar       : intermediate only"
+        echo "  - device_type                : present"
+        echo "  - flash_image (_build.tar.gz): present as download URL"
+        echo "  - rootfs.img                 : extracted from archive"
+        echo "  - empty URLs                 : none"
+        echo "  - combined_flash.tar         : intermediate only"
