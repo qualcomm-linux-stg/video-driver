@@ -64,7 +64,7 @@ jobs:
           rm -f "$WORKSPACE/"*_archive_manifest.txt || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
-          echo "=== Disk after clean ==="
+          echo "=== Disk after clean up==="
           df -h
 
           echo "=== Memory =========================="
