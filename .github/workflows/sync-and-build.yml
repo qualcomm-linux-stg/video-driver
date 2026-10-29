@@ -67,7 +67,7 @@ jobs:
           echo "=== Disk after clean ==="
           df -h
 
-          echo "=== Memory ==="
+          echo "=== Memory =========================="
           free -h
 
       - name: Validate build inputs
