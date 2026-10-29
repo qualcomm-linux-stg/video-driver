@@ -11,7 +11,9 @@ on:
 
 permissions:
   actions: read
+  checks: write
   contents: read
+  pull-requests: read
 
 jobs:
   verify-build:
@@ -32,6 +34,7 @@ jobs:
       commit_sha: ${{ steps.metadata.outputs.commit_sha }}
       build_run_id: ${{ steps.metadata.outputs.build_run_id }}
       build_repository: ${{ steps.metadata.outputs.build_repository }}
+      pr_number: ${{ steps.metadata.outputs.pr_number }}
 
     steps:
       - name: Download build metadata
@@ -67,6 +70,7 @@ jobs:
           docker_image="$(jq -r '.docker_image // empty' "$METADATA_FILE")"
           commit_sha="$(jq -r '.commit_sha // empty' "$METADATA_FILE")"
           source_repository="$(jq -r '.source_repository // empty' "$METADATA_FILE")"
+          pr_number="$(jq -r '.pr_number // empty' "$METADATA_FILE")"
           build_matrix="$(jq -c '.build_matrix' "$METADATA_FILE")"
 
           if [ "$metadata_run_id" != "$EXPECTED_RUN_ID" ]; then
@@ -110,13 +114,55 @@ jobs:
             echo "commit_sha=$commit_sha"
             echo "build_run_id=$metadata_run_id"
             echo "build_repository=$metadata_repository"
+            echo "pr_number=$pr_number"
             echo "build_matrix<<BUILD_MATRIX_EOF"
             echo "$build_matrix"
             echo "BUILD_MATRIX_EOF"
           } >> "$GITHUB_OUTPUT"
 
+  create-lava-check:
+    name: Create LAVA PR check
+    needs:
+      - verify-build
+    if: >
+      needs.verify-build.result == 'success' &&
+      needs.verify-build.outputs.pr_number != '' &&
+      needs.verify-build.outputs.pr_number != 'null'
+    runs-on: ubuntu-latest
+    outputs:
+      check_run_id: ${{ steps.create-check.outputs.check_run_id }}
+    steps:
+      - name: Create pending LAVA check
+        id: create-check
+        uses: actions/github-script@v7
+        env:
+          HEAD_SHA: ${{ needs.verify-build.outputs.commit_sha }}
+          PR_NUMBER: ${{ needs.verify-build.outputs.pr_number }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+            const result = await github.rest.checks.create({
+              owner,
+              repo,
+              name: 'LAVA Test',
+              head_sha: process.env.HEAD_SHA,
+              status: 'in_progress',
+              details_url: runUrl,
+              output: {
+                title: 'LAVA tests are running',
+                summary: `LAVA tests for pull request #${process.env.PR_NUMBER} have started.`
+              }
+            });
+            core.setOutput('check_run_id', String(result.data.id));
+            core.info(`Created LAVA check run ${result.data.id} for ${process.env.HEAD_SHA}`);
+
   lava-test:
-    name: Run LAVA tests
+    name: LAVA Test
+    needs:
+      - verify-build
+      - create-lava-check
     needs:
       - verify-build
     if: ${{ needs.verify-build.result == 'success' }}
@@ -133,3 +179,39 @@ jobs:
     secrets:
       LAVA_OSS_TOKEN: ${{ secrets.LAVA_OSS_TOKEN }}
       LAVA_OSS_USER: ${{ secrets.LAVA_OSS_USER }}
+  update-lava-check:
+    name: Update LAVA PR check
+    needs:
+      - verify-build
+      - create-lava-check
+      - lava-test
+    if: >
+      always() &&
+      needs.verify-build.result == 'success' &&
+      needs.create-lava-check.result == 'success' &&
+      needs.lava-test.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Complete LAVA check
+        uses: actions/github-script@v7
+        env:
+          CHECK_RUN_ID: ${{ needs.create-lava-check.outputs.check_run_id }}
+          LAVA_RESULT: ${{ needs.lava-test.result }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const passed = process.env.LAVA_RESULT === 'success';
+            await github.rest.checks.update({
+              owner,
+              repo,
+              check_run_id: Number(process.env.CHECK_RUN_ID),
+              status: 'completed',
+              conclusion: passed ? 'success' : 'failure',
+              output: {
+                title: passed ? 'LAVA tests passed' : 'LAVA tests failed',
+                summary: passed
+                  ? 'All LAVA jobs and testcases passed.'
+                  : 'One or more LAVA jobs or testcases failed. See the workflow logs for details.'
+              }
+            });
