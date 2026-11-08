@@ -229,19 +229,38 @@ jobs:
           sha = os.environ["LATEST_SHA"]
           contents = recipe.read_text()
 
-          updated, count = re.subn(
-              r'(?m)^(SRCREV\s*\?=\s*")[0-9a-fA-F]{40}("\s*)$',
-              rf'\g<1>{sha}\g<2>',
-              contents,
-          )
+          replacements = [
+              (
+                  r'(?m)^SRCREV\s*\?=\s*"[0-9a-fA-F]{40}"\s*$',
+                  f'SRCREV ?= "{sha}"',
+                  "default SRCREV",
+              ),
+              (
+                  r'(?m)^SRCBRANCH:class-devupstream\s*\?=\s*"branch=[^"]+"\s*$',
+                  'SRCBRANCH:class-devupstream ?= "branch=qcom-next-stage"',
+                  "devupstream SRCBRANCH",
+              ),
+              (
+                  r'(?m)^SRC_URI\s*=\s*"git://github\.com/[^"]+;\$\{SRCBRANCH\};protocol=https"\s*$',
+                  'SRC_URI = "git://github.com/qualcomm-linux-stg/video-kernel.git;${SRCBRANCH};protocol=https"',
+                  "base SRC_URI",
+              ),
+          ]
 
-          if count != 1:
-              raise SystemExit(
-                  f"Expected exactly one default SRCREV in {recipe}, found {count}"
-              )
+          updated = contents
+
+          for pattern, replacement, label in replacements:
+              updated, count = re.subn(pattern, replacement, updated)
+              if count != 1:
+                  raise SystemExit(
+                      f"Expected exactly one {label} line in {recipe}, found {count}"
+                  )
 
           recipe.write_text(updated)
+
           print(f"Updated SRCREV to {sha}")
+          print("Updated SRCBRANCH:class-devupstream to branch=qcom-next-stage")
+          print("Updated SRC_URI to qualcomm-linux-stg/video-kernel.git")
           PY
 
           echo
