@@ -26,7 +26,7 @@ on:
     secrets:
       HYDRA_WIFI_PASSWORD:
         description: Password for the Hydra Wi-Fi network
-        required: true
+        required: false
 
 permissions:
   contents: read
@@ -36,10 +36,10 @@ jobs:
     timeout-minutes: 720
 
     runs-on:
-      group: GHA-video-Prd-SelfHosted-RG
+      group: GHA-video-Stg-SelfHosted-RG
       labels:
         - self-hosted
-        - video-prd-u2204-x64-large-od-ephem
+        - video-stg-u2204-x64-large-od-ephem
 
     strategy:
       fail-fast: false
@@ -232,28 +232,38 @@ jobs:
       - name: Prepare Hydra Wi-Fi password
         shell: bash
         env:
-          WORKSPACE: ${{ github.workspace }}
-          HYDRA_WIFI_PASSWORD: ${{ secrets.HYDRA_WIFI_PASSWORD }}
+           WORKSPACE: ${{ github.workspace }}
+           HYDRA_WIFI_PASSWORD: ${{ secrets.HYDRA_WIFI_PASSWORD }}
         run: |
-          set -euo pipefail
+           set -euo pipefail
 
-          if [ -z "${HYDRA_WIFI_PASSWORD:-}" ]; then
-            echo "::error::HYDRA_WIFI_PASSWORD secret is empty or was not passed"
-            exit 1
-          fi
+           if [ -z "${HYDRA_WIFI_PASSWORD:-}" ]; then
+             echo "::warning::HYDRA_WIFI_PASSWORD secret is empty or was not passed"
+             echo "::warning::This is expected for pull_request events from forked repositories"
+             echo "::warning::Wi-Fi functionality will be skipped for this build"
+             
+             # Create an empty password file to allow the build to continue
+             password_file="$WORKSPACE/.hydra_wifi_password"
+             umask 077
+             touch "$password_file"
+             chmod 600 "$password_file"
+             
+             echo "✅ Empty Wi-Fi password file created (build will continue without Wi-Fi)"
+             exit 0
+           fi
 
-          password_file="$WORKSPACE/.hydra_wifi_password"
+           password_file="$WORKSPACE/.hydra_wifi_password"
 
-          umask 077
-          printf '%s' "$HYDRA_WIFI_PASSWORD" > "$password_file"
-          chmod 600 "$password_file"
+           umask 077
+           printf '%s' "$HYDRA_WIFI_PASSWORD" > "$password_file"
+           chmod 600 "$password_file"
 
-          if [ ! -s "$password_file" ]; then
-            echo "::error::Wi-Fi password file was not created or is empty"
-            exit 1
-          fi
+           if [ ! -s "$password_file" ]; then
+             echo "::error::Wi-Fi password file was not created or is empty"
+             exit 1
+           fi
 
-          echo "✅ Hydra Wi-Fi password file prepared"
+           echo "✅ Hydra Wi-Fi password file prepared"
 
       - name: Create Wi-Fi post-boot BitBake class
         shell: bash
@@ -337,8 +347,7 @@ jobs:
           echo "Workspace: $WORKSPACE"
 
       - name: Build image
-        uses: qualcomm-linux/video-driver/.github/actions/build@video.qclinux.main
-        with:
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@pr_secret_validate        with:
           machine: ${{ matrix.build_matrix.machine }}
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
@@ -383,7 +392,7 @@ jobs:
           mkdir -p "$WORKSPACE/v4l-video-test-app/build"
 
           aws s3 sync \
-            "s3://qli-prd-video-gh-artifacts/qualcomm-linux/video-driver/iris_test_app/" \
+            "s3://qli-stg-video-gh-artifacts/qualcomm-linux-stg/video-driver/iris_test_app/" \
             "$WORKSPACE/v4l-video-test-app/build/"
 
           echo "✅ iris_test_app download complete"
@@ -411,8 +420,7 @@ jobs:
           ls -la "$WORKSPACE/downloads"
 
       - name: Inject Iris test app to rootfs
-        uses: qualcomm-linux/video-driver/.github/actions/inject@video.qclinux.main
-        with:
+        uses: qualcomm-linux-stg/video-driver/.github/actions/inject@pr_secret_validate        with:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
 
@@ -780,9 +788,8 @@ jobs:
           cat "$WORKSPACE/artifacts/file_list.txt"
 
       - name: Upload single build archive to S3
-        uses: qualcomm-linux/video-driver/.github/actions/aws_s3_helper@video.qclinux.main
-        with:
-          s3_bucket: qli-prd-video-gh-artifacts
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@pr_secret_validate        with:
+          s3_bucket: qli-stg-video-gh-artifacts
           local_file: ${{ github.workspace }}/artifacts/file_list.txt
           mode: multi-upload
           upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.build_matrix.machine }}

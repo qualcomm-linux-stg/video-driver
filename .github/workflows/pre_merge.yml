@@ -4,18 +4,26 @@ run-name: Pre Merge Workflow
 
 on:
   workflow_dispatch:
+    inputs:
+      hydra_wifi_password:
+        description: 'Hydra Wi-Fi Password (for manual PR testing from forks)'
+        required: false
+        type: string
 
   push:
     branches:
-      - video.qclinux.main
-
+      - pr_secret_validate
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
     branches:
-      - video.qclinux.main
+      - pr_secret_validate
+# Secrets are not available for pull_request events from forked repositories
+# This is a GitHub Actions security feature. To enable Wi-Fi for forked PRs,
+# maintainers can approve the workflow run, which will make secrets available.
+# See: https://docs.github.com/en/actions/managing-workflow-runs/approving-workflow-runs-from-public-forks
 
 permissions:
   contents: read
@@ -24,16 +32,14 @@ permissions:
 jobs:
   loading:
     name: Load build configuration
-    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.main
-    with:
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@pr_secret_validate    with:
       event_name: ${{ github.event_name }}
 
   build:
     name: Build
     needs:
       - loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.main
-    with:
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@pr_secret_validate    with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
 
@@ -48,14 +54,17 @@ jobs:
             || github.repository }}
 
     secrets:
-      HYDRA_WIFI_PASSWORD: ${{ secrets.HYDRA_WIFI_PASSWORD }}
+      HYDRA_WIFI_PASSWORD: ${{ secrets.HYDRA_WIFI_PASSWORD || inputs.hydra_wifi_password || '' }}
+    # Repository-level secrets: For push events and PRs from the main repository,
+    # the HYDRA_WIFI_PASSWORD secret is available. For PRs from forked repositories,
+    # you can manually provide the secret via workflow_dispatch in the Actions tab.
+    # See MANUAL_SECRET_INPUT_FOR_FORKED_PRS.md for details.
 
   owl_build:
     name: OWL parallel kernel and video-driver build
     needs:
       - loading
-    uses: qualcomm-linux/video-driver/.github/workflows/owl_build.yml@video.qclinux.main
-
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/owl_build.yml@pr_secret_validate
   create-metadata:
     name: Create build metadata
     needs:
