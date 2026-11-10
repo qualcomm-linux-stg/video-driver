@@ -347,7 +347,8 @@ jobs:
           echo "Workspace: $WORKSPACE"
 
       - name: Build image
-        uses: qualcomm-linux-stg/video-driver/.github/actions/build@pr_secret_validate        with:
+        uses: qualcomm-linux-stg/video-driver/.github/actions/build@pr_secret_validate       
+        with:
           machine: ${{ matrix.build_matrix.machine }}
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
