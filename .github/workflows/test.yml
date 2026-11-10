@@ -194,7 +194,8 @@ jobs:
 
       - name: Render LAVA job definition
         if: ${{ matrix.build_matrix.lavaname != '' }}
-        uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@pr_secret_validate        with:
+        uses: qualcomm-linux-stg/video-driver/.github/actions/lava_job_render@pr_secret_validate        
+        with:
           docker_image: ${{ inputs.docker_image }}
           machine: ${{ matrix.build_matrix.machine }}
           lavaname: ${{ matrix.build_matrix.lavaname }}
