@@ -32,14 +32,16 @@ permissions:
 jobs:
   loading:
     name: Load build configuration
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@pr_secret_validate    with:
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@pr_secret_validate  
+    with:
       event_name: ${{ github.event_name }}
 
   build:
     name: Build
     needs:
       - loading
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@pr_secret_validate    with:
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@pr_secret_validate    
+    with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
 
