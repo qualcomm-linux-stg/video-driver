@@ -12,14 +12,16 @@ on:
 
   push:
     branches:
-      - pr_secret_validate
+      - video.qclinux.main
+
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
     branches:
-      - pr_secret_validate
+      - video.qclinux.main
+
 # Secrets are not available for pull_request events from forked repositories
 # This is a GitHub Actions security feature. To enable Wi-Fi for forked PRs,
 # maintainers can approve the workflow run, which will make secrets available.
@@ -32,7 +34,7 @@ permissions:
 jobs:
   loading:
     name: Load build configuration
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@pr_secret_validate  
+    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@video.qclinux.main
     with:
       event_name: ${{ github.event_name }}
 
@@ -40,7 +42,7 @@ jobs:
     name: Build
     needs:
       - loading
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@pr_secret_validate    
+    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@video.qclinux.main
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
@@ -66,7 +68,8 @@ jobs:
     name: OWL parallel kernel and video-driver build
     needs:
       - loading
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/owl_build.yml@pr_secret_validate
+    uses: qualcomm-linux/video-driver/.github/workflows/owl_build.yml@video.qclinux.main
+
   create-metadata:
     name: Create build metadata
     needs:
