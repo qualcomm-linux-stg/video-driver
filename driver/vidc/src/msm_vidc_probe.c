@@ -222,7 +222,7 @@ static int msm_vidc_register_video_device(struct msm_vidc_core *core,
 	int media_index;
 	int rc = 0;
 
-	d_vpr_h("%s: domain %d\n", __func__, type);
+	d_vpr_e("%s: domain %d\n", __func__, type);
 
 	if (type == MSM_VIDC_DECODER) {
 		media_index = MEDIA_ENT_F_PROC_VIDEO_DECODER;
