@@ -18,6 +18,10 @@ on:
         description: Repository containing the commit to build
         type: string
         required: true
+    secrets:
+      HYDRA_WIFI_PASSWORD:
+        description: Hydra Wi-Fi password (also resolved from the HYDRA_WIFI_PASSWORD environment)
+        required: false
 permissions:
   contents: read
 jobs:
