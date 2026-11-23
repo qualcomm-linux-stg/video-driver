@@ -23,6 +23,14 @@
     "image_name": "qcom-multimedia-image",
     "prebuilt_artifact": "qcom-multimedia-image-qcs615-ride.rootfs.qcomflash.tar.gz"
   },
+  "sm8750-mtp": {
+    "machine": "sm8750-mtp",
+    "kas_file": "../meta-qcom/ci/sm8750-mtp.yml:../meta-qcom/ci/qcom-distro.yml",
+    "lavaname": "sm8750-mtp",
+    "build_command": "bitbake qcom-multimedia-image",
+    "image_name": "qcom-multimedia-image",
+    "prebuilt_artifact": "qcom-multimedia-image-kaanapali-mtp.rootfs.qcomflash.tar.gz"
+  },
   "shikra-evk": {
     "machine": "shikra-evk",
     "kas_file": "../meta-qcom/ci/shikra-evk.yml:../meta-qcom/ci/qcom-distro.yml",
@@ -30,6 +38,14 @@
     "build_command": "bitbake qcom-multimedia-image",
     "image_name": "qcom-multimedia-image",
     "prebuilt_artifact": "qcom-multimedia-image-shikra-evk.rootfs.qcomflash.tar.gz"
+  },
+  "kaanapali-mtp": {
+    "machine": "kaanapali-mtp",
+    "kas_file": "../meta-qcom/ci/kaanapali-mtp.yml:../meta-qcom/ci/qcom-distro.yml",
+    "lavaname": "kaanapali-mtp",
+    "build_command": "bitbake qcom-multimedia-image",
+    "image_name": "qcom-multimedia-image",
+    "prebuilt_artifact": "qcom-multimedia-image-kaanapali-mtp.rootfs.qcomflash.tar.gz"
   },
   "glymur-crd": {
     "machine": "glymur-crd",
