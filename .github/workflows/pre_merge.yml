@@ -38,17 +38,17 @@ jobs:
             && github.event.pull_request.head.repo.full_name
             || github.repository }}
     secrets: inherit
-  owl_build:
-    name: OWL parallel kernel and video-driver build
-    needs:
-      - loading
-    uses: qualcomm-linux-stg/video-driver/.github/workflows/owl_build.yml@job_render_main
+  # owl_build:
+  #   name: OWL parallel kernel and video-driver build
+  #   needs:
+  #     - loading
+  #   uses: qualcomm-linux-stg/video-driver/.github/workflows/owl_build.yml@job_render_main
   create-metadata:
     name: Create build metadata
     needs:
       - loading
       - build
-      - owl_build
+      #- owl_build
     runs-on: ubuntu-latest
     steps:
       - name: Create metadata directory
