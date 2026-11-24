@@ -91,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           actual_sha="$(git rev-parse HEAD)"
-          echo "========================================"
+          echo "================================================"
           echo "Event      : $EVENT_NAME"
           echo "Repository : $EXPECTED_REPOSITORY"
           echo "Input SHA  : $EXPECTED_SHA"
