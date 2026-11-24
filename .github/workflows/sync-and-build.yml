@@ -64,10 +64,10 @@ jobs:
           rm -f "$WORKSPACE/"*_archive_manifest.txt || true
           rm -f "$(dirname "$WORKSPACE")/kas_local_conf_header.txt" || true
 
-          echo "=== Disk after clean ==="
+          echo "=== Disk after clean up==="
           df -h
 
-          echo "=== Memory ==="
+          echo "=== Memory =========================="
           free -h
 
       - name: Validate build inputs
@@ -165,7 +165,7 @@ jobs:
 
           actual_sha="$(git rev-parse HEAD)"
 
-          echo "========================================"
+          echo "==========================================="
           echo "Event      : $EVENT_NAME"
           echo "Repository : $EXPECTED_REPOSITORY"
           echo "Input SHA  : $EXPECTED_SHA"
