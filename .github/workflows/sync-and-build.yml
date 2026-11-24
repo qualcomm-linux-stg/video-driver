@@ -124,7 +124,7 @@ jobs:
           echo "Lava name:     ${LAVA_NAME:-<not-set>}"
           echo "Build command: $BUILD_COMMAND"
           echo "Image name:    $IMAGE_NAME"
-          echo "=================================="
+          echo "===================================="
           if [ -z "$MACHINE" ]; then
             echo "::error::Matrix field 'machine' is empty"
             exit 1
