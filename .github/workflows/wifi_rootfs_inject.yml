@@ -1,0 +1,439 @@
+name: wifi_rootfs_inject
+run-name: Wi-Fi rootfs inject - ${{ github.event.workflow_run.display_title }}
+
+# WHY workflow_run (and not secrets in pre_merge):
+#   * pre_merge keeps running on `pull_request` and never needs the Wi-Fi secret.
+#   * This workflow runs from the base repository's context, so HYDRA_WIFI_PASSWORD
+#     resolves, but it NEVER checks out or executes PR code. It only treats the
+#     build output as data: download -> validate -> loop-mount -> write one file.
+#   * The credential-bearing archive goes to S3 only (no GitHub artifact).
+on:
+  # zizmor: ignore[dangerous-triggers]
+  workflow_run:
+    workflows:
+      - pre_merge
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wifi-rootfs-inject-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+env:
+  # Fixed here on purpose: never take these from PR-produced metadata.
+  DOCKER_IMAGE: kmake-image:ver.1.0
+  TRUSTED_REF: trusted-workflow
+  S3_BUCKET: qli-stg-video-gh-artifacts
+
+jobs:
+  prepare:
+    name: Verify build and select targets
+    # Fork PRs are skipped: their image would carry the Wi-Fi password onto a
+    # device running fork-authored code.
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.repository.full_name == github.repository &&
+      (
+        github.event.workflow_run.event == 'push' ||
+        github.event.workflow_run.event == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.event == 'pull_request' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
+        )
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.metadata.outputs.commit_sha }}
+      source_repository: ${{ steps.metadata.outputs.source_repository }}
+      inject_matrix: ${{ steps.metadata.outputs.inject_matrix }}
+      has_targets: ${{ steps.metadata.outputs.has_targets }}
+    steps:
+      - name: Download build metadata
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: build-metadata
+          path: metadata
+
+      - name: Validate metadata and build target list
+        id: metadata
+        shell: bash
+        env:
+          METADATA_FILE: metadata/build-metadata.json
+          EXPECTED_RUN_ID: ${{ github.event.workflow_run.id }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+          EXPECTED_REPOSITORY: ${{ github.event.workflow_run.repository.full_name }}
+        run: |
+          set -euo pipefail
+          [ -f "$METADATA_FILE" ] || { echo "::error::Build metadata not found"; exit 1; }
+          jq empty "$METADATA_FILE"
+
+          run_id="$(jq -r '.build_run_id // empty' "$METADATA_FILE")"
+          repo="$(jq -r '.repository // empty' "$METADATA_FILE")"
+          sha="$(jq -r '.commit_sha // empty' "$METADATA_FILE")"
+          src="$(jq -r '.source_repository // empty' "$METADATA_FILE")"
+
+          [ "$run_id" = "$EXPECTED_RUN_ID" ]   || { echo "::error::Metadata run ID mismatch"; exit 1; }
+          [ "$repo" = "$EXPECTED_REPOSITORY" ] || { echo "::error::Metadata repository mismatch"; exit 1; }
+          # The commit must be the one GitHub says the triggering run built.
+          [ "$sha" = "$EXPECTED_SHA" ]         || { echo "::error::Metadata commit does not match workflow_run.head_sha"; exit 1; }
+          [[ "$sha" =~ ^[0-9a-fA-F]{40}$ ]]    || { echo "::error::Invalid commit SHA"; exit 1; }
+          [[ "$src" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "::error::Invalid source repository"; exit 1; }
+          [ "$(jq -r '.build_matrix | type' "$METADATA_FILE")" = "array" ] \
+            || { echo "::error::build_matrix must be a JSON array"; exit 1; }
+
+          allowed='["qcs9100-ride-sx","qcs8300-ride-sx","rb3gen2-core-kit","qcs615-ride","sm8750-mtp","kaanapali-mtp","iq-8275-evk","qcom-armv8a","glymur-crd","iq-x5121-evk","iq-x7181-evk","shikra-evk"]'
+
+          # Keep ONLY machine + lavaname (all test.yml consumes), validated.
+          matrix="$(jq -c --argjson allowed "$allowed" '
+            [ .build_matrix[]
+              | select(type == "object")
+              | { machine: (.machine // ""), lavaname: (.lavaname // "") } ]
+            | if all(.[]; (.machine | IN($allowed[]))
+                          and (.machine  | test("^[A-Za-z0-9_.-]+$"))
+                          and (.lavaname | test("^[A-Za-z0-9_.-]*$")))
+              then . else error("matrix entry failed validation") end
+          ' "$METADATA_FILE")"
+
+          inject_matrix="$(jq -c '[ .[] | select(.lavaname != "") ]' <<<"$matrix")"
+          if [ "$(jq 'length' <<<"$inject_matrix")" -gt 0 ]; then has=true; else has=false; fi
+
+          {
+            echo "commit_sha=$sha"
+            echo "source_repository=$src"
+            echo "has_targets=$has"
+            echo "inject_matrix=$inject_matrix"
+          } >> "$GITHUB_OUTPUT"
+          echo "Targets for Wi-Fi injection: $inject_matrix"
+
+  inject:
+    name: Inject Wi-Fi profile - ${{ matrix.target.machine }}
+    needs: prepare
+    if: ${{ needs.prepare.outputs.has_targets == 'true' }}
+    # Environment secret: the job pauses for the environment's required reviewers,
+    # and only then receives HYDRA_WIFI_PASSWORD.
+    environment: HYDRA_WIFI_PASSWORD
+    timeout-minutes: 180
+    runs-on:
+      group: GHA-video-Stg-SelfHosted-RG
+      labels:
+        - self-hosted
+        - video-stg-u2204-x64-large-od-ephem
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.prepare.outputs.inject_matrix) }}
+    steps:
+
+      - name: Download build archive (data only)
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: build-${{ matrix.target.machine }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: ${{ github.workspace }}/incoming
+
+      - name: Pull Docker image
+        uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
+        with:
+          image: ${{ env.DOCKER_IMAGE }}
+          registry: artifacts.codelinaro.org/clo-420-qli-registry
+
+      - name: Retag Docker image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker tag "artifacts.codelinaro.org/clo-420-qli-registry/$DOCKER_IMAGE" "$DOCKER_IMAGE" || true
+
+      - name: Validate and unpack archive
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          MACHINE: ${{ matrix.target.machine }}
+        run: |
+          set -euo pipefail
+          archive="$WORKSPACE/incoming/${MACHINE}_build.tar.gz"
+          stage="$WORKSPACE/stage"
+          [ -s "$archive" ] || { echo "::error::Archive missing: $archive"; ls -la "$WORKSPACE/incoming" || true; exit 1; }
+          gzip -t "$archive"
+
+          # Reject absolute paths / traversal.
+          if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+            echo "::error::Archive contains absolute or parent-relative paths"; exit 1
+          fi
+          # Only regular files and directories (no symlinks/hardlinks/devices).
+          if tar -tvzf "$archive" | grep -Eq '^[^-d]'; then
+            echo "::error::Archive contains non-regular entries (links/devices)"; exit 1
+          fi
+          tar -tzf "$archive" | grep -Fxq './rootfs.img' \
+            || { echo "::error::./rootfs.img missing from archive"; exit 1; }
+
+          rm -rf "$stage"; mkdir -p "$stage"
+          tar -xzf "$archive" -C "$stage" --no-same-owner
+          [ -f "$stage/rootfs.img" ] && [ ! -L "$stage/rootfs.img" ] \
+            || { echo "::error::rootfs.img is not a regular file"; exit 1; }
+          rm -f "$archive"
+          df -hT "$WORKSPACE"
+
+      - name: Inject Hydra Wi-Fi profile into rootfs.img
+        shell: bash
+        env:
+          # Environment secret (HYDRA_WIFI_PASSWORD); exists ONLY in this step.
+          WIFI_PSK: ${{ secrets.HYDRA_WIFI_PASSWORD }}
+          WORKSPACE: ${{ github.workspace }}
+          MACHINE: ${{ matrix.target.machine }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WIFI_PSK:-}" ]; then
+            echo "::error::HYDRA_WIFI_PASSWORD is empty/unavailable (check the environment name and approval)"
+            exit 1
+          fi
+          # Embedded injection script (quoted heredoc: nothing expanded here;
+          # the password is read from WIFI_PSK only when the script runs).
+          script_dir="$RUNNER_TEMP/inject-scripts"
+          mkdir -p "$script_dir"
+          cat > "$script_dir/inject-hydra-wifi.sh" <<'INJECT_SCRIPT_EOF'
+          #!/usr/bin/env bash
+          # Usage: sudo WIFI_PSK='<password>' ./inject-hydra-wifi.sh <rootfs_img> [machine_name]
+          #
+          # Mounts a rootfs image through a loop device, writes the Hydra NetworkManager
+          # profile into it, then unmounts and detaches the loop device.
+          #
+          # Hardening vs. the original: the rootfs comes from an (untrusted) PR build, so
+          # the destination path is resolved and must stay INSIDE the mount point. This
+          # stops a crafted image from using absolute symlinks to make us write to the
+          # runner/host filesystem.
+          set -euo pipefail
+
+          rootfs_img="${1:-}"
+          MACHINE="${2:-${MACHINE:-unknown}}"
+          MOUNT_DIR="${MOUNT_DIR:-/tmp/rootfs}"
+          loopdev=""
+          tmp_profile=""
+
+          if [ -z "$rootfs_img" ] || [ ! -f "$rootfs_img" ] || [ -L "$rootfs_img" ]; then
+            echo "::error::Rootfs image not found or not a regular file: '$rootfs_img'"
+            echo "Usage: $0 <rootfs_img> [machine_name]"
+            exit 1
+          fi
+
+          if [ -z "${WIFI_PSK:-}" ]; then
+            echo "::error::WIFI_PSK environment variable is empty or not set"
+            exit 1
+          fi
+
+          # A newline/control character would let the value inject extra keyfile lines.
+          if printf '%s' "$WIFI_PSK" | LC_ALL=C grep -q '[[:cntrl:]]'; then
+            echo "::error::WIFI_PSK contains control characters"
+            exit 1
+          fi
+
+          cleanup() {
+            set +e
+            [ -n "$tmp_profile" ] && rm -f "$tmp_profile"
+            sync || true
+            mountpoint -q "$MOUNT_DIR" && umount "$MOUNT_DIR" || true
+            [ -n "$loopdev" ] && losetup -d "$loopdev" || true
+          }
+          trap cleanup EXIT
+
+          mkdir -p "$MOUNT_DIR"
+
+          modprobe loop max_loop=64 || true
+
+          for i in $(seq 0 63); do
+            [ -b "/dev/loop$i" ] ||
+              mknod -m 660 "/dev/loop$i" b 7 "$i" || true
+          done
+
+          for attempt in 1 2 3; do
+            loopdev="$(losetup --find --show "$rootfs_img" 2>/dev/null || true)"
+            [ -n "$loopdev" ] && break
+            echo "Loop allocation attempt $attempt failed"
+            sleep 2
+          done
+
+          if [ -z "$loopdev" ]; then
+            echo "::error::Failed to allocate loop device for $rootfs_img"
+            exit 1
+          fi
+
+          echo "Using loop device: $loopdev"
+          mount "$loopdev" "$MOUNT_DIR"
+
+          NM_REL="etc/NetworkManager/system-connections"
+          NM_DIR="$MOUNT_DIR/$NM_REL"
+          NM_FILE="$NM_DIR/Hydra.nmconnection"
+
+          # Refuse to write anywhere that resolves outside the mounted image.
+          mount_real="$(realpath -e "$MOUNT_DIR")"
+          mkdir -p "$NM_DIR"
+          nm_dir_real="$(realpath -e "$NM_DIR")"
+          case "$nm_dir_real/" in
+            "$mount_real"/*) ;;
+            *)
+              echo "::error::$NM_REL resolves outside the image ($nm_dir_real); refusing to write"
+              exit 1
+              ;;
+          esac
+
+          # Build the profile outside the image with restrictive permissions,
+          # then install it (install replaces any pre-existing file/symlink).
+          umask 077
+          tmp_profile="$(mktemp)"
+
+          # Unquoted EOF so ${WIFI_PSK} is expanded
+          cat > "$tmp_profile" <<EOF
+          [connection]
+          id=Hydra
+          uuid=497a93d0-2ed7-47b5-8116-b2d9cd9a7672
+          type=wifi
+          autoconnect=true
+
+          [wifi]
+          ssid=Hydra
+          mode=infrastructure
+
+          [wifi-security]
+          key-mgmt=wpa-psk
+          psk=${WIFI_PSK}
+
+          [ipv4]
+          method=auto
+
+          [ipv6]
+          method=auto
+          EOF
+
+          rm -f -- "$NM_FILE"
+          install -o root -g root -m 600 "$tmp_profile" "$NM_FILE"
+          rm -f "$tmp_profile"
+          tmp_profile=""
+
+          echo "Injected file (metadata only; contents are never printed):"
+          ls -la "$NM_FILE"
+
+          sync
+          umount "$MOUNT_DIR"
+          losetup -d "$loopdev"
+          loopdev=""
+          trap - EXIT
+
+          echo "Hydra Wi-Fi profile injection completed for $MACHINE"
+          INJECT_SCRIPT_EOF
+          chmod 755 "$script_dir/inject-hydra-wifi.sh"
+          docker run --rm --privileged \
+            -v "$WORKSPACE/stage:/stage" \
+            -v "$script_dir:/scripts:ro" \
+            -e WIFI_PSK \
+            -e MACHINE \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            "$DOCKER_IMAGE" \
+            bash -lc '
+              set -euo pipefail
+              bash /scripts/inject-hydra-wifi.sh /stage/rootfs.img "$MACHINE"
+              chown "$HOST_UID:$HOST_GID" /stage/rootfs.img
+            '
+          rm -rf "$script_dir"
+      - name: Repack archive
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          MACHINE: ${{ matrix.target.machine }}
+        run: |
+          set -euo pipefail
+          stage="$WORKSPACE/stage"
+          archive="$WORKSPACE/${MACHINE}_build.tar.gz"
+          rm -f "$archive"
+          if command -v pigz >/dev/null 2>&1; then
+            threads="$(nproc)"; [ "$threads" -gt 8 ] && threads=8
+            tar -I "pigz -p $threads -1" -cf "$archive" -C "$stage" .
+          else
+            tar -czf "$archive" -C "$stage" .
+          fi
+          gzip -t "$archive"
+          tar -tzf "$archive" | grep -Fxq './rootfs.img' \
+            || { echo "::error::rootfs.img missing after repack"; exit 1; }
+          rm -rf "$stage"
+          mkdir -p "$WORKSPACE/artifacts"
+          printf '%s\n' "$archive" > "$WORKSPACE/artifacts/file_list.txt"
+          ls -lh "$archive"
+
+      - name: Upload updated archive to S3
+        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@trusted-workflow
+        with:
+          s3_bucket: ${{ env.S3_BUCKET }}
+          local_file: ${{ github.workspace }}/artifacts/file_list.txt
+          mode: multi-upload
+          upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/wifi-${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.target.machine }}
+
+      # Short retention: this file is a bearer link to a credential-bearing image.
+      - name: Upload machine-specific pre-signed URLs
+        uses: actions/upload-artifact@v4
+        with:
+          name: presigned-urls-${{ matrix.target.machine }}
+          path: ${{ github.workspace }}/presigned_urls.json
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Clean up
+        if: always()
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          rm -rf "$RUNNER_TEMP/inject-scripts" "$WORKSPACE/stage" "$WORKSPACE/incoming" "$WORKSPACE/artifacts" || true
+          rm -f "$WORKSPACE/"*_build.tar.gz "$WORKSPACE/presigned_urls.json" || true
+
+  publish-metadata:
+    name: Publish metadata for LAVA
+    needs:
+      - prepare
+      - inject
+    # inject is skipped when no target has a lavaname; metadata is still needed.
+    if: >
+      always() &&
+      needs.prepare.result == 'success' &&
+      (needs.inject.result == 'success' || needs.inject.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate metadata (this run is now the "build" run for LAVA)
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ needs.prepare.outputs.commit_sha }}
+          SOURCE_REPOSITORY: ${{ needs.prepare.outputs.source_repository }}
+          MATRIX: ${{ needs.prepare.outputs.inject_matrix }}
+          ORIGINAL_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p metadata
+          jq -n \
+            --arg docker_image "$DOCKER_IMAGE" \
+            --argjson build_matrix "$MATRIX" \
+            --arg commit_sha "$COMMIT_SHA" \
+            --arg source_repository "$SOURCE_REPOSITORY" \
+            --arg build_run_id "${{ github.run_id }}" \
+            --arg build_run_attempt "${{ github.run_attempt }}" \
+            --arg repository "${{ github.repository }}" \
+            --arg original_run_id "$ORIGINAL_RUN_ID" \
+            '{docker_image:$docker_image, build_matrix:$build_matrix,
+              commit_sha:$commit_sha, source_repository:$source_repository,
+              build_run_id:$build_run_id, build_run_attempt:$build_run_attempt,
+              repository:$repository, original_run_id:$original_run_id}' \
+            > metadata/build-metadata.json
+          jq . metadata/build-metadata.json
+
+      - name: Upload build metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-metadata
+          path: metadata/build-metadata.json
+          retention-days: 1

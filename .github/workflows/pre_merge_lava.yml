@@ -3,13 +3,13 @@ name: pre_merge_lava
 run-name: LAVA Test - ${{ github.event.workflow_run.display_title }}
 
 on:
-  # This workflow intentionally consumes artifacts from the completed
-  # pre_merge workflow. The triggering workflow is restricted below to
+  # This workflow intentionally consumes metadata from the completed
+  # wifi_rootfs_inject workflow (which itself follows pre_merge). The triggering workflow is restricted below to
   # successful runs from the expected repository and supported events.
   # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows:
-      - pre_merge
+      - wifi_rootfs_inject
     types:
       - completed
 
@@ -23,11 +23,7 @@ jobs:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.repository.full_name == github.repository &&
-      (
-        github.event.workflow_run.event == 'pull_request' ||
-        github.event.workflow_run.event == 'push' ||
-        github.event.workflow_run.event == 'workflow_dispatch'
-      )
+      github.event.workflow_run.event == 'workflow_run'
     runs-on: ubuntu-latest
 
     outputs:
