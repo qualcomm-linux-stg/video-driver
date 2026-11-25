@@ -3,10 +3,12 @@ run-name: Wi-Fi rootfs inject - ${{ github.event.workflow_run.display_title }}
 
 # WHY workflow_run (and not secrets in pre_merge):
 #   * pre_merge keeps running on `pull_request` and never needs the Wi-Fi secret.
-#   * This workflow runs from the base repository's context, so HYDRA_WIFI_PASSWORD
-#     resolves, but it NEVER checks out or executes PR code. It only treats the
-#     build output as data: download -> validate -> loop-mount -> write one file.
+#   * This workflow runs from the base repository's context, so the repository
+#     secret HYDRA_WIFI_PASSWORD resolves, but it NEVER checks out or executes PR
+#     code. It only treats the build output as data:
+#     download -> validate -> loop-mount -> write one file.
 #   * The credential-bearing archive goes to S3 only (no GitHub artifact).
+#   * No `environment:` is declared on purpose, so no approval gate is triggered.
 on:
   # zizmor: ignore[dangerous-triggers]
   workflow_run:
@@ -161,16 +163,27 @@ jobs:
           [ -s "$archive" ] || { echo "::error::Archive missing: $archive"; ls -la "$WORKSPACE/incoming" || true; exit 1; }
           gzip -t "$archive"
 
+          # Write listings to files first. Piping tar into `grep -q` under
+          # pipefail causes a broken pipe (tar: stdout: write error) and wrong
+          # results, because grep -q exits at the first match.
+          names="$RUNNER_TEMP/tar_names.txt"
+          verbose="$RUNNER_TEMP/tar_verbose.txt"
+          tar -tzf  "$archive" > "$names"
+          tar -tvzf "$archive" > "$verbose"
+
           # Reject absolute paths / traversal.
-          if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+          if grep -Eq '(^/|(^|/)\.\.(/|$))' "$names"; then
             echo "::error::Archive contains absolute or parent-relative paths"; exit 1
           fi
           # Only regular files and directories (no symlinks/hardlinks/devices).
-          if tar -tvzf "$archive" | grep -Eq '^[^-d]'; then
+          if grep -Eq '^[^-d]' "$verbose"; then
             echo "::error::Archive contains non-regular entries (links/devices)"; exit 1
           fi
-          tar -tzf "$archive" | grep -Fxq './rootfs.img' \
-            || { echo "::error::./rootfs.img missing from archive"; exit 1; }
+          # rootfs.img must be present (accept ./rootfs.img or rootfs.img).
+          if ! grep -Eqx '(\./)?rootfs\.img' "$names"; then
+            echo "::error::rootfs.img missing from archive"; head -20 "$names"; exit 1
+          fi
+          rm -f "$names" "$verbose"
 
           rm -rf "$stage"; mkdir -p "$stage"
           tar -xzf "$archive" -C "$stage" --no-same-owner
@@ -203,10 +216,8 @@ jobs:
           # Mounts a rootfs image through a loop device, writes the Hydra NetworkManager
           # profile into it, then unmounts and detaches the loop device.
           #
-          # Hardening vs. the original: the rootfs comes from an (untrusted) PR build, so
-          # the destination path is resolved and must stay INSIDE the mount point. This
-          # stops a crafted image from using absolute symlinks to make us write to the
-          # runner/host filesystem.
+          # Hardening: the rootfs comes from an (untrusted) PR build, so the
+          # destination path is resolved and must stay INSIDE the mount point.
           set -euo pipefail
 
           rootfs_img="${1:-}"
@@ -340,6 +351,7 @@ jobs:
               chown "$HOST_UID:$HOST_GID" /stage/rootfs.img
             '
           rm -rf "$script_dir"
+
       - name: Repack archive
         shell: bash
         env:
@@ -357,8 +369,12 @@ jobs:
             tar -czf "$archive" -C "$stage" .
           fi
           gzip -t "$archive"
-          tar -tzf "$archive" | grep -Fxq './rootfs.img' \
-            || { echo "::error::rootfs.img missing after repack"; exit 1; }
+          # List to a file first (grep -q in a pipe + pipefail = broken pipe).
+          names="$RUNNER_TEMP/repack_names.txt"
+          tar -tzf "$archive" > "$names"
+          grep -Eqx '(\./)?rootfs\.img' "$names" \
+            || { echo "::error::rootfs.img missing after repack"; head -20 "$names"; exit 1; }
+          rm -f "$names"
           rm -rf "$stage"
           mkdir -p "$WORKSPACE/artifacts"
           printf '%s\n' "$archive" > "$WORKSPACE/artifacts/file_list.txt"
