@@ -116,9 +116,6 @@ jobs:
     name: Inject Wi-Fi profile - ${{ matrix.target.machine }}
     needs: prepare
     if: ${{ needs.prepare.outputs.has_targets == 'true' }}
-    # Environment secret: the job pauses for the environment's required reviewers,
-    # and only then receives HYDRA_WIFI_PASSWORD.
-    environment: HYDRA_WIFI_PASSWORD
     timeout-minutes: 180
     runs-on:
       group: GHA-video-Stg-SelfHosted-RG
@@ -185,14 +182,14 @@ jobs:
       - name: Inject Hydra Wi-Fi profile into rootfs.img
         shell: bash
         env:
-          # Environment secret (HYDRA_WIFI_PASSWORD); exists ONLY in this step.
+          # Repository secret (HYDRA_WIFI_PASSWORD); exists ONLY in this step.
           WIFI_PSK: ${{ secrets.HYDRA_WIFI_PASSWORD }}
           WORKSPACE: ${{ github.workspace }}
           MACHINE: ${{ matrix.target.machine }}
         run: |
           set -euo pipefail
           if [ -z "${WIFI_PSK:-}" ]; then
-            echo "::error::HYDRA_WIFI_PASSWORD is empty/unavailable (check the environment name and approval)"
+            echo "::error::HYDRA_WIFI_PASSWORD is empty/unavailable (check the repository secret exists)"
             exit 1
           fi
           # Embedded injection script (quoted heredoc: nothing expanded here;
