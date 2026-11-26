@@ -7,7 +7,7 @@ on:
 
   push:
     branches:
-      - efs-path-build
+      - efs-path
 
   pull_request:
     types:
@@ -15,7 +15,7 @@ on:
       - synchronize
       - reopened
     branches:
-      - efs-path-build
+      - efs-path
 
 permissions:
   contents: read
@@ -24,7 +24,7 @@ permissions:
 jobs:
   loading:
     name: Load build configuration
-    uses: qualcomm-linux/video-driver/.github/workflows/loading.yml@efs-path-build
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/loading.yml@efs-path
     with:
       event_name: ${{ github.event_name }}
 
@@ -32,7 +32,7 @@ jobs:
     name: Build
     needs:
       - loading
-    uses: qualcomm-linux/video-driver/.github/workflows/sync-and-build.yml@efs-path-build
+    uses: qualcomm-linux-stg/video-driver/.github/workflows/sync-and-build.yml@efs-path
     with:
       build_matrix: ${{ needs.loading.outputs.build_matrix }}
       docker_image: kmake-image:ver.1.0
@@ -48,18 +48,18 @@ jobs:
             || github.repository }}
 
 
-  owl_build:
-    name: OWL parallel kernel and video-driver build
-    needs:
-      - loading
-    uses: qualcomm-linux/video-driver/.github/workflows/owl_build.yml@efs-path-build
+  # owl_build:
+  #   name: OWL parallel kernel and video-driver build
+  #   needs:
+  #     - loading
+  #   uses: qualcomm-linux-stg/video-driver/.github/workflows/owl_build.yml@efs-path
 
   create-metadata:
     name: Create build metadata
     needs:
       - loading
       - build
-      - owl_build
+      #- owl_build
     runs-on: ubuntu-latest
 
     steps:
