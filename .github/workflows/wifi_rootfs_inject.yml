@@ -7,7 +7,7 @@ run-name: Wi-Fi rootfs inject - ${{ github.event.workflow_run.display_title }}
 #     secret HYDRA_WIFI_PASSWORD resolves, but it NEVER checks out or executes PR
 #     code. It only treats the build output as data:
 #     download -> validate -> loop-mount -> write one file.
-#   * The credential-bearing archive goes to S3 only (no GitHub artifact).
+#   * The credential-bearing archive goes to S3 and to a 1-day workflow artifact.
 #   * No `environment:` is declared on purpose, so no approval gate is triggered.
 on:
   # zizmor: ignore[dangerous-triggers]
@@ -380,6 +380,16 @@ jobs:
           printf '%s\n' "$archive" > "$WORKSPACE/artifacts/file_list.txt"
           ls -lh "$archive"
 
+      # Rewritten archive (rootfs.img now contains the Hydra Wi-Fi profile).
+      # Short retention because the image carries the Wi-Fi credential.
+      - name: Upload updated build archive as workflow artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wifi-build-${{ matrix.target.machine }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/${{ matrix.target.machine }}_build.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
       - name: Upload updated archive to S3
         uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@trusted-workflow
         with:

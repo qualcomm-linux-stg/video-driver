@@ -673,29 +673,6 @@ jobs:
           echo
           echo "=== Final filesystem usage ==="
           df -hT "$WORKSPACE"
-
-          mkdir -p "$WORKSPACE/artifacts"
-          printf '%s\n' "$archive_path" > "$WORKSPACE/artifacts/file_list.txt"
-
-          echo
-          echo "=== Single S3 upload file list ==="
-          cat "$WORKSPACE/artifacts/file_list.txt"
-
-      - name: Upload single build archive to S3
-        uses: qualcomm-linux-stg/video-driver/.github/actions/aws_s3_helper@trusted-workflow
-        with:
-          s3_bucket: qli-stg-video-gh-artifacts
-          local_file: ${{ github.workspace }}/artifacts/file_list.txt
-          mode: multi-upload
-          upload_location: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.build_matrix.machine }}
-
-      - name: Upload machine-specific pre-signed URLs
-        uses: actions/upload-artifact@v4
-        with:
-          name: presigned-urls-${{ matrix.build_matrix.machine }}
-          path: ${{ github.workspace }}/presigned_urls.json
-          retention-days: 7
-
       - name: Upload single build archive as workflow artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
