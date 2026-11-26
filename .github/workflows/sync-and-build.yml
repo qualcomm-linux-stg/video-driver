@@ -216,29 +216,46 @@ jobs:
       - name: Prepare EFSx cache
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
 
-          if ! mountpoint -q "$CACHE_MOUNT" && [ ! -d "$CACHE_MOUNT" ]; then
-            echo "::error::Cache mount not found at $CACHE_MOUNT"
-            exit 1
+          CACHE_MODE=none
+
+          if [ -d "$CACHE_MOUNT" ]; then
+            if [ "$CACHE_WRITABLE" = "true" ]; then
+              mkdir -p "$CACHE_ROOT/sstate-cache" "$CACHE_ROOT/downloads" 2>/dev/null || true
+              if touch "$CACHE_ROOT/sstate-cache/.write_test" 2>/dev/null \
+                && touch "$CACHE_ROOT/downloads/.write_test" 2>/dev/null; then
+                rm -f "$CACHE_ROOT/sstate-cache/.write_test" "$CACHE_ROOT/downloads/.write_test"
+                CACHE_MODE=rw
+              fi
+            fi
+
+            if [ "$CACHE_MODE" = "none" ] && [ -r "$CACHE_ROOT/sstate-cache" ]; then
+              CACHE_MODE=ro
+            fi
           fi
 
-          mkdir -p "$CACHE_ROOT/sstate-cache" "$CACHE_ROOT/downloads" || true
+          echo "CACHE_MODE=$CACHE_MODE" >> "$GITHUB_ENV"
 
-          # Everyone needs read access to the cache
-          test -r "$CACHE_ROOT/sstate-cache" || { echo "::error::sstate-cache not readable"; exit 1; }
-          test -r "$CACHE_ROOT/downloads"    || { echo "::error::downloads not readable"; exit 1; }
+          echo "========================================"
+          echo "Cache mount    : $CACHE_MOUNT"
+          echo "Cache root     : $CACHE_ROOT"
+          echo "Wants write    : $CACHE_WRITABLE"
+          echo "Resulting mode : $CACHE_MODE"
+          echo "========================================"
 
-          # Push builds also need write access
-          if [ "$CACHE_WRITABLE" = "true" ]; then
-            test -w "$CACHE_ROOT/sstate-cache" || { echo "::error::sstate-cache not writable"; exit 1; }
-            test -w "$CACHE_ROOT/downloads"    || { echo "::error::downloads not writable"; exit 1; }
+          findmnt -T "$CACHE_MOUNT" -o TARGET,SOURCE,FSTYPE,OPTIONS 2>/dev/null || true
+
+          case "$CACHE_MODE" in
+            rw)   echo "::notice::Shared cache: read-write" ;;
+            ro)   echo "::warning::Shared cache is read-only; using it only as SSTATE_MIRRORS" ;;
+            none) echo "::warning::Shared cache unavailable or not writable; building without it" ;;
+          esac
+
+          if [ "$CACHE_MODE" != "none" ]; then
+            df -hT "$CACHE_MOUNT" || true
+            du -sh "$CACHE_ROOT"/* 2>/dev/null || true
           fi
-
-          echo "Cache writable: $CACHE_WRITABLE"
-          echo "=== Cache filesystem usage ==="
-          df -hT "$CACHE_MOUNT"
-          du -sh "$CACHE_ROOT"/* 2>/dev/null || true
 
       - name: Pull Docker image
         uses: qualcomm-linux/kernel-config/.github/actions/pull_docker_image@main
@@ -283,6 +300,7 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: ${{ matrix.build_matrix.build_command }}
+          cache_mount: ${{ env.CACHE_MODE != 'none' && env.CACHE_MOUNT || '' }}
           kas_local_conf_header: |
             IMAGE_FEATURES += "enable-adbd"
             IMAGE_INSTALL:append = " git"
@@ -290,10 +308,12 @@ jobs:
             HOSTTOOLS:remove = "ccache"
             INHERIT:remove = "ccache"
 
-            # ---- EFSx cache (/efsx/video) ----
-            DL_DIR = "/efsx/video/yocto-cache/downloads"
-            SSTATE_DIR = "${{ env.CACHE_WRITABLE == 'true' && '/efsx/video/yocto-cache/sstate-cache' || '${TOPDIR}/sstate-cache' }}"
-            SSTATE_MIRRORS = "file://.* file:///efsx/video/yocto-cache/sstate-cache/PATH;downloadfilename=PATH"
+            # ---- EFSx cache (/efsx/video), chosen by CACHE_MODE (rw / ro / none) ----
+            ${{ env.CACHE_MODE == 'rw' && 'DL_DIR = "/efsx/video/yocto-cache/downloads"' || '' }}
+            ${{ env.CACHE_MODE == 'rw' && 'SSTATE_DIR = "/efsx/video/yocto-cache/sstate-cache"' || '' }}
+            ${{ env.CACHE_MODE == 'rw' && 'BB_HASHSERVE_DB_DIR = "${SSTATE_DIR}"' || '' }}
+            ${{ env.CACHE_MODE == 'ro' && 'SSTATE_MIRRORS = "file://.* file:///efsx/video/yocto-cache/sstate-cache/PATH;downloadfilename=PATH"' || '' }}
+            ${{ env.CACHE_MODE == 'ro' && 'BB_HASHSERVE = ""' || '' }}
             BB_GENERATE_MIRROR_TARBALLS = "0"
 
             EXTERNALSRC:pn-iris-video-dlkm = "/workspace/video-driver"
