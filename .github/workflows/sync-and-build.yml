@@ -311,7 +311,6 @@ jobs:
             # ---- EFSx cache (/efsx/video), chosen by CACHE_MODE (rw / ro / none) ----
             ${{ env.CACHE_MODE == 'rw' && 'DL_DIR = "/efsx/video/yocto-cache/downloads"' || '' }}
             ${{ env.CACHE_MODE == 'rw' && 'SSTATE_DIR = "/efsx/video/yocto-cache/sstate-cache"' || '' }}
-            ${{ env.CACHE_MODE == 'rw' && 'BB_HASHSERVE_DB_DIR = "${SSTATE_DIR}"' || '' }}
             ${{ env.CACHE_MODE == 'ro' && 'SSTATE_MIRRORS = "file://.* file:///efsx/video/yocto-cache/sstate-cache/PATH;downloadfilename=PATH"' || '' }}
             ${{ env.CACHE_MODE == 'ro' && 'BB_HASHSERVE = ""' || '' }}
             BB_GENERATE_MIRROR_TARBALLS = "0"
