@@ -148,8 +148,6 @@ jobs:
             --depth 1 \
             https://github.com/qualcomm-linux/meta-qcom \
             "$meta_qcom_dir"
-          echo "=== meta-qcom revision ==="
-          git -C "$meta_qcom_dir" rev-parse HEAD
           echo "=== Parent workspace ==="
           ls -la "$parent_dir"
           echo "=== meta-qcom/ci ==="
@@ -204,103 +202,118 @@ jobs:
             "$DOCKER_IMAGE" || true
           docker images | grep -- "$DOCKER_IMAGE" || true
 
-      # ---------------------------------------------------------------
-      # Yocto cache layout
-      #   sstate-cache : shared by all jobs (safe for concurrent use)
-      #   downloads/<machine>-<kas>/ : private per matrix job, so two
-      #       jobs never write the same crate/tarball (fixes corruption)
-      # push / workflow_dispatch / schedule : read-write (populate cache)
-      # pull_request*                       : read-only  (never write)
-      # ---------------------------------------------------------------
-      - name: Prepare Yocto cache
+      # ---------------------------------------------------------------------
+      # Cache design
+      #   SSTATE_DIR : shared on EFS (rw for push/dispatch, read-only mirror for PRs)
+      #   DL_DIR     : LOCAL to each job (no concurrent writers -> no corrupt crates)
+      #   Shared downloads are READ through PREMIRRORS and are only written by the
+      #   "Publish downloads" step, using validated copy + atomic rename.
+      # ---------------------------------------------------------------------
+      - name: Prepare Yocto cache config
         id: cache
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          MACHINE: '${{ matrix.build_matrix.machine }}'
-          KAS_FILE: '${{ matrix.build_matrix.kas_file }}'
+          WORKSPACE: ${{ github.workspace }}
           CACHE_ROOT: /efsx/video
         run: |
           set -euo pipefail
+          SHARED_DL="$CACHE_ROOT/yocto-cache/downloads"
+          SHARED_SSTATE="$CACHE_ROOT/yocto-cache/sstate-cache"
+          LOCAL_DL_HOST="$WORKSPACE/build/downloads"
+          LOCAL_DL_CONTAINER="/workspace/video-driver/build/downloads"
+
+          mkdir -p "$LOCAL_DL_HOST"
 
           if [ ! -d "$CACHE_ROOT" ]; then
-            echo "::error::Cache root not found on runner: $CACHE_ROOT"
-            exit 1
+            echo "::warning::$CACHE_ROOT is not mounted on this runner - building WITHOUT shared cache"
+            mode="none"
+          elif [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "pull_request_target" ]; then
+            mode="ro"
+          else
+            mode="rw"
+            mkdir -p "$SHARED_DL" "$SHARED_SSTATE"
           fi
+          echo "Cache mode: $mode (event: $EVENT_NAME)"
 
-          cache_base="$CACHE_ROOT/yocto-cache"
-          sstate_dir="$cache_base/sstate-cache"
-          kas_key="$(basename "${KAS_FILE%%:*}" .yml)"
-          key="$(printf '%s-%s' "$MACHINE" "$kas_key" | tr -c 'A-Za-z0-9_.-' '_')"
-          shared_dl_dir="$cache_base/downloads/$key"
-
-          case "$EVENT_NAME" in
-            pull_request|pull_request_target) mode=ro ;;
-            *)                                mode=rw ;;
-          esac
-
-          echo "Event      : $EVENT_NAME"
-          echo "Cache mode : $mode"
-          echo "Cache key  : $key"
-          echo "SSTATE     : $sstate_dir"
-          echo "Job DL_DIR : $shared_dl_dir"
+          conf_file="$(mktemp)"
+          {
+            echo "DL_DIR = \"$LOCAL_DL_CONTAINER\""
+            echo "BB_GENERATE_MIRROR_TARBALLS = \"0\""
+          } >> "$conf_file"
 
           if [ "$mode" = "rw" ]; then
-            mkdir -p "$sstate_dir" "$shared_dl_dir"
-            conf="$(printf '%s\n' \
-              "DL_DIR = \"$shared_dl_dir\"" \
-              "SSTATE_DIR = \"$sstate_dir\"" \
-              "BB_GENERATE_MIRROR_TARBALLS = \"0\"")"
-          else
-            # Read-only: keep DL_DIR/SSTATE_DIR local, read EFS via mirrors.
-            mkdir -p "$sstate_dir" "$shared_dl_dir"
-            conf="$(printf '%s\n' \
-              "SSTATE_MIRRORS = \"file://.* file://$sstate_dir/PATH;downloadfilename=PATH\"" \
-              "PREMIRRORS:prepend = \"git://.*/.* file://$shared_dl_dir/ \\n http://.*/.* file://$shared_dl_dir/ \\n https://.*/.* file://$shared_dl_dir/ \\n\"" \
-              "BB_GENERATE_MIRROR_TARBALLS = \"0\"")"
+            {
+              echo "SSTATE_DIR = \"$SHARED_SSTATE\""
+            } >> "$conf_file"
           fi
 
-          echo "=== Generated cache configuration ==="
-          printf '%s\n' "$conf"
-          echo "====================================="
+          if [ "$mode" = "ro" ]; then
+            {
+              echo "SSTATE_MIRRORS = \"file://.* file://$SHARED_SSTATE/PATH;downloadfilename=PATH\""
+            } >> "$conf_file"
+          fi
+
+          if [ "$mode" != "none" ] && [ -d "$SHARED_DL" ]; then
+            # Literal \n is required by the PREMIRRORS syntax.
+            cat >> "$conf_file" <<EOF
+          PREMIRRORS:prepend = ".*://.*/.* file://$SHARED_DL/ \\n "
+          EOF
+          fi
+
+          echo "=== Generated cache config ==="
+          cat "$conf_file"
+          echo "=============================="
 
           {
             echo "mode=$mode"
-            echo "dl_dir=$shared_dl_dir"
+            if [ "$mode" = "none" ]; then
+              echo "mount="
+              echo "readonly=false"
+            else
+              echo "mount=$CACHE_ROOT"
+              if [ "$mode" = "ro" ]; then
+                echo "readonly=true"
+              else
+                echo "readonly=false"
+              fi
+            fi
             echo "conf<<CACHE_CONF_EOF"
-            printf '%s\n' "$conf"
+            cat "$conf_file"
             echo "CACHE_CONF_EOF"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Sanitize download cache (remove corrupt archives)
+          rm -f "$conf_file"
+      - name: Sanitize shared download cache (remove corrupt archives)
         if: steps.cache.outputs.mode == 'rw'
         shell: bash
         env:
-          DL_CACHE: ${{ steps.cache.outputs.dl_dir }}
+          DL_CACHE: /efsx/video/yocto-cache/downloads
         run: |
           set +e
           if [ ! -d "$DL_CACHE" ]; then
             echo "Download cache not found: $DL_CACHE (skipping)"
             exit 0
           fi
-          echo "=== Scanning $DL_CACHE for corrupt archives ==="
+          echo "=== Scanning $DL_CACHE for corrupt archives (gzip -t) ==="
           check_one() {
             f="$1"
-            # gzip -t also catches "trailing garbage", which tar -tzf can miss
             if ! gzip -t "$f" >/dev/null 2>&1; then
               echo "::warning::Corrupt archive removed from cache: $f"
               rm -f -- "$f" "$f.done"
             fi
           }
           export -f check_one
-          # Skip files modified in the last 10 minutes (possibly being written).
+          # Remove leftovers from interrupted copies.
+          find "$DL_CACHE" -maxdepth 1 -type f \
+            \( -name '*.part.*' -o -name '*.tmp' -o -name '*_bad-checksum_*' \) \
+            -mmin +60 -delete 2>/dev/null
+          # Skip files modified in the last 10 minutes (may still be published).
           find "$DL_CACHE" -maxdepth 1 -type f \
             \( -name '*.crate' -o -name '*.tar.gz' -o -name '*.tgz' \) \
             -mmin +10 -print0 \
             | xargs -0 -r -n 1 -P 8 bash -c 'check_one "$0"'
           echo "=== Cache scan complete ==="
           exit 0
-
       - name: Build image
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@efs-path
         with:
@@ -308,7 +321,8 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: ${{ matrix.build_matrix.build_command }}
-          cache_mount: /efsx/video
+          cache_mount: ${{ steps.cache.outputs.mount }}
+          cache_mount_readonly: ${{ steps.cache.outputs.readonly }}
           kas_local_conf_header: |
             ${{ steps.cache.outputs.conf }}
             IMAGE_FEATURES += "enable-adbd"
@@ -326,6 +340,48 @@ jobs:
             EXTRA_OEMAKE:pn-iris-video-dlkm = "-C ${STAGING_KERNEL_DIR} M=${S} modules"
             BB_NUMBER_THREADS = "6"
             PARALLEL_MAKE = "-j6"
+      - name: Publish downloads to shared cache
+        if: always() && steps.cache.outputs.mode == 'rw'
+        shell: bash
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          SHARED_DL: /efsx/video/yocto-cache/downloads
+        run: |
+          set +e
+          LOCAL_DL="$WORKSPACE/build/downloads"
+          if [ ! -d "$LOCAL_DL" ] || [ ! -d "$SHARED_DL" ]; then
+            echo "Nothing to publish (local or shared downloads dir missing)"
+            exit 0
+          fi
+          echo "=== Publishing validated downloads from $LOCAL_DL to $SHARED_DL ==="
+          published=0; skipped=0; bad=0
+          while IFS= read -r -d '' f; do
+            name="$(basename "$f")"
+            dest="$SHARED_DL/$name"
+            if [ -e "$dest" ]; then
+              skipped=$((skipped + 1))
+              continue
+            fi
+            case "$name" in
+              *.crate|*.tar.gz|*.tgz|*.gz)
+                gzip -t "$f" >/dev/null 2>&1 || { echo "::warning::Not publishing corrupt file: $name"; bad=$((bad + 1)); continue; } ;;
+              *.tar.xz|*.xz)
+                xz -t "$f" >/dev/null 2>&1 || { echo "::warning::Not publishing corrupt file: $name"; bad=$((bad + 1)); continue; } ;;
+              *.tar.bz2|*.bz2)
+                bzip2 -t "$f" >/dev/null 2>&1 || { echo "::warning::Not publishing corrupt file: $name"; bad=$((bad + 1)); continue; } ;;
+              *.zip)
+                unzip -tq "$f" >/dev/null 2>&1 || { echo "::warning::Not publishing corrupt file: $name"; bad=$((bad + 1)); continue; } ;;
+            esac
+            tmp="$dest.part.$$"
+            if cp -- "$f" "$tmp" && mv -n -- "$tmp" "$dest"; then
+              published=$((published + 1))
+            fi
+            rm -f -- "$tmp"
+          done < <(find "$LOCAL_DL" -maxdepth 1 -type f \
+                     ! -name '*.done' ! -name '*.lock' ! -name '*.tmp' \
+                     ! -name '*_bad-checksum_*' -print0)
+          echo "Published: $published  Already present: $skipped  Corrupt/skipped: $bad"
+          exit 0
       - name: Download iris_test_app from S3
         shell: bash
         env:
