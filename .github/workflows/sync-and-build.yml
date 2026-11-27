@@ -72,7 +72,7 @@ jobs:
         with:
           repository: ${{ inputs.source_repository }}
           ref: ${{ inputs.commit_sha }}
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
           clean: true
       - name: Verify commit before build
@@ -148,6 +148,8 @@ jobs:
             --depth 1 \
             https://github.com/qualcomm-linux/meta-qcom \
             "$meta_qcom_dir"
+          echo "=== meta-qcom revision ==="
+          git -C "$meta_qcom_dir" rev-parse HEAD
           echo "=== Parent workspace ==="
           ls -la "$parent_dir"
           echo "=== meta-qcom/ci ==="
@@ -177,59 +179,6 @@ jobs:
           echo "=== whoami / in container? ==="
           id; [ -f /.dockerenv ] && echo "running inside a container" || echo "running on host"
 
-      - name: Prepare Yocto cache
-        id: cache_cfg
-        shell: bash
-        env:
-          CACHE_MOUNT: /efsx/video
-          CACHE_ROOT: /efsx/video/yocto-cache
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          if [ ! -d "$CACHE_MOUNT" ]; then
-            echo "::error::Cache mount not found on runner: $CACHE_MOUNT"
-            exit 1
-          fi
-
-          # push / workflow_dispatch -> read-write (populates the cache)
-          # pull_request / anything else -> read-only (reads via mirrors)
-          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            mode="rw"
-          else
-            mode="ro"
-          fi
-          echo "Event: $EVENT_NAME -> cache mode: $mode"
-
-          if [ "$mode" = "rw" ]; then
-            mkdir -p "$CACHE_ROOT/downloads" "$CACHE_ROOT/sstate-cache"
-            if [ ! -w "$CACHE_ROOT/downloads" ] || [ ! -w "$CACHE_ROOT/sstate-cache" ]; then
-              echo "::error::Cache is not writable by $(id -un) (uid $(id -u)): $CACHE_ROOT"
-              ls -ld "$CACHE_ROOT" "$CACHE_ROOT"/* || true
-              exit 1
-            fi
-          else
-            if [ ! -d "$CACHE_ROOT/sstate-cache" ]; then
-              echo "::warning::sstate cache not found, PR build will run cold: $CACHE_ROOT/sstate-cache"
-            fi
-          fi
-
-          {
-            echo 'conf<<CACHE_CONF_EOF'
-            if [ "$mode" = "rw" ]; then
-              printf '%s\n' "DL_DIR = \"${CACHE_ROOT}/downloads\""
-              printf '%s\n' "SSTATE_DIR = \"${CACHE_ROOT}/sstate-cache\""
-            else
-              printf '%s\n' "SSTATE_MIRRORS = \"file://.* file://${CACHE_ROOT}/sstate-cache/PATH;downloadfilename=PATH\""
-              printf '%s\n' "PREMIRRORS:prepend = \".*://.* file://${CACHE_ROOT}/downloads/ \\n\""
-            fi
-            echo 'CACHE_CONF_EOF'
-            echo "mode=$mode"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "=== Cache directories ==="
-          ls -ld "$CACHE_ROOT" "$CACHE_ROOT"/* 2>/dev/null || true
-          df -hT "$CACHE_ROOT" || true
-
       - name: Add swap space
         shell: bash
         run: |
@@ -254,11 +203,80 @@ jobs:
             "artifacts.codelinaro.org/clo-420-qli-registry/$DOCKER_IMAGE" \
             "$DOCKER_IMAGE" || true
           docker images | grep -- "$DOCKER_IMAGE" || true
-      - name: Sanitize shared download cache (remove corrupt crates)
-        if: steps.cache_cfg.outputs.mode == 'rw'
+
+      # ---------------------------------------------------------------
+      # Yocto cache layout
+      #   sstate-cache : shared by all jobs (safe for concurrent use)
+      #   downloads/<machine>-<kas>/ : private per matrix job, so two
+      #       jobs never write the same crate/tarball (fixes corruption)
+      # push / workflow_dispatch / schedule : read-write (populate cache)
+      # pull_request*                       : read-only  (never write)
+      # ---------------------------------------------------------------
+      - name: Prepare Yocto cache
+        id: cache
         shell: bash
         env:
-          DL_CACHE: /efsx/video/yocto-cache/downloads
+          EVENT_NAME: ${{ github.event_name }}
+          MACHINE: '${{ matrix.build_matrix.machine }}'
+          KAS_FILE: '${{ matrix.build_matrix.kas_file }}'
+          CACHE_ROOT: /efsx/video
+        run: |
+          set -euo pipefail
+
+          if [ ! -d "$CACHE_ROOT" ]; then
+            echo "::error::Cache root not found on runner: $CACHE_ROOT"
+            exit 1
+          fi
+
+          cache_base="$CACHE_ROOT/yocto-cache"
+          sstate_dir="$cache_base/sstate-cache"
+          kas_key="$(basename "${KAS_FILE%%:*}" .yml)"
+          key="$(printf '%s-%s' "$MACHINE" "$kas_key" | tr -c 'A-Za-z0-9_.-' '_')"
+          shared_dl_dir="$cache_base/downloads/$key"
+
+          case "$EVENT_NAME" in
+            pull_request|pull_request_target) mode=ro ;;
+            *)                                mode=rw ;;
+          esac
+
+          echo "Event      : $EVENT_NAME"
+          echo "Cache mode : $mode"
+          echo "Cache key  : $key"
+          echo "SSTATE     : $sstate_dir"
+          echo "Job DL_DIR : $shared_dl_dir"
+
+          if [ "$mode" = "rw" ]; then
+            mkdir -p "$sstate_dir" "$shared_dl_dir"
+            conf="$(printf '%s\n' \
+              "DL_DIR = \"$shared_dl_dir\"" \
+              "SSTATE_DIR = \"$sstate_dir\"" \
+              "BB_GENERATE_MIRROR_TARBALLS = \"0\"")"
+          else
+            # Read-only: keep DL_DIR/SSTATE_DIR local, read EFS via mirrors.
+            mkdir -p "$sstate_dir" "$shared_dl_dir"
+            conf="$(printf '%s\n' \
+              "SSTATE_MIRRORS = \"file://.* file://$sstate_dir/PATH;downloadfilename=PATH\"" \
+              "PREMIRRORS:prepend = \"git://.*/.* file://$shared_dl_dir/ \\n http://.*/.* file://$shared_dl_dir/ \\n https://.*/.* file://$shared_dl_dir/ \\n\"" \
+              "BB_GENERATE_MIRROR_TARBALLS = \"0\"")"
+          fi
+
+          echo "=== Generated cache configuration ==="
+          printf '%s\n' "$conf"
+          echo "====================================="
+
+          {
+            echo "mode=$mode"
+            echo "dl_dir=$shared_dl_dir"
+            echo "conf<<CACHE_CONF_EOF"
+            printf '%s\n' "$conf"
+            echo "CACHE_CONF_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sanitize download cache (remove corrupt archives)
+        if: steps.cache.outputs.mode == 'rw'
+        shell: bash
+        env:
+          DL_CACHE: ${{ steps.cache.outputs.dl_dir }}
         run: |
           set +e
           if [ ! -d "$DL_CACHE" ]; then
@@ -268,20 +286,21 @@ jobs:
           echo "=== Scanning $DL_CACHE for corrupt archives ==="
           check_one() {
             f="$1"
-            if ! tar -tzf "$f" >/dev/null 2>&1; then
+            # gzip -t also catches "trailing garbage", which tar -tzf can miss
+            if ! gzip -t "$f" >/dev/null 2>&1; then
               echo "::warning::Corrupt archive removed from cache: $f"
               rm -f -- "$f" "$f.done"
             fi
           }
           export -f check_one
-          # Skip files modified in the last 10 minutes: another job may still
-          # be writing them. Validate the rest in parallel.
+          # Skip files modified in the last 10 minutes (possibly being written).
           find "$DL_CACHE" -maxdepth 1 -type f \
             \( -name '*.crate' -o -name '*.tar.gz' -o -name '*.tgz' \) \
             -mmin +10 -print0 \
             | xargs -0 -r -n 1 -P 8 bash -c 'check_one "$0"'
           echo "=== Cache scan complete ==="
           exit 0
+
       - name: Build image
         uses: qualcomm-linux-stg/video-driver/.github/actions/build@efs-path
         with:
@@ -291,7 +310,7 @@ jobs:
           build_command: ${{ matrix.build_matrix.build_command }}
           cache_mount: /efsx/video
           kas_local_conf_header: |
-            ${{ steps.cache_cfg.outputs.conf }}
+            ${{ steps.cache.outputs.conf }}
             IMAGE_FEATURES += "enable-adbd"
             IMAGE_INSTALL:append = " git"
             HOSTTOOLS:remove = "ccache"
@@ -675,6 +694,7 @@ jobs:
           COMMIT_SHA: ${{ inputs.commit_sha }}
           EVENT_NAME: ${{ github.event_name }}
           JOB_STATUS: ${{ job.status }}
+          CACHE_MODE: ${{ steps.cache.outputs.mode }}
         run: |
           set -u
           if [ "$JOB_STATUS" = "success" ]; then
@@ -691,6 +711,7 @@ jobs:
             echo "**Image:** \`$IMAGE_NAME\`"
             echo "**Build command:** \`$BUILD_COMMAND\`"
             echo "**Event:** \`$EVENT_NAME\`"
+            echo "**Cache mode:** \`${CACHE_MODE:-n/a}\`"
             echo "**Commit:** \`$COMMIT_SHA\`"
             echo
             echo "</details>"
