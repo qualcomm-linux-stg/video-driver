@@ -157,7 +157,7 @@ jobs:
         with:
           image: ${{ inputs.docker_image }}
           registry: artifacts.codelinaro.org/clo-420-qli-registry
-      
+
       - name: Diagnose cache mount
         if: always()
         shell: bash
@@ -176,7 +176,60 @@ jobs:
           findmnt -T /efsx/video 2>&1
           echo "=== whoami / in container? ==="
           id; [ -f /.dockerenv ] && echo "running inside a container" || echo "running on host"
-     
+
+      - name: Prepare Yocto cache
+        id: cache_cfg
+        shell: bash
+        env:
+          CACHE_MOUNT: /efsx/video
+          CACHE_ROOT: /efsx/video/yocto-cache
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "$CACHE_MOUNT" ]; then
+            echo "::error::Cache mount not found on runner: $CACHE_MOUNT"
+            exit 1
+          fi
+
+          # push / workflow_dispatch -> read-write (populates the cache)
+          # pull_request / anything else -> read-only (reads via mirrors)
+          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            mode="rw"
+          else
+            mode="ro"
+          fi
+          echo "Event: $EVENT_NAME -> cache mode: $mode"
+
+          if [ "$mode" = "rw" ]; then
+            mkdir -p "$CACHE_ROOT/downloads" "$CACHE_ROOT/sstate-cache"
+            if [ ! -w "$CACHE_ROOT/downloads" ] || [ ! -w "$CACHE_ROOT/sstate-cache" ]; then
+              echo "::error::Cache is not writable by $(id -un) (uid $(id -u)): $CACHE_ROOT"
+              ls -ld "$CACHE_ROOT" "$CACHE_ROOT"/* || true
+              exit 1
+            fi
+          else
+            if [ ! -d "$CACHE_ROOT/sstate-cache" ]; then
+              echo "::warning::sstate cache not found, PR build will run cold: $CACHE_ROOT/sstate-cache"
+            fi
+          fi
+
+          {
+            echo 'conf<<CACHE_CONF_EOF'
+            if [ "$mode" = "rw" ]; then
+              printf '%s\n' "DL_DIR = \"${CACHE_ROOT}/downloads\""
+              printf '%s\n' "SSTATE_DIR = \"${CACHE_ROOT}/sstate-cache\""
+            else
+              printf '%s\n' "SSTATE_MIRRORS = \"file://.* file://${CACHE_ROOT}/sstate-cache/PATH;downloadfilename=PATH\""
+              printf '%s\n' "PREMIRRORS:prepend = \".*://.* file://${CACHE_ROOT}/downloads/ \\n\""
+            fi
+            echo 'CACHE_CONF_EOF'
+            echo "mode=$mode"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "=== Cache directories ==="
+          ls -ld "$CACHE_ROOT" "$CACHE_ROOT"/* 2>/dev/null || true
+          df -hT "$CACHE_ROOT" || true
+
       - name: Add swap space
         shell: bash
         run: |
@@ -202,6 +255,7 @@ jobs:
             "$DOCKER_IMAGE" || true
           docker images | grep -- "$DOCKER_IMAGE" || true
       - name: Sanitize shared download cache (remove corrupt crates)
+        if: steps.cache_cfg.outputs.mode == 'rw'
         shell: bash
         env:
           DL_CACHE: /efsx/video/yocto-cache/downloads
@@ -235,7 +289,9 @@ jobs:
           docker_image: ${{ inputs.docker_image }}
           kas_file: ${{ matrix.build_matrix.kas_file }}
           build_command: ${{ matrix.build_matrix.build_command }}
+          cache_mount: /efsx/video
           kas_local_conf_header: |
+            ${{ steps.cache_cfg.outputs.conf }}
             IMAGE_FEATURES += "enable-adbd"
             IMAGE_INSTALL:append = " git"
             HOSTTOOLS:remove = "ccache"
